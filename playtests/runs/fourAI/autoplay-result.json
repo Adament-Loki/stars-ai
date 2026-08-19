@@ -1,0 +1,899 @@
+[
+  {
+    "turn": 1,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2400,
+    "year_after": 2401,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 2,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2401,
+    "year_after": 2402,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 3,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2402,
+    "year_after": 2403,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 4,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2403,
+    "year_after": 2404,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 5,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2404,
+    "year_after": 2405,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 6,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2405,
+    "year_after": 2406,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 7,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2406,
+    "year_after": 2407,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 8,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2407,
+    "year_after": 2408,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 9,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2408,
+    "year_after": 2409,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 10,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2409,
+    "year_after": 2410,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 11,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2410,
+    "year_after": 2411,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 12,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2411,
+    "year_after": 2412,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 13,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2412,
+    "year_after": 2413,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 14,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2413,
+    "year_after": 2414,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 15,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2414,
+    "year_after": 2415,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 16,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2415,
+    "year_after": 2416,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 17,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2416,
+    "year_after": 2417,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 18,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2417,
+    "year_after": 2418,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 19,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2418,
+    "year_after": 2419,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 20,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2419,
+    "year_after": 2420,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 21,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2420,
+    "year_after": 2421,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 22,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2421,
+    "year_after": 2422,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 23,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2422,
+    "year_after": 2423,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 24,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2423,
+    "year_after": 2424,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 25,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2424,
+    "year_after": 2425,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 26,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2425,
+    "year_after": 2426,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 27,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2426,
+    "year_after": 2427,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 28,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2427,
+    "year_after": 2428,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 29,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2428,
+    "year_after": 2429,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 30,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2429,
+    "year_after": 2430,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 31,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2430,
+    "year_after": 2431,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 32,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2431,
+    "year_after": 2432,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 33,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2432,
+    "year_after": 2433,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 34,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2433,
+    "year_after": 2434,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 35,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2434,
+    "year_after": 2435,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 36,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2435,
+    "year_after": 2436,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 37,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2436,
+    "year_after": 2437,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 38,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2437,
+    "year_after": 2438,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 39,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2438,
+    "year_after": 2439,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 40,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2439,
+    "year_after": 2440,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 41,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2440,
+    "year_after": 2441,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 42,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2441,
+    "year_after": 2442,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 43,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2442,
+    "year_after": 2443,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 44,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2443,
+    "year_after": 2444,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 45,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2444,
+    "year_after": 2445,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 46,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2445,
+    "year_after": 2446,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 47,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2446,
+    "year_after": 2447,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 48,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2447,
+    "year_after": 2448,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 49,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2448,
+    "year_after": 2449,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 50,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2449,
+    "year_after": 2450,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 51,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2450,
+    "year_after": 2451,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 52,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2451,
+    "year_after": 2452,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 53,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2452,
+    "year_after": 2453,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 54,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2453,
+    "year_after": 2454,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 55,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2454,
+    "year_after": 2455,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 56,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2455,
+    "year_after": 2456,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 57,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2456,
+    "year_after": 2457,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 58,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2457,
+    "year_after": 2458,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 59,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2458,
+    "year_after": 2459,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 60,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2459,
+    "year_after": 2460,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 61,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2460,
+    "year_after": 2461,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 62,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2461,
+    "year_after": 2462,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 63,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2462,
+    "year_after": 2463,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 64,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2463,
+    "year_after": 2464,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 65,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2464,
+    "year_after": 2465,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 66,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2465,
+    "year_after": 2466,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 67,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2466,
+    "year_after": 2467,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 68,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2467,
+    "year_after": 2468,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn and consumed all generated X order files."
+  },
+  {
+    "turn": 69,
+    "player_order_files": [
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x1",
+      "C:\\Users\\Jason\\Desktop\\stars!sandbox\\GAME.x2"
+    ],
+    "host_returncode": null,
+    "year_before": 2468,
+    "year_after": null,
+    "checkpoint_written": false,
+    "success": false,
+    "message": "TimeoutExpired: Command '['C:\\\\Users\\\\Jason\\\\Desktop\\\\stars!sandbox\\\\starsjrc4.exe', '-g', 'C:\\\\Users\\\\Jason\\\\Desktop\\\\stars!sandbox\\\\GAME.hst']' timed out after 60 seconds"
+  }
+]

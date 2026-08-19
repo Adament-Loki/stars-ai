@@ -1,0 +1,183 @@
+{
+  "game_name": "Orion",
+  "year": 2405,
+  "player_id": 2,
+  "race": {
+    "name": "Centauri",
+    "growth_rate": 0.18,
+    "primary_trait": "HE",
+    "research_bias": {
+      "energy": 1.0,
+      "weapons": 1.1,
+      "propulsion": 1.2,
+      "construction": 1.0,
+      "electronics": 1.0,
+      "biotechnology": 0.9
+    }
+  },
+  "tech": {
+    "energy": 3,
+    "weapons": 4,
+    "propulsion": 4,
+    "construction": 3,
+    "electronics": 2,
+    "biotechnology": 2
+  },
+  "planets": [
+    {
+      "id": 1,
+      "name": "Centauri Prime",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "owner": 2,
+      "habitability": 92,
+      "population": 420000,
+      "factories": 125,
+      "mines": 90,
+      "defenses": 3,
+      "resources": 650,
+      "ironium": 500,
+      "boranium": 440,
+      "germanium": 300,
+      "observed": true
+    },
+    {
+      "id": 2,
+      "name": "New Hope",
+      "position": {
+        "x": 142,
+        "y": 115
+      },
+      "owner": 2,
+      "habitability": 78,
+      "population": 42000,
+      "factories": 12,
+      "mines": 10,
+      "defenses": 0,
+      "resources": 70,
+      "ironium": 90,
+      "boranium": 80,
+      "germanium": 60,
+      "observed": true
+    },
+    {
+      "id": 3,
+      "name": "Vega",
+      "position": {
+        "x": 175,
+        "y": 125
+      },
+      "owner": null,
+      "habitability": 81,
+      "population": 0,
+      "observed": true
+    },
+    {
+      "id": 4,
+      "name": "Rigel",
+      "position": {
+        "x": 190,
+        "y": 160
+      },
+      "owner": null,
+      "habitability": 55,
+      "population": 0,
+      "observed": true
+    },
+    {
+      "id": 5,
+      "name": "Unknown-5",
+      "position": {
+        "x": 125,
+        "y": 175
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "observed": false
+    },
+    {
+      "id": 6,
+      "name": "Enemy Border",
+      "position": {
+        "x": 215,
+        "y": 100
+      },
+      "owner": 1,
+      "habitability": 72,
+      "population": 130000,
+      "observed": true
+    }
+  ],
+  "fleets": [
+    {
+      "id": 100,
+      "name": "Colony Alpha",
+      "owner": 2,
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "role": "colony",
+      "cargo_population": 25000,
+      "cargo_capacity": 25000,
+      "combat_power": 0,
+      "speed": 9
+    },
+    {
+      "id": 101,
+      "name": "Freighter One",
+      "owner": 2,
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "role": "freighter",
+      "cargo_population": 0,
+      "cargo_capacity": 60000,
+      "combat_power": 0,
+      "speed": 9
+    },
+    {
+      "id": 102,
+      "name": "Scout One",
+      "owner": 2,
+      "position": {
+        "x": 112,
+        "y": 110
+      },
+      "role": "scout",
+      "cargo_population": 0,
+      "cargo_capacity": 0,
+      "combat_power": 2,
+      "speed": 9
+    },
+    {
+      "id": 103,
+      "name": "First Fleet",
+      "owner": 2,
+      "position": {
+        "x": 142,
+        "y": 115
+      },
+      "role": "combat",
+      "combat_power": 55,
+      "speed": 8
+    },
+    {
+      "id": 900,
+      "name": "Raider",
+      "owner": 1,
+      "position": {
+        "x": 170,
+        "y": 120
+      },
+      "role": "combat",
+      "combat_power": 40,
+      "speed": 8
+    }
+  ],
+  "messages": []
+}

@@ -1,0 +1,42 @@
+Stars! AI Observer Report — Turn 50 / Year 2450
+==================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+P3 Ubert has a clear lead. Observer score gap over second place: 128.0%.
+No clear evidence of player-vs-player fighting yet; expansion and buildup still dominate.
+
+CURRENT STANDINGS
+-----------------
+1. P3 Ubert [Packet Physics] — 34 planets, pop 27,559, 219 factories, 69 ships / 0 fleet mass, techΣ 31, 5 starbases.
+2. P1 SuperRabits [Interstellar Traveler / Balanced] — 8 planets, pop 8,846, 114 factories, 7 ships / 0 fleet mass, techΣ 41, 2 starbases.
+3. P2 Rush'n [Interstellar Traveler / Expansionist] — 7 planets, pop 7,973, 37 factories, 7 ships / 0 fleet mass, techΣ 40, 2 starbases.
+
+CHANGE SINCE TURN 25
+-----------------------------
+P3: planets +21, population +23,715, factories +175, ships +63, fleet mass +0, techΣ +16.
+P1: planets +0, population +6,177, factories +54, ships +0, fleet mass +0, techΣ +16.
+P2: planets +0, population +5,468, factories +9, ships +0, fleet mass +0, techΣ +16.
+
+WAR & CONTACT
+-------------
+- No captures or major net fleet-loss events detected in this reporting window.
+
+WHO IS STRONGEST?
+-----------------
+- Territory: P3 with 34 planets.
+- Population: P3 with 27,559.
+- Industry: P3 with 219 factories.
+- Fleet by mass: P3 with 0.
+- Technology: P1 with techΣ 41.
+
+MOMENTUM / RISK
+---------------
+- Current leader: P3 Ubert.
+- Current last place: P2 Rush'n.
+- P1 is materially behind the leader (<60% of leader observer score).
+- P2 is materially behind the leader (<60% of leader observer score).
+
+INTERPRETATION
+--------------
+Observer score is a transparent diagnostic composite, not the Stars! built-in score. Planet captures are strong evidence of war; abrupt fleet losses are treated as probable combat but can also reflect scrapping/merging until battle blocks are fully decoded.

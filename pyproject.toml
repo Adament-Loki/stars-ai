@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stars-ai"
+version = "0.1.0"
+description = "Version 1 AI player and host-side controller scaffold for Stars!"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+stars-ai = "stars_ai.cli:main"
+stars-native-inspect = "stars_ai.native.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+stars_ai = ["*.mod"]

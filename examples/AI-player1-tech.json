@@ -1,0 +1,12 @@
+{
+  "source_file": "AI(2).m1",
+  "energy": 3,
+  "weapons": 3,
+  "propulsion": 3,
+  "construction": 3,
+  "electronics": 3,
+  "biotechnology": 3,
+  "prt_id": 9,
+  "lrt_mask": 0,
+  "mt_mask": 0
+}

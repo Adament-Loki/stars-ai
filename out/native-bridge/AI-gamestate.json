@@ -1,0 +1,3975 @@
+{
+  "game_name": "A Barefoot JayWalk",
+  "year": 2400,
+  "player_id": 1,
+  "race": {
+    "name": "Humanoid",
+    "growth_rate": 0.15,
+    "primary_trait": "Jack of All Trades",
+    "native": {
+      "prt_id": 9,
+      "lrts": [],
+      "lrt_mask": 0,
+      "mt_mask": 0,
+      "population_efficiency_raw": 10,
+      "economy_raw": [
+        10,
+        10,
+        10,
+        10,
+        5,
+        10
+      ],
+      "research_cost_raw": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "hab_raw_hex": "32 32 32 0f 0f 0f 55 55 55",
+      "player_relations": []
+    },
+    "research_bias": {
+      "energy": 1.0,
+      "weapons": 1.0,
+      "propulsion": 1.0,
+      "construction": 1.0,
+      "electronics": 1.0,
+      "biotechnology": 1.0
+    }
+  },
+  "tech": {
+    "energy": 3,
+    "weapons": 3,
+    "propulsion": 3,
+    "construction": 3,
+    "electronics": 3,
+    "biotechnology": 3
+  },
+  "planets": [
+    {
+      "id": 0,
+      "name": "PlanetName#2",
+      "position": {
+        "x": 1014.0,
+        "y": 1048.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 1,
+      "name": "PlanetName#536",
+      "position": {
+        "x": 1018.0,
+        "y": 1561.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 2,
+      "name": "PlanetName#705",
+      "position": {
+        "x": 1025.0,
+        "y": 1141.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 3,
+      "name": "PlanetName#264",
+      "position": {
+        "x": 1026.0,
+        "y": 1651.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 4,
+      "name": "PlanetName#91",
+      "position": {
+        "x": 1028.0,
+        "y": 1373.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 5,
+      "name": "PlanetName#458",
+      "position": {
+        "x": 1037.0,
+        "y": 1755.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 6,
+      "name": "PlanetName#119",
+      "position": {
+        "x": 1038.0,
+        "y": 1080.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 7,
+      "name": "PlanetName#984",
+      "position": {
+        "x": 1042.0,
+        "y": 1268.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 8,
+      "name": "PlanetName#653",
+      "position": {
+        "x": 1046.0,
+        "y": 1307.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 9,
+      "name": "PlanetName#306",
+      "position": {
+        "x": 1064.0,
+        "y": 1239.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 10,
+      "name": "PlanetName#461",
+      "position": {
+        "x": 1071.0,
+        "y": 1254.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 11,
+      "name": "PlanetName#543",
+      "position": {
+        "x": 1082.0,
+        "y": 1407.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 12,
+      "name": "PlanetName#740",
+      "position": {
+        "x": 1088.0,
+        "y": 1178.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 13,
+      "name": "PlanetName#84",
+      "position": {
+        "x": 1091.0,
+        "y": 1579.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 14,
+      "name": "PlanetName#377",
+      "position": {
+        "x": 1097.0,
+        "y": 1157.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 15,
+      "name": "PlanetName#301",
+      "position": {
+        "x": 1099.0,
+        "y": 1373.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 16,
+      "name": "PlanetName#375",
+      "position": {
+        "x": 1101.0,
+        "y": 1663.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 17,
+      "name": "PlanetName#271",
+      "position": {
+        "x": 1110.0,
+        "y": 1253.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 18,
+      "name": "PlanetName#973",
+      "position": {
+        "x": 1122.0,
+        "y": 1572.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 19,
+      "name": "PlanetName#816",
+      "position": {
+        "x": 1136.0,
+        "y": 1196.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 20,
+      "name": "PlanetName#601",
+      "position": {
+        "x": 1142.0,
+        "y": 1359.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 21,
+      "name": "Knob",
+      "position": {
+        "x": 1145.0,
+        "y": 1239.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 22,
+      "name": "PlanetName#615",
+      "position": {
+        "x": 1156.0,
+        "y": 1752.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 23,
+      "name": "PlanetName#136",
+      "position": {
+        "x": 1157.0,
+        "y": 1043.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 24,
+      "name": "PlanetName#437",
+      "position": {
+        "x": 1170.0,
+        "y": 1521.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 25,
+      "name": "PlanetName#730",
+      "position": {
+        "x": 1186.0,
+        "y": 1637.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 26,
+      "name": "PlanetName#146",
+      "position": {
+        "x": 1199.0,
+        "y": 1597.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 27,
+      "name": "PlanetName#15",
+      "position": {
+        "x": 1205.0,
+        "y": 1637.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 28,
+      "name": "Magellan",
+      "position": {
+        "x": 1213.0,
+        "y": 1260.0
+      },
+      "owner": 1,
+      "habitability": null,
+      "population": 250,
+      "factories": 10,
+      "mines": 10,
+      "defenses": 10,
+      "resources": 0,
+      "ironium": 593,
+      "boranium": 496,
+      "germanium": 579,
+      "observed": true,
+      "native": {
+        "is_homeworld": true,
+        "environment": [
+          50,
+          50,
+          50
+        ],
+        "original_environment": [
+          null,
+          null,
+          null
+        ],
+        "mineral_concentrations": [
+          83,
+          30,
+          108
+        ],
+        "population_estimate": 62,
+        "defenses_estimate": 0,
+        "has_scanner": true,
+        "has_starbase": true,
+        "starbase_design": 0,
+        "has_route": false,
+        "route_short": null,
+        "observed_turn": null,
+        "is_terraformed": false,
+        "has_artifact": false,
+        "contribute_only_leftover_resources_to_research": false
+      }
+    },
+    {
+      "id": 29,
+      "name": "PlanetName#78",
+      "position": {
+        "x": 1214.0,
+        "y": 1770.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 30,
+      "name": "PlanetName#85",
+      "position": {
+        "x": 1233.0,
+        "y": 1396.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 31,
+      "name": "PlanetName#503",
+      "position": {
+        "x": 1236.0,
+        "y": 1035.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 32,
+      "name": "Serapa",
+      "position": {
+        "x": 1236.0,
+        "y": 1221.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 33,
+      "name": "PlanetName#95",
+      "position": {
+        "x": 1242.0,
+        "y": 1604.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 34,
+      "name": "PlanetName#335",
+      "position": {
+        "x": 1243.0,
+        "y": 1405.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 35,
+      "name": "PlanetName#686",
+      "position": {
+        "x": 1247.0,
+        "y": 1090.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 36,
+      "name": "PlanetName#741",
+      "position": {
+        "x": 1257.0,
+        "y": 1383.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 37,
+      "name": "PlanetName#801",
+      "position": {
+        "x": 1273.0,
+        "y": 1504.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 38,
+      "name": "PlanetName#453",
+      "position": {
+        "x": 1278.0,
+        "y": 1017.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 39,
+      "name": "Quiche",
+      "position": {
+        "x": 1283.0,
+        "y": 1249.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 40,
+      "name": "PlanetName#320",
+      "position": {
+        "x": 1287.0,
+        "y": 1617.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 41,
+      "name": "PlanetName#316",
+      "position": {
+        "x": 1296.0,
+        "y": 1045.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 42,
+      "name": "PlanetName#479",
+      "position": {
+        "x": 1299.0,
+        "y": 1077.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 43,
+      "name": "PlanetName#948",
+      "position": {
+        "x": 1300.0,
+        "y": 1201.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 44,
+      "name": "PlanetName#563",
+      "position": {
+        "x": 1307.0,
+        "y": 1178.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 45,
+      "name": "PlanetName#406",
+      "position": {
+        "x": 1320.0,
+        "y": 1325.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 46,
+      "name": "PlanetName#413",
+      "position": {
+        "x": 1329.0,
+        "y": 1597.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 47,
+      "name": "PlanetName#928",
+      "position": {
+        "x": 1334.0,
+        "y": 1535.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 48,
+      "name": "PlanetName#398",
+      "position": {
+        "x": 1336.0,
+        "y": 1027.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 49,
+      "name": "PlanetName#47",
+      "position": {
+        "x": 1339.0,
+        "y": 1774.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 50,
+      "name": "PlanetName#602",
+      "position": {
+        "x": 1340.0,
+        "y": 1678.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 51,
+      "name": "PlanetName#845",
+      "position": {
+        "x": 1340.0,
+        "y": 1725.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 52,
+      "name": "PlanetName#83",
+      "position": {
+        "x": 1340.0,
+        "y": 1289.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 53,
+      "name": "PlanetName#293",
+      "position": {
+        "x": 1350.0,
+        "y": 1133.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 54,
+      "name": "PlanetName#534",
+      "position": {
+        "x": 1358.0,
+        "y": 1155.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 55,
+      "name": "PlanetName#529",
+      "position": {
+        "x": 1369.0,
+        "y": 1573.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 56,
+      "name": "PlanetName#913",
+      "position": {
+        "x": 1375.0,
+        "y": 1215.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 57,
+      "name": "PlanetName#919",
+      "position": {
+        "x": 1377.0,
+        "y": 1076.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 58,
+      "name": "PlanetName#677",
+      "position": {
+        "x": 1379.0,
+        "y": 1098.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 59,
+      "name": "PlanetName#362",
+      "position": {
+        "x": 1381.0,
+        "y": 1116.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 60,
+      "name": "PlanetName#155",
+      "position": {
+        "x": 1384.0,
+        "y": 1193.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 61,
+      "name": "PlanetName#707",
+      "position": {
+        "x": 1394.0,
+        "y": 1786.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 62,
+      "name": "PlanetName#902",
+      "position": {
+        "x": 1396.0,
+        "y": 1450.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 63,
+      "name": "PlanetName#835",
+      "position": {
+        "x": 1397.0,
+        "y": 1206.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 64,
+      "name": "PlanetName#903",
+      "position": {
+        "x": 1398.0,
+        "y": 1152.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 65,
+      "name": "PlanetName#86",
+      "position": {
+        "x": 1408.0,
+        "y": 1134.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 66,
+      "name": "PlanetName#747",
+      "position": {
+        "x": 1409.0,
+        "y": 1342.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 67,
+      "name": "PlanetName#261",
+      "position": {
+        "x": 1411.0,
+        "y": 1494.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 68,
+      "name": "PlanetName#181",
+      "position": {
+        "x": 1413.0,
+        "y": 1053.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 69,
+      "name": "PlanetName#506",
+      "position": {
+        "x": 1426.0,
+        "y": 1138.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 70,
+      "name": "PlanetName#508",
+      "position": {
+        "x": 1434.0,
+        "y": 1478.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 71,
+      "name": "PlanetName#574",
+      "position": {
+        "x": 1437.0,
+        "y": 1529.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 72,
+      "name": "PlanetName#218",
+      "position": {
+        "x": 1441.0,
+        "y": 1041.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 73,
+      "name": "PlanetName#305",
+      "position": {
+        "x": 1443.0,
+        "y": 1347.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 74,
+      "name": "PlanetName#699",
+      "position": {
+        "x": 1449.0,
+        "y": 1448.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 75,
+      "name": "PlanetName#308",
+      "position": {
+        "x": 1455.0,
+        "y": 1645.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 76,
+      "name": "PlanetName#557",
+      "position": {
+        "x": 1462.0,
+        "y": 1205.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 77,
+      "name": "PlanetName#204",
+      "position": {
+        "x": 1466.0,
+        "y": 1734.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 78,
+      "name": "PlanetName#76",
+      "position": {
+        "x": 1472.0,
+        "y": 1477.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 79,
+      "name": "PlanetName#87",
+      "position": {
+        "x": 1472.0,
+        "y": 1130.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 80,
+      "name": "PlanetName#713",
+      "position": {
+        "x": 1475.0,
+        "y": 1317.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 81,
+      "name": "PlanetName#433",
+      "position": {
+        "x": 1479.0,
+        "y": 1747.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 82,
+      "name": "PlanetName#183",
+      "position": {
+        "x": 1482.0,
+        "y": 1720.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 83,
+      "name": "PlanetName#509",
+      "position": {
+        "x": 1484.0,
+        "y": 1154.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 84,
+      "name": "PlanetName#657",
+      "position": {
+        "x": 1492.0,
+        "y": 1603.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 85,
+      "name": "PlanetName#70",
+      "position": {
+        "x": 1501.0,
+        "y": 1689.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 86,
+      "name": "PlanetName#633",
+      "position": {
+        "x": 1504.0,
+        "y": 1261.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 87,
+      "name": "PlanetName#570",
+      "position": {
+        "x": 1536.0,
+        "y": 1071.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 88,
+      "name": "PlanetName#252",
+      "position": {
+        "x": 1541.0,
+        "y": 1170.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 89,
+      "name": "PlanetName#712",
+      "position": {
+        "x": 1550.0,
+        "y": 1092.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 90,
+      "name": "PlanetName#717",
+      "position": {
+        "x": 1555.0,
+        "y": 1765.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 91,
+      "name": "PlanetName#915",
+      "position": {
+        "x": 1565.0,
+        "y": 1688.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 92,
+      "name": "PlanetName#547",
+      "position": {
+        "x": 1568.0,
+        "y": 1195.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 93,
+      "name": "PlanetName#451",
+      "position": {
+        "x": 1573.0,
+        "y": 1144.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 94,
+      "name": "PlanetName#967",
+      "position": {
+        "x": 1573.0,
+        "y": 1112.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 95,
+      "name": "PlanetName#185",
+      "position": {
+        "x": 1582.0,
+        "y": 1538.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 96,
+      "name": "PlanetName#922",
+      "position": {
+        "x": 1585.0,
+        "y": 1339.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 97,
+      "name": "PlanetName#256",
+      "position": {
+        "x": 1587.0,
+        "y": 1719.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 98,
+      "name": "PlanetName#943",
+      "position": {
+        "x": 1591.0,
+        "y": 1011.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 99,
+      "name": "PlanetName#269",
+      "position": {
+        "x": 1594.0,
+        "y": 1024.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 100,
+      "name": "PlanetName#723",
+      "position": {
+        "x": 1611.0,
+        "y": 1498.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 101,
+      "name": "PlanetName#513",
+      "position": {
+        "x": 1614.0,
+        "y": 1308.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 102,
+      "name": "PlanetName#545",
+      "position": {
+        "x": 1617.0,
+        "y": 1759.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 103,
+      "name": "PlanetName#400",
+      "position": {
+        "x": 1618.0,
+        "y": 1219.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 104,
+      "name": "PlanetName#776",
+      "position": {
+        "x": 1623.0,
+        "y": 1677.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 105,
+      "name": "PlanetName#117",
+      "position": {
+        "x": 1624.0,
+        "y": 1356.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 106,
+      "name": "PlanetName#102",
+      "position": {
+        "x": 1626.0,
+        "y": 1442.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 107,
+      "name": "PlanetName#700",
+      "position": {
+        "x": 1647.0,
+        "y": 1384.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 108,
+      "name": "PlanetName#40",
+      "position": {
+        "x": 1666.0,
+        "y": 1697.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 109,
+      "name": "PlanetName#673",
+      "position": {
+        "x": 1666.0,
+        "y": 1465.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 110,
+      "name": "PlanetName#317",
+      "position": {
+        "x": 1669.0,
+        "y": 1759.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 111,
+      "name": "PlanetName#110",
+      "position": {
+        "x": 1670.0,
+        "y": 1329.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 112,
+      "name": "PlanetName#605",
+      "position": {
+        "x": 1696.0,
+        "y": 1597.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 113,
+      "name": "PlanetName#374",
+      "position": {
+        "x": 1701.0,
+        "y": 1209.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 114,
+      "name": "PlanetName#253",
+      "position": {
+        "x": 1704.0,
+        "y": 1167.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 115,
+      "name": "PlanetName#604",
+      "position": {
+        "x": 1713.0,
+        "y": 1118.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 116,
+      "name": "PlanetName#342",
+      "position": {
+        "x": 1721.0,
+        "y": 1613.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 117,
+      "name": "PlanetName#787",
+      "position": {
+        "x": 1723.0,
+        "y": 1267.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 118,
+      "name": "PlanetName#906",
+      "position": {
+        "x": 1726.0,
+        "y": 1549.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 119,
+      "name": "PlanetName#880",
+      "position": {
+        "x": 1742.0,
+        "y": 1319.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 120,
+      "name": "PlanetName#294",
+      "position": {
+        "x": 1750.0,
+        "y": 1553.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 121,
+      "name": "PlanetName#609",
+      "position": {
+        "x": 1765.0,
+        "y": 1550.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 122,
+      "name": "PlanetName#225",
+      "position": {
+        "x": 1766.0,
+        "y": 1014.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 123,
+      "name": "PlanetName#963",
+      "position": {
+        "x": 1780.0,
+        "y": 1082.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 124,
+      "name": "PlanetName#812",
+      "position": {
+        "x": 1782.0,
+        "y": 1199.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 125,
+      "name": "PlanetName#571",
+      "position": {
+        "x": 1787.0,
+        "y": 1731.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 126,
+      "name": "PlanetName#215",
+      "position": {
+        "x": 1789.0,
+        "y": 1068.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    },
+    {
+      "id": 127,
+      "name": "PlanetName#118",
+      "position": {
+        "x": 1790.0,
+        "y": 1101.0
+      },
+      "owner": null,
+      "habitability": null,
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "resources": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "observed": false,
+      "native": {
+        "observed_turn": null,
+        "map_only": true
+      }
+    }
+  ],
+  "fleets": [
+    {
+      "id": 0,
+      "name": "Fleet #1",
+      "owner": 1,
+      "position": {
+        "x": 1213.0,
+        "y": 1260.0
+      },
+      "destination_planet_id": null,
+      "role": "scout",
+      "cargo_population": 0,
+      "cargo_capacity": 0,
+      "combat_power": 0.0,
+      "speed": 7,
+      "native": {
+        "kind": 7,
+        "position_object_id": 28,
+        "ship_count": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ship_types_mask": 1,
+        "cargo": {
+          "ironium": 0,
+          "boranium": 0,
+          "germanium": 0,
+          "population": 0
+        },
+        "fuel": 50,
+        "damage": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "battle_plan": 0,
+        "waypoint_count": 1,
+        "observed_warp": null,
+        "mass": null
+      }
+    },
+    {
+      "id": 1,
+      "name": "Fleet #2",
+      "owner": 1,
+      "position": {
+        "x": 1213.0,
+        "y": 1260.0
+      },
+      "destination_planet_id": null,
+      "role": "scout",
+      "cargo_population": 0,
+      "cargo_capacity": 0,
+      "combat_power": 0.0,
+      "speed": 7,
+      "native": {
+        "kind": 7,
+        "position_object_id": 28,
+        "ship_count": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ship_types_mask": 2,
+        "cargo": {
+          "ironium": 0,
+          "boranium": 0,
+          "germanium": 0,
+          "population": 0
+        },
+        "fuel": 300,
+        "damage": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "battle_plan": 0,
+        "waypoint_count": 1,
+        "observed_warp": null,
+        "mass": null
+      }
+    },
+    {
+      "id": 2,
+      "name": "Fleet #3",
+      "owner": 1,
+      "position": {
+        "x": 1213.0,
+        "y": 1260.0
+      },
+      "destination_planet_id": null,
+      "role": "colony",
+      "cargo_population": 0,
+      "cargo_capacity": 0,
+      "combat_power": 0.0,
+      "speed": 7,
+      "native": {
+        "kind": 7,
+        "position_object_id": 28,
+        "ship_count": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ship_types_mask": 4,
+        "cargo": {
+          "ironium": 0,
+          "boranium": 0,
+          "germanium": 0,
+          "population": 0
+        },
+        "fuel": 200,
+        "damage": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "battle_plan": 0,
+        "waypoint_count": 1,
+        "observed_warp": null,
+        "mass": null
+      }
+    },
+    {
+      "id": 3,
+      "name": "Fleet #4",
+      "owner": 1,
+      "position": {
+        "x": 1213.0,
+        "y": 1260.0
+      },
+      "destination_planet_id": null,
+      "role": "freighter",
+      "cargo_population": 0,
+      "cargo_capacity": 0,
+      "combat_power": 0.0,
+      "speed": 7,
+      "native": {
+        "kind": 7,
+        "position_object_id": 28,
+        "ship_count": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ship_types_mask": 8,
+        "cargo": {
+          "ironium": 0,
+          "boranium": 0,
+          "germanium": 0,
+          "population": 0
+        },
+        "fuel": 450,
+        "damage": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "battle_plan": 0,
+        "waypoint_count": 1,
+        "observed_warp": null,
+        "mass": null
+      }
+    },
+    {
+      "id": 4,
+      "name": "Fleet #5",
+      "owner": 1,
+      "position": {
+        "x": 1213.0,
+        "y": 1260.0
+      },
+      "destination_planet_id": null,
+      "role": "combat",
+      "cargo_population": 0,
+      "cargo_capacity": 0,
+      "combat_power": 0.0,
+      "speed": 7,
+      "native": {
+        "kind": 7,
+        "position_object_id": 28,
+        "ship_count": [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ship_types_mask": 16,
+        "cargo": {
+          "ironium": 0,
+          "boranium": 0,
+          "germanium": 0,
+          "population": 0
+        },
+        "fuel": 530,
+        "damage": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "battle_plan": 0,
+        "waypoint_count": 1,
+        "observed_warp": null,
+        "mass": null
+      }
+    },
+    {
+      "id": 5,
+      "name": "Fleet #6",
+      "owner": 1,
+      "position": {
+        "x": 1213.0,
+        "y": 1260.0
+      },
+      "destination_planet_id": null,
+      "role": "miner",
+      "cargo_population": 0,
+      "cargo_capacity": 0,
+      "combat_power": 0.0,
+      "speed": 7,
+      "native": {
+        "kind": 7,
+        "position_object_id": 28,
+        "ship_count": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ship_types_mask": 32,
+        "cargo": {
+          "ironium": 0,
+          "boranium": 0,
+          "germanium": 0,
+          "population": 0
+        },
+        "fuel": 210,
+        "damage": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "battle_plan": 0,
+        "waypoint_count": 1,
+        "observed_warp": null,
+        "mass": null
+      }
+    }
+  ],
+  "messages": [],
+  "native": {
+    "header": {
+      "game_id": 497999156,
+      "turn": 0,
+      "year": 2400,
+      "player_index": 0,
+      "player_number": 1,
+      "salt": 1248,
+      "flags": 0,
+      "shareware": false
+    },
+    "battle_plans": [
+      {
+        "owner_player_id": 0,
+        "plan_id": 0,
+        "tactic": 4,
+        "tactic_name": "Maximize damage ratio",
+        "dump_cargo": false,
+        "primary_target": 3,
+        "primary_target_name": "Armed Ships",
+        "secondary_target": 1,
+        "secondary_target_name": "Any",
+        "attack_who": 2,
+        "attack_who_name": "Neutral & Enemies",
+        "name": "Default",
+        "deleted": false,
+        "raw_hex": "00 04 13 02 05 b3 2d 71 de 5a"
+      },
+      {
+        "owner_player_id": 0,
+        "plan_id": 1,
+        "tactic": 4,
+        "tactic_name": "Maximize damage ratio",
+        "dump_cargo": false,
+        "primary_target": 2,
+        "primary_target_name": "Starbase",
+        "secondary_target": 3,
+        "secondary_target_name": "Armed Ships",
+        "attack_who": 2,
+        "attack_who_name": "Neutral & Enemies",
+        "name": "Kill Starbase",
+        "deleted": false,
+        "raw_hex": "10 04 32 02 08 ba 45 50 c2 a1 8d 41 92"
+      },
+      {
+        "owner_player_id": 0,
+        "plan_id": 2,
+        "tactic": 3,
+        "tactic_name": "Maximize net damage",
+        "dump_cargo": false,
+        "primary_target": 3,
+        "primary_target_name": "Armed Ships",
+        "secondary_target": 4,
+        "secondary_target_name": "Bombers/Freighters",
+        "attack_who": 2,
+        "attack_who_name": "Neutral & Enemies",
+        "name": "Max-Defense",
+        "deleted": false,
+        "raw_hex": "20 03 43 02 08 bc 1e 1e 5b 32 d7 26 92"
+      },
+      {
+        "owner_player_id": 0,
+        "plan_id": 3,
+        "tactic": 1,
+        "tactic_name": "Disengage if challenged",
+        "dump_cargo": false,
+        "primary_target": 5,
+        "primary_target_name": "Unarmed Ships",
+        "secondary_target": 0,
+        "secondary_target_name": "None/Disengage",
+        "attack_who": 2,
+        "attack_who_name": "Neutral & Enemies",
+        "name": "Sniper",
+        "deleted": false,
+        "raw_hex": "30 01 05 02 04 c2 64 dc 28"
+      },
+      {
+        "owner_player_id": 0,
+        "plan_id": 4,
+        "tactic": 0,
+        "tactic_name": "Disengage",
+        "dump_cargo": false,
+        "primary_target": 1,
+        "primary_target_name": "Any",
+        "secondary_target": 0,
+        "secondary_target_name": "None/Disengage",
+        "attack_who": 2,
+        "attack_who_name": "Neutral & Enemies",
+        "name": "Chicken",
+        "deleted": false,
+        "raw_hex": "40 00 01 02 05 b2 34 d5 da 26"
+      }
+    ],
+    "objects": [],
+    "production_by_planet": {},
+    "designs": [
+      {
+        "is_full_design": true,
+        "is_transferred": false,
+        "is_starbase": false,
+        "design_number": 0,
+        "hull_id": 4,
+        "hull_name": "Scout",
+        "pic": 17,
+        "armor": 0,
+        "slot_count": 3,
+        "turn_designed": 1,
+        "total_built": 1,
+        "total_remaining": 1,
+        "slots": [
+          {
+            "category": 1,
+            "item_id": 3,
+            "count": 1
+          },
+          {
+            "category": 2,
+            "item_id": 1,
+            "count": 1
+          },
+          {
+            "category": 16,
+            "item_id": 1,
+            "count": 1
+          }
+        ],
+        "partial_mass": null,
+        "name": "Armed Probe",
+        "raw_hex": "07 01 04 11 00 00 03 01 00 01 00 00 00 01 00 00 00 01 00 03 01 02 00 01 01 10 00 01 01 08 b0 8d b2 d6 0b f8 7d 42"
+      },
+      {
+        "is_full_design": true,
+        "is_transferred": false,
+        "is_starbase": false,
+        "design_number": 1,
+        "hull_id": 4,
+        "hull_name": "Scout",
+        "pic": 18,
+        "armor": 0,
+        "slot_count": 3,
+        "turn_designed": 1,
+        "total_built": 1,
+        "total_remaining": 1,
+        "slots": [
+          {
+            "category": 1,
+            "item_id": 3,
+            "count": 1
+          },
+          {
+            "category": 2,
+            "item_id": 1,
+            "count": 1
+          },
+          {
+            "category": 4096,
+            "item_id": 5,
+            "count": 1
+          }
+        ],
+        "partial_mass": null,
+        "name": "Long Range Scout",
+        "raw_hex": "07 05 04 12 00 00 03 01 00 01 00 00 00 01 00 00 00 01 00 03 01 02 00 01 01 00 10 05 01 0c bb 76 d8 0c 11 6d 82 0c 2d 57 de af"
+      },
+      {
+        "is_full_design": true,
+        "is_transferred": false,
+        "is_starbase": false,
+        "design_number": 2,
+        "hull_id": 15,
+        "hull_name": "Colony Ship",
+        "pic": 60,
+        "armor": 0,
+        "slot_count": 2,
+        "turn_designed": 1,
+        "total_built": 1,
+        "total_remaining": 1,
+        "slots": [
+          {
+            "category": 1,
+            "item_id": 3,
+            "count": 1
+          },
+          {
+            "category": 4096,
+            "item_id": 0,
+            "count": 1
+          }
+        ],
+        "partial_mass": null,
+        "name": "Santa Maria",
+        "raw_hex": "07 09 0f 3c 00 00 02 01 00 01 00 00 00 01 00 00 00 01 00 03 01 00 10 00 01 07 c2 16 a1 0b c1 84 1f"
+      },
+      {
+        "is_full_design": true,
+        "is_transferred": false,
+        "is_starbase": false,
+        "design_number": 3,
+        "hull_id": 1,
+        "hull_name": "Medium Freighter",
+        "pic": 4,
+        "armor": 0,
+        "slot_count": 3,
+        "turn_designed": 1,
+        "total_built": 1,
+        "total_remaining": 1,
+        "slots": [
+          {
+            "category": 1,
+            "item_id": 3,
+            "count": 1
+          },
+          {
+            "category": 2,
+            "item_id": 1,
+            "count": 1
+          },
+          {
+            "category": 8,
+            "item_id": 1,
+            "count": 1
+          }
+        ],
+        "partial_mass": null,
+        "name": "Teamster",
+        "raw_hex": "07 0d 01 04 00 00 03 01 00 01 00 00 00 01 00 00 00 01 00 03 01 02 00 01 01 08 00 01 01 05 c3 21 db 9a 28"
+      },
+      {
+        "is_full_design": true,
+        "is_transferred": false,
+        "is_starbase": false,
+        "design_number": 4,
+        "hull_id": 6,
+        "hull_name": "Destroyer",
+        "pic": 24,
+        "armor": 0,
+        "slot_count": 7,
+        "turn_designed": 1,
+        "total_built": 1,
+        "total_remaining": 1,
+        "slots": [
+          {
+            "category": 1,
+            "item_id": 3,
+            "count": 1
+          },
+          {
+            "category": 16,
+            "item_id": 1,
+            "count": 1
+          },
+          {
+            "category": 32,
+            "item_id": 0,
+            "count": 1
+          },
+          {
+            "category": 2,
+            "item_id": 1,
+            "count": 1
+          },
+          {
+            "category": 8,
+            "item_id": 1,
+            "count": 2
+          },
+          {
+            "category": 4096,
+            "item_id": 5,
+            "count": 1
+          },
+          {
+            "category": 2048,
+            "item_id": 5,
+            "count": 1
+          }
+        ],
+        "partial_mass": null,
+        "name": "Stalwart Defender",
+        "raw_hex": "07 11 06 18 00 00 07 01 00 01 00 00 00 01 00 00 00 01 00 03 01 10 00 01 01 20 00 00 01 02 00 01 01 08 00 01 02 00 10 05 01 00 08 05 01 0b c2 a1 5e 01 8a 0b 32 d7 26 d6 28"
+      },
+      {
+        "is_full_design": true,
+        "is_transferred": false,
+        "is_starbase": false,
+        "design_number": 5,
+        "hull_id": 21,
+        "hull_name": "Mini-Miner",
+        "pic": 85,
+        "armor": 0,
+        "slot_count": 4,
+        "turn_designed": 1,
+        "total_built": 1,
+        "total_remaining": 1,
+        "slots": [
+          {
+            "category": 1,
+            "item_id": 3,
+            "count": 1
+          },
+          {
+            "category": 2,
+            "item_id": 1,
+            "count": 1
+          },
+          {
+            "category": 128,
+            "item_id": 1,
+            "count": 1
+          },
+          {
+            "category": 128,
+            "item_id": 1,
+            "count": 1
+          }
+        ],
+        "partial_mass": null,
+        "name": "Cotton Picker",
+        "raw_hex": "07 15 15 55 00 00 04 01 00 01 00 00 00 01 00 00 00 01 00 03 01 02 00 01 01 80 00 01 01 80 00 01 01 09 b2 7a a7 60 bf 4d 5d a2 8f"
+      },
+      {
+        "is_full_design": true,
+        "is_transferred": false,
+        "is_starbase": true,
+        "design_number": 0,
+        "hull_id": 34,
+        "hull_name": "Hull#34",
+        "pic": 8,
+        "armor": 1000,
+        "slot_count": 12,
+        "turn_designed": 1,
+        "total_built": 1,
+        "total_remaining": 1,
+        "slots": [
+          {
+            "category": 512,
+            "item_id": 0,
+            "count": 0
+          },
+          {
+            "category": 16,
+            "item_id": 0,
+            "count": 8
+          },
+          {
+            "category": 4,
+            "item_id": 0,
+            "count": 8
+          },
+          {
+            "category": 16,
+            "item_id": 0,
+            "count": 8
+          },
+          {
+            "category": 4,
+            "item_id": 0,
+            "count": 8
+          },
+          {
+            "category": 4,
+            "item_id": 0,
+            "count": 8
+          },
+          {
+            "category": 6144,
+            "item_id": 0,
+            "count": 0
+          },
+          {
+            "category": 16,
+            "item_id": 0,
+            "count": 8
+          },
+          {
+            "category": 6144,
+            "item_id": 0,
+            "count": 0
+          },
+          {
+            "category": 16,
+            "item_id": 0,
+            "count": 8
+          },
+          {
+            "category": 512,
+            "item_id": 1,
+            "count": 0
+          },
+          {
+            "category": 4,
+            "item_id": 0,
+            "count": 8
+          }
+        ],
+        "partial_mass": null,
+        "name": "Starbase",
+        "raw_hex": "07 41 22 08 e8 03 0c 01 00 01 00 00 00 01 00 00 00 00 02 00 00 10 00 00 08 04 00 00 08 10 00 00 08 04 00 00 08 04 00 00 08 00 18 00 00 10 00 00 08 00 18 00 00 10 00 00 08 00 02 01 00 04 00 00 08 05 c2 a1 8d 41 92"
+      }
+    ],
+    "block_inventory": [
+      {
+        "type_id": 8,
+        "name": "FileHeader",
+        "size": 16
+      },
+      {
+        "type_id": 6,
+        "name": "Player",
+        "size": 128
+      },
+      {
+        "type_id": 12,
+        "name": "Events",
+        "size": 21
+      },
+      {
+        "type_id": 13,
+        "name": "Planet",
+        "size": 33
+      },
+      {
+        "type_id": 26,
+        "name": "Design",
+        "size": 38
+      },
+      {
+        "type_id": 26,
+        "name": "Design",
+        "size": 42
+      },
+      {
+        "type_id": 26,
+        "name": "Design",
+        "size": 33
+      },
+      {
+        "type_id": 26,
+        "name": "Design",
+        "size": 35
+      },
+      {
+        "type_id": 26,
+        "name": "Design",
+        "size": 57
+      },
+      {
+        "type_id": 26,
+        "name": "Design",
+        "size": 43
+      },
+      {
+        "type_id": 16,
+        "name": "Fleet",
+        "size": 22
+      },
+      {
+        "type_id": 20,
+        "name": "Waypoint",
+        "size": 8
+      },
+      {
+        "type_id": 16,
+        "name": "Fleet",
+        "size": 23
+      },
+      {
+        "type_id": 20,
+        "name": "Waypoint",
+        "size": 8
+      },
+      {
+        "type_id": 16,
+        "name": "Fleet",
+        "size": 22
+      },
+      {
+        "type_id": 20,
+        "name": "Waypoint",
+        "size": 8
+      },
+      {
+        "type_id": 16,
+        "name": "Fleet",
+        "size": 23
+      },
+      {
+        "type_id": 20,
+        "name": "Waypoint",
+        "size": 8
+      },
+      {
+        "type_id": 16,
+        "name": "Fleet",
+        "size": 23
+      },
+      {
+        "type_id": 20,
+        "name": "Waypoint",
+        "size": 8
+      },
+      {
+        "type_id": 16,
+        "name": "Fleet",
+        "size": 22
+      },
+      {
+        "type_id": 20,
+        "name": "Waypoint",
+        "size": 8
+      },
+      {
+        "type_id": 26,
+        "name": "Design",
+        "size": 71
+      },
+      {
+        "type_id": 30,
+        "name": "BattlePlan",
+        "size": 10
+      },
+      {
+        "type_id": 30,
+        "name": "BattlePlan",
+        "size": 13
+      },
+      {
+        "type_id": 30,
+        "name": "BattlePlan",
+        "size": 13
+      },
+      {
+        "type_id": 30,
+        "name": "BattlePlan",
+        "size": 9
+      },
+      {
+        "type_id": 30,
+        "name": "BattlePlan",
+        "size": 10
+      },
+      {
+        "type_id": 0,
+        "name": "FileFooter",
+        "size": 2
+      }
+    ]
+  }
+}

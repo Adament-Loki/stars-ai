@@ -1,0 +1,11 @@
+{
+  "game_name": "Orion",
+  "ai_players": [
+    {
+      "player_id": 2,
+      "state": "player2-turn2405.json",
+      "orders": "../out/player2-orders.json",
+      "memory": "../state/player2-memory.json"
+    }
+  ]
+}

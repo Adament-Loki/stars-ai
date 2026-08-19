@@ -1,0 +1,66 @@
+
+# v6.2 Multi-turn Runtime Fix
+
+This release addresses three independent failures visible after Turn 1.
+
+## 1. Live X files are disposable, templates are not
+
+Stars! may consume/delete/move `GAME.x1`, `GAME.x2`, etc. after host generation.
+The AI no longer expects those live files to survive.
+
+On the first run only, manually-created Turn-0 X files bootstrap immutable
+per-player templates. By default they are stored in a sibling directory:
+
+`<seed-folder>-stars-ai-x-templates/`
+
+That location is outside:
+- the Stars! live game directory; and
+- `output_dir`, which can be deleted by `cleanup_output_on_start`.
+
+Every turn, including after a process restart, the AI:
+1. reads the current `.m#`;
+2. loads the persistent player X template;
+3. synchronizes game/turn header data;
+4. builds a completely fresh `.x#` in the live game directory;
+5. hosts the turn.
+
+Optional JSON override:
+
+```json
+"x_template_dir": "C:\\StarsAI\\templates\\GAME"
+```
+
+After the first successful bootstrap, live `.x#` files do not need to exist when
+the tool starts.
+
+## 2. Second and later fleet destinations
+
+The old writer always emitted Type 4 `WaypointAdd` for a new movement decision.
+That works for a fleet with only waypoint #0, but after the first trip Stars!
+can retain waypoint #1.
+
+StarsAPI's state logic treats:
+- Type 4 WaypointAdd as **insert**;
+- Type 5 WaypointChangeTask as **replace**.
+
+v6.2 therefore uses:
+- `waypoint_count < 2` -> ADD waypoint #1;
+- `waypoint_count >= 2` -> CHANGE waypoint #1 with task 0.
+
+Colonize and Transport use the same route lifecycle before applying task 2 or 1.
+The decision report now prints `NATIVE ADD WAYPOINT` or `NATIVE CHANGE WAYPOINT`
+and the M-file waypoint count.
+
+## 3. Population units
+
+Native Stars! population is represented in thousands. The adapter previously
+passed raw values directly into an AI model whose thresholds use individual
+colonists. A homeworld value such as 287 therefore looked like 287 people rather
+than 287,000.
+
+v6.2 normalizes:
+- planet population: raw * 1000;
+- fleet population cargo: raw * 1000.
+
+This allows the colony planner's 75,000 source-population prerequisite to work
+and allows a native cargo value of 25 to correctly mean 25,000 colonists.

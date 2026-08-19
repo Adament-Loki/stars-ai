@@ -1,0 +1,33 @@
+
+{
+  "stars_exe": "C:\\Users\\Jason\\Desktop\\stars!sandbox\\starsjrc4.exe",
+  "seed_dir": "C:\\Users\\Jason\\Desktop\\stars!sandbox",
+  "output_dir": "C:\\Users\\Jason\\Desktop\\stars-ai-v14-work\\playtests\\runs\\fourAI",
+  "game_name": "GAME",
+  "player_ids": [
+    1,
+    2
+  ],
+  "turns": 75,
+  "checkpoints": [
+    10,
+    25,
+    50
+  ],
+  "host_password": null,
+  "keep_every_turn": true,
+  "stop_on_missing_x": true,
+  "host_timeout_seconds": 60,
+  "personas": {
+    "1": "Balanced",
+    "2": "Expansionist"
+  },
+  "host_poll_seconds": 0.5,
+  "host_settle_seconds": 1.5,
+  "prevent_parallel_stars": true,
+  "use_seed_as_live": true,
+  "pre_host_audit": true,
+  "print_observer_each_turn": true,
+  "cleanup_output_on_start": true,
+  "console_player_logs": [1]
+}

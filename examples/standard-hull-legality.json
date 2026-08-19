@@ -1,0 +1,2757 @@
+[
+  {
+    "hull_id": 0,
+    "name": "Small Freighter",
+    "kind": "ship",
+    "slot_count": 3,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 1,
+    "name": "Medium Freighter",
+    "kind": "ship",
+    "slot_count": 3,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 2,
+    "name": "Large Freighter",
+    "kind": "ship",
+    "slot_count": 3,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 2,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 3,
+    "name": "Super Freighter",
+    "kind": "ship",
+    "slot_count": 4,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 3,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 3,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 5,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 2,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 4,
+    "name": "Scout",
+    "kind": "ship",
+    "slot_count": 3,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 2,
+        "allowed_categories": [
+          "Scanner"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 5,
+    "name": "Frigate",
+    "kind": "ship",
+    "slot_count": 4,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 2,
+        "allowed_categories": [
+          "Scanner"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 2,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 6,
+    "name": "Destroyer",
+    "kind": "ship",
+    "slot_count": 7,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 2,
+        "allowed_mask": 8,
+        "allowed_categories": [
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 1,
+        "allowed_mask": 4096,
+        "allowed_categories": [
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 1,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 7,
+    "name": "Cruiser",
+    "kind": "ship",
+    "slot_count": 7,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 6148,
+        "allowed_categories": [
+          "Shield",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 6148,
+        "allowed_categories": [
+          "Shield",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 2,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 2,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 8,
+    "name": "Battle Cruiser",
+    "kind": "ship",
+    "slot_count": 7,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 6148,
+        "allowed_categories": [
+          "Shield",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 2,
+        "allowed_mask": 6148,
+        "allowed_categories": [
+          "Shield",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 3,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 3,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 4,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 9,
+    "name": "Battleship",
+    "kind": "ship",
+    "slot_count": 11,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 4,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 8,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 6,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 6,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 4,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 8,
+        "capacity": 6,
+        "allowed_mask": 8,
+        "allowed_categories": [
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 9,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 10,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 10,
+    "name": "Dreadnought",
+    "kind": "ship",
+    "slot_count": 13,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 5,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 4,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 4,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 6,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 6,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 8,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 8,
+        "capacity": 8,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 9,
+        "capacity": 8,
+        "allowed_mask": 8,
+        "allowed_categories": [
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 10,
+        "capacity": 5,
+        "allowed_mask": 52,
+        "allowed_categories": [
+          "Shield",
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 11,
+        "capacity": 5,
+        "allowed_mask": 52,
+        "allowed_categories": [
+          "Shield",
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 12,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 11,
+    "name": "Privateer",
+    "kind": "ship",
+    "slot_count": 5,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 12,
+    "name": "Rogue",
+    "kind": "ship",
+    "slot_count": 9,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 3,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 2,
+        "allowed_mask": 6400,
+        "allowed_categories": [
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 2,
+        "allowed_categories": [
+          "Scanner"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 6400,
+        "allowed_categories": [
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 1,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 8,
+        "capacity": 1,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 13,
+    "name": "Galleon",
+    "kind": "ship",
+    "slot_count": 8,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 4,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 2,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 6400,
+        "allowed_categories": [
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 6144,
+        "allowed_categories": [
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 2,
+        "allowed_mask": 2,
+        "allowed_categories": [
+          "Scanner"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 14,
+    "name": "Mini-Colony Ship",
+    "kind": "ship",
+    "slot_count": 2,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 4096,
+        "allowed_categories": [
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 15,
+    "name": "Colony Ship",
+    "kind": "ship",
+    "slot_count": 2,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 4096,
+        "allowed_categories": [
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 16,
+    "name": "Mini Bomber",
+    "kind": "ship",
+    "slot_count": 2,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 17,
+    "name": "B-17 Bomber",
+    "kind": "ship",
+    "slot_count": 4,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 18,
+    "name": "Stealth Bomber",
+    "kind": "ship",
+    "slot_count": 5,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 19,
+    "name": "B-52 Bomber",
+    "kind": "ship",
+    "slot_count": 7,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 3,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 4,
+        "allowed_mask": 64,
+        "allowed_categories": [
+          "Bomb"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 20,
+    "name": "Midget Miner",
+    "kind": "ship",
+    "slot_count": 2,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 21,
+    "name": "Mini-Miner",
+    "kind": "ship",
+    "slot_count": 4,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 22,
+    "name": "Miner",
+    "kind": "ship",
+    "slot_count": 6,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 6154,
+        "allowed_categories": [
+          "Scanner",
+          "Armor",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 2,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 2,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 1,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 23,
+    "name": "Maxi-Miner",
+    "kind": "ship",
+    "slot_count": 6,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 3,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 6154,
+        "allowed_categories": [
+          "Scanner",
+          "Armor",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 4,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 4,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 1,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 24,
+    "name": "Ultra-Miner",
+    "kind": "ship",
+    "slot_count": 6,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 3,
+        "allowed_mask": 6154,
+        "allowed_categories": [
+          "Scanner",
+          "Armor",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 4,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 2,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 4,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 128,
+        "allowed_categories": [
+          "Mining Robot"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 25,
+    "name": "Fuel Transport",
+    "kind": "ship",
+    "slot_count": 2,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 1,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 26,
+    "name": "Super-Fuel Xport",
+    "kind": "ship",
+    "slot_count": 3,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 2,
+        "allowed_categories": [
+          "Scanner"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 27,
+    "name": "Mini Mine Layer",
+    "kind": "ship",
+    "slot_count": 4,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "allowed_mask": 256,
+        "allowed_categories": [
+          "Mine Layer"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 2,
+        "allowed_mask": 256,
+        "allowed_categories": [
+          "Mine Layer"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 28,
+    "name": "Super Mine Layer",
+    "kind": "ship",
+    "slot_count": 6,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 3,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 8,
+        "allowed_mask": 256,
+        "allowed_categories": [
+          "Mine Layer"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 8,
+        "allowed_mask": 256,
+        "allowed_categories": [
+          "Mine Layer"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 3,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 3,
+        "allowed_mask": 6146,
+        "allowed_categories": [
+          "Scanner",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 3,
+        "allowed_mask": 6400,
+        "allowed_categories": [
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 29,
+    "name": "Nubian",
+    "kind": "ship",
+    "slot_count": 13,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 3,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 8,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 9,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 10,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 11,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 12,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 30,
+    "name": "Mini Morph",
+    "kind": "ship",
+    "slot_count": 7,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 3,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 31,
+    "name": "Meta Morph",
+    "kind": "ship",
+    "slot_count": 7,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 3,
+        "allowed_mask": 1,
+        "allowed_categories": [
+          "Engine"
+        ],
+        "required": true
+      },
+      {
+        "index": 1,
+        "capacity": 8,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 1,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 6462,
+        "allowed_categories": [
+          "Scanner",
+          "Shield",
+          "Armor",
+          "Beam Weapon",
+          "Torpedo",
+          "Mine Layer",
+          "Electrical",
+          "Mechanical"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 32,
+    "name": "Orbital Fort",
+    "kind": "starbase",
+    "slot_count": 5,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 1,
+        "capacity": 12,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 12,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 12,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 12,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 33,
+    "name": "Space Dock",
+    "kind": "starbase",
+    "slot_count": 8,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 1,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 24,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 24,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 2,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 2,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 34,
+    "name": "Space Station",
+    "kind": "starbase",
+    "slot_count": 12,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 1,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 16,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 16,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 16,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 8,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 9,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 10,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 11,
+        "capacity": 16,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 35,
+    "name": "Ultra Station",
+    "kind": "starbase",
+    "slot_count": 16,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 1,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 20,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 20,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 8,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 9,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 10,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 11,
+        "capacity": 20,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 12,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 13,
+        "capacity": 20,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 14,
+        "capacity": 3,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 15,
+        "capacity": 16,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      }
+    ]
+  },
+  {
+    "hull_id": 36,
+    "name": "Death Star",
+    "kind": "starbase",
+    "slot_count": 16,
+    "slots": [
+      {
+        "index": 0,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 1,
+        "capacity": 32,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 2,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 3,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 4,
+        "capacity": 30,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 5,
+        "capacity": 30,
+        "allowed_mask": 4,
+        "allowed_categories": [
+          "Shield"
+        ],
+        "required": false
+      },
+      {
+        "index": 6,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 7,
+        "capacity": 32,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 8,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 9,
+        "capacity": 32,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      },
+      {
+        "index": 10,
+        "capacity": 1,
+        "allowed_mask": 2560,
+        "allowed_categories": [
+          "Orbital",
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 11,
+        "capacity": 20,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 12,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 13,
+        "capacity": 20,
+        "allowed_mask": 12,
+        "allowed_categories": [
+          "Shield",
+          "Armor"
+        ],
+        "required": false
+      },
+      {
+        "index": 14,
+        "capacity": 4,
+        "allowed_mask": 2048,
+        "allowed_categories": [
+          "Electrical"
+        ],
+        "required": false
+      },
+      {
+        "index": 15,
+        "capacity": 32,
+        "allowed_mask": 48,
+        "allowed_categories": [
+          "Beam Weapon",
+          "Torpedo"
+        ],
+        "required": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,39 @@
+{
+  "game_name": "A Barefoot JayWalk",
+  "year": 2400,
+  "player_id": 1,
+  "orders": [
+    {
+      "kind": "move_fleet",
+      "payload": {
+        "fleet_id": 0,
+        "destination_planet_id": 32,
+        "warp": 7,
+        "mission": "scan"
+      },
+      "reason": "Scout nearest unobserved world: Serapa.",
+      "priority": 70
+    },
+    {
+      "kind": "move_fleet",
+      "payload": {
+        "fleet_id": 1,
+        "destination_planet_id": 39,
+        "warp": 7,
+        "mission": "scan"
+      },
+      "reason": "Scout nearest unobserved world: Quiche.",
+      "priority": 70
+    },
+    {
+      "kind": "set_research",
+      "payload": {
+        "field": "weapons",
+        "allocation_percent": 100
+      },
+      "reason": "Research weapons; V1 score=15.40.",
+      "priority": 65
+    }
+  ],
+  "notes": []
+}

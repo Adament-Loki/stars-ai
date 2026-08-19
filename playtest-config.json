@@ -1,0 +1,40 @@
+{
+  "game_name": "v42-first-playtest",
+  "max_turns": 50,
+  "checkpoints": [
+    10,
+    25,
+    50
+  ],
+  "seed": 1,
+  "players": [
+    {
+      "player_id": 1,
+      "label": "Balanced JOAT",
+      "persona": "Balanced",
+      "prt": "JOAT",
+      "human": false
+    },
+    {
+      "player_id": 2,
+      "label": "Expansionist JOAT",
+      "persona": "Expansionist",
+      "prt": "JOAT",
+      "human": false
+    },
+    {
+      "player_id": 3,
+      "label": "Super Stealth",
+      "persona": "Balanced",
+      "prt": "SS",
+      "human": false
+    },
+    {
+      "player_id": 4,
+      "label": "Space Demolition",
+      "persona": "Balanced",
+      "prt": "SD",
+      "human": false
+    }
+  ]
+}
