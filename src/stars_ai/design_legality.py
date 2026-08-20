@@ -181,6 +181,23 @@ def validate_design(
                 )
             )
 
+        # Ship engines are an all-or-nothing hull requirement. A hull with
+        # N engine positions must carry exactly N copies of one engine type.
+        # ComponentRef is one category/item/count tuple, so this also prevents
+        # mixed-engine semantic designs.
+        if (
+            slot.required
+            and comp.category == int(ComponentCategory.ENGINE)
+            and int(comp.count) != int(slot.max_count)
+        ):
+            issues.append(
+                ValidationIssue(
+                    idx,
+                    "engine_count_mismatch",
+                    f"Slot {idx} ({slot.label}) requires exactly {slot.max_count} identical engines; requested {comp.count}.",
+                )
+            )
+
         if available_components is not None and (comp.category, comp.item_id) not in available_components:
             issues.append(
                 ValidationIssue(

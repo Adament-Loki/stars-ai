@@ -174,6 +174,18 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
     policy=colonization_policy(state,plan)
     candidates=[]
 
+    # V8_5_LAYER1_COLONY_PROGRAM
+    # Opening onion doctrine: deliberately establish 4-5 quality Layer-1 hubs
+    # around the homeworld. This is a SCORE bonus only; normal racial-hab,
+    # resource-exception, terraform and support-distance eligibility still
+    # applies first, so the AI never settles a bad world just to hit a quota.
+    turn=max(0,int(state.year)-2400)
+    owned_layer1=sum(
+        1 for q in owned
+        if 65.0 <= distance_from_homeworld(state,q.position) <= 190.0
+    )
+    layer1_needed=max(0,5-owned_layer1)
+
     for p in state.planets:
         if p.owner is not None or not p.observed:
             continue
@@ -224,13 +236,23 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             home_penalty=home_distance*.05
             home_bonus=max(0.0,120.0-home_distance)*.04
 
+        layer1_bonus=0.0
+        if turn<=30 and layer1_needed>0 and 65.0<=home_distance<=190.0:
+            radial=max(0.0,1.0-abs(home_distance-130.0)/100.0)
+            layer1_bonus=(
+                8.0
+                + 2.5*min(5,nearby_frontier)
+                + 7.0*radial
+                + 1.5*min(5,layer1_needed)
+            )
+
         if universal:
             # Triple-immune/universal-hab races grow equivalently everywhere.
             # Habitability is therefore deliberately NOT part of the rank.
             mineral_bonus=mineral_avg*1.45
             known_bonus=8.0 if mineral_known else 0.0
             score=(
-                mineral_bonus+known_bonus+cluster_bonus+home_bonus
+                mineral_bonus+known_bonus+cluster_bonus+home_bonus+layer1_bonus
                 -travel_penalty-support_penalty-home_penalty-population_penalty-stale_penalty
             )
             explanation=(
@@ -241,6 +263,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"support distance {nearest_owned:.1f} costs {support_penalty:.1f}; "
                 f"nearby expansion cluster adds {cluster_bonus:.1f}; "
                 f"home distance {home_distance:.1f} adds {home_bonus:.1f} and costs {home_penalty:.1f}; "
+                f"Layer-1 hub program bonus={layer1_bonus:.1f} (need {layer1_needed} more of target 5); "
                 f"remembered intel age={intel_age}"
             )
             hab=100
@@ -259,7 +282,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 +float(potential.tech_steps)*.35
             )
             score=(
-                hab+quality_bonus+mineral_bonus+cluster_bonus+home_bonus
+                hab+quality_bonus+mineral_bonus+cluster_bonus+home_bonus+layer1_bonus
                 -travel_penalty-support_penalty-home_penalty-population_penalty
                 -speculation_penalty-stale_penalty
             )
@@ -275,6 +298,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"support distance {nearest_owned:.1f} costs {support_penalty:.1f}; "
                 f"strategic cluster adds {cluster_bonus:.1f}; "
                 f"home distance {home_distance:.1f} adds {home_bonus:.1f} and costs {home_penalty:.1f}; "
+                f"Layer-1 hub program bonus={layer1_bonus:.1f} (need {layer1_needed} more of target 5); "
                 f"remembered intel age={intel_age}"
             )
             hab=int(potential.planning_habitability)

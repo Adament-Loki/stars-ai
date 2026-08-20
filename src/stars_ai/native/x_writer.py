@@ -20,6 +20,12 @@ from stars_ai.persona import (
     TechnologistPersona, MilitaristPersona
 )
 from stars_ai.native_capabilities import capability
+from stars_ai.native.design_change import (
+    UnsafeShipDesignMutationError, assert_deletable_ship_design_slot,
+    assert_free_ship_design_slot, create_ship_design_blocks,
+    delete_existing_ship_design_block, encoded_ship_design_from_payload,
+)  # V8_6_NATIVE_DESIGN_LIFECYCLE_PATCH
+from stars_ai.native.population_transport import population_load_block
 from stars_ai.planet_economy import theoretical_max_population, planet_population_capacity, population_capacity_fraction, projected_population_growth, projected_next_population
 
 ORDER_BLOCK_TYPES = {
@@ -363,7 +369,7 @@ def _requested_waypoint_task(payload:dict, *, operation_kind:str|None=None)->int
     kind=str(operation_kind or "").lower()
     if kind=="colony_operation" or mission in {"colonize","colonization"}:
         return 2
-    if kind in {"transport_minerals","transport_unload_remainder"} or mission=="transport":
+    if kind in {"transport_population","transport_minerals","transport_unload_remainder"} or mission=="transport":
         return 1
     if mission in {"remote_mine","remote mining","mine"}:
         return 3
@@ -552,6 +558,32 @@ def _colonize_blocks(state:Any,payload:dict)->list[NativeBlock]:
 TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL = bytes.fromhex(
     "00 20 00 20 00 20 00 20 00 70"
 )
+
+
+def _transport_population_blocks(state:Any,payload:dict)->list[NativeBlock]:
+    """Load bounded population at source, fly normally, unload all at owned destination."""
+    fid=int(payload["fleet_id"])
+    pid=int(payload["destination_planet_id"])
+    warp=int(payload.get("warp",6))
+    qty=int(payload.get("population_kt",0) or 0)
+    movement={**payload,"mission":"transport"}
+    diagnostic=_native_waypoint_decision(state,movement,operation_kind="transport_population")
+    if diagnostic["result"]=="CONTINUE":
+        return []
+    if diagnostic["result"]!="ADD":
+        raise UnsafeWaypointMutationError(diagnostic)
+    route_type=0x51
+    return [
+        population_load_block(state,fid,qty),
+        _movement_to_planet_block(
+            state,{"fleet_id":fid,"destination_planet_id":pid,"warp":warp,"mission":"transport"},
+            initial_object_type=0x51,
+        ),
+        _waypoint_change_task_block(
+            state,fleet_id=fid,destination_planet_id=pid,warp=warp,task=1,
+            additional=TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL,object_type=route_type
+        ),
+    ]
 
 
 def _transport_mineral_blocks(state:Any,payload:dict)->list[NativeBlock]:
@@ -773,7 +805,7 @@ def _build_decision_report(
 
 
     lines += ["", "DESIGN DEVELOPMENT"]
-    design_orders=[o for o in orders.orders if o.kind=="create_design"]
+    design_orders=[o for o in orders.orders if o.kind in ("create_design","create_ship_design","delete_ship_design","replace_ship_design")]
     if design_orders:
         for o in design_orders:
             p=o.payload
@@ -925,7 +957,7 @@ def _build_decision_report(
     for e in emitted:
         payload=e.get("payload",{})
         kind=e.get("kind")
-        if kind in ("move_fleet","colony_operation","transport_minerals","transport_unload_remainder"):
+        if kind in ("move_fleet","colony_operation","transport_population","transport_minerals","transport_unload_remainder"):
             fid=int(payload.get("fleet_id",-1))
             name=_object_name_for_fleet(state,fid)
             target=payload.get("destination_planet_id")
@@ -956,6 +988,12 @@ def _build_decision_report(
                     f"load block emitted: {load}; population aboard before={payload.get('cargo_population_before','?')}; "
                     f"source population={payload.get('source_population','?')}; "
                     f"source after load={payload.get('source_population_after_load','?')}."
+                )
+            elif kind=="transport_population":
+                lines.append(
+                    f"{name} - EXPERIMENTAL POPULATION TRANSPORT -> {target_name} warp {warp} - "
+                    f"population={payload.get('population_colonists','?')} colonists / {payload.get('population_kt','?')} kT; "
+                    "loaded cargo flies normally and unloads before any later gate use."
                 )
             elif kind=="transport_minerals":
                 lines.append(
@@ -1081,6 +1119,35 @@ def write_ai_turn(
             )
     orders.orders.sort(key=lambda o:o.priority, reverse=True)
 
+    # V8_7_STARSAPI_TYPE27_ISOLATION
+    # During Type27 troubleshooting, a *safe executable* create/delete gets a
+    # clean native turn.  This separates DesignChange failures from interactions
+    # with movement/production/research blocks.  Strategy still computes every
+    # order, but the native writer emits only the design mutation for this player.
+    type27_isolation=False
+    type27_isolation_kind=None
+    type27_isolation_slot=None
+    for candidate in orders.orders:
+        try:
+            if candidate.kind=="create_ship_design":
+                d=encoded_ship_design_from_payload(candidate.payload)
+                if d.replace_existing:
+                    continue
+                assert_free_ship_design_slot(state,d.slot)
+                type27_isolation=True
+                type27_isolation_kind=candidate.kind
+                type27_isolation_slot=int(d.slot)
+                break
+            if candidate.kind=="delete_ship_design":
+                slot=int(candidate.payload["target_slot"])
+                assert_deletable_ship_design_slot(state,slot)
+                type27_isolation=True
+                type27_isolation_kind=candidate.kind
+                type27_isolation_slot=slot
+                break
+        except UnsafeShipDesignMutationError:
+            continue
+
     # Read current M header and known-good X template.
     _, mblocks, _ = read_blocks(m_path)
     m_header_block=next(b for b in mblocks if b.type_id==8)
@@ -1102,10 +1169,22 @@ def write_ai_turn(
     touched_fleets=set()
     touched_planets=set()
     touched_relations=set()
+    touched_design=False
     waypoint_diagnostics=[]
 
     for o in orders.orders:
         cap=capability(o.kind)
+        if type27_isolation and o.kind not in {"create_ship_design","delete_ship_design"}:
+            skipped.append({
+                "kind":o.kind,
+                "reason":(
+                    f"V8.7 Type27 isolation: emitting only {type27_isolation_kind} "
+                    f"for slot {type27_isolation_slot} this turn so host acceptance "
+                    "tests DesignChange independently from other native order families."
+                ),
+                "payload":o.payload,
+            })
+            continue
         try:
             if o.kind=="colony_operation":
                 fid=int(o.payload["fleet_id"])
@@ -1153,6 +1232,23 @@ def write_ai_turn(
                     "reason":diagnostic["reason"],
                     "payload":{**o.payload,"native_waypoint_action":diagnostic["result"]},
                 })
+            elif o.kind=="transport_population":
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                movement_payload={**o.payload,"mission":"transport"}
+                diagnostic=_native_waypoint_decision(state,movement_payload,operation_kind=o.kind)
+                waypoint_diagnostics.append(diagnostic)
+                native_action=diagnostic["result"]
+                if native_action!="ADD":
+                    touched_fleets.add(fid)
+                    skipped.append({"kind":o.kind,"reason":diagnostic["reason"],"payload":{**o.payload,"native_waypoint_action":native_action}})
+                    continue
+                generated.extend(_transport_population_blocks(state,o.payload))
+                touched_fleets.add(fid)
+                ep=dict(o.payload); ep["native_waypoint_action"]=native_action
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="transport_minerals":
                 fid=int(o.payload["fleet_id"])
                 if fid in touched_fleets:
@@ -1207,6 +1303,45 @@ def write_ai_turn(
                 ep["native_waypoint_action"]=native_action
                 ep["native_waypoints_added"]=len(movement_blocks)
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="create_ship_design":
+                if touched_design:
+                    skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
+                    continue
+                design=encoded_ship_design_from_payload(o.payload)
+                if design.replace_existing:
+                    skipped.append({"kind":o.kind,"reason":"Atomic replacement is forbidden in v8.6; delete the dead slot first, read back next M, then create.","payload":o.payload})
+                    continue
+                try:
+                    assert_free_ship_design_slot(state,design.slot)
+                except UnsafeShipDesignMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
+                    continue
+                design_blocks=create_ship_design_blocks(design)
+                generated.extend(design_blocks)
+                touched_design=True
+                ep=dict(o.payload)
+                ep["type27_hex"]=[b.data.hex(" ") for b in design_blocks]
+                ep["design_body_codec"]="StarsAPI DesignBlock.encode/decode port"
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="delete_ship_design":
+                if touched_design:
+                    skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
+                    continue
+                slot=int(o.payload["target_slot"])
+                try:
+                    assert_deletable_ship_design_slot(state,slot)
+                except UnsafeShipDesignMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
+                    continue
+                delete_block=delete_existing_ship_design_block(slot)
+                generated.append(delete_block)
+                touched_design=True
+                ep=dict(o.payload)
+                ep["type27_hex"]=[delete_block.data.hex(" ")]
+                ep["design_body_codec"]="existing-design delete; no DesignBlock body"
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="replace_ship_design":
+                skipped.append({"kind":o.kind,"reason":"Legacy atomic replace is blocked. v8.6 uses delete -> next-M readback -> create.","payload":o.payload})
             elif o.kind=="set_planet_queue":
                 pid=int(o.payload["planet_id"])
                 if pid in touched_planets:
@@ -1297,11 +1432,17 @@ def write_ai_turn(
     order_stream=list(generated)
     if template_submit is not None:
         submit=NativeBlock(46,template_submit.size,template_submit.data)
-        order_stream.extend([
-            submit,
-            NativeBlock(46,submit.size,submit.data),
-            NativeBlock(46,submit.size,submit.data),
-        ])
+        if type27_isolation:
+            # Controlled client ship-design X files use a single trailing Type46
+            # in the clean create case.  Keep the diagnostic X as close to that
+            # observed transaction shape as possible.
+            order_stream.append(submit)
+        else:
+            order_stream.extend([
+                submit,
+                NativeBlock(46,submit.size,submit.data),
+                NativeBlock(46,submit.size,submit.data),
+            ])
 
     filehash=_fresh_filehash_block(order_stream)
     final_blocks=[filehash]+order_stream+[NativeBlock(0,0,b"")]
@@ -1368,6 +1509,9 @@ def write_ai_turn(
                 "m_salt":m_salt,
                 "save_submit_count":sum(1 for b in order_stream if b.type_id==46),
                 "filehash_order_length":int.from_bytes(filehash.data[:2],"little"),
+                "type27_isolation":type27_isolation,
+                "type27_isolation_kind":type27_isolation_kind,
+                "type27_isolation_slot":type27_isolation_slot,
             },
             "persistent_intel":state.native.get("persistent_intel",{}),
             "strategic_watchdog":state.native.get("strategic_watchdog",{}),

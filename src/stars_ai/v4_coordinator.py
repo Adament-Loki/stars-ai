@@ -8,6 +8,7 @@ from .base_network import evaluate_base_network
 from .race_doctrine import doctrine_for
 from .native_capabilities import capability
 from .strategic_lookahead import StrategicOption, choose_strategy
+from .population_redistribution import add_population_redistribution_orders
 
 @dataclass
 class V4Assessment:
@@ -39,7 +40,7 @@ def assess_turn_v4(state: Any, plan: Any | None=None) -> V4Assessment:
     choice=choose_strategy(options,risk_tolerance=risk).selected.name
 
     warnings=[]
-    for action in ("population_transfer","research_change","player_relation_change","set_battle_plan","create_design","packet_order"):
+    for action in ("transport_population","research_change","player_relation_change","set_battle_plan","replace_ship_design","packet_order"):
         c=capability(action)
         if c.status!="VALIDATED":
             warnings.append(f"{action}: {c.status} — {c.reason}")
@@ -56,15 +57,26 @@ def augment_orders_v4(state: Any, orders: Any, plan: Any | None=None) -> V4Asses
     a=assess_turn_v4(state,plan)
     orders.notes.append(f"v4 strategic lookahead: {a.strategic_choice}")
     orders.notes.append(f"v4 race doctrine: {a.race_doctrine['prt']}")
-    # Add only validated native actions automatically. Population transfer remains advisory
-    # until generalized transport writing is validated.
+    # v8.3: population redistribution is now an intentionally bounded,
+    # experimental native execution path. It uses only idle empty freighters,
+    # preserves breeder hold bands, and never counts a stargate as loaded-cargo
+    # range. The native writer still marks the generalized load amount as
+    # EXPERIMENTAL until host/client playtests promote it.
+    pop_intents=add_population_redistribution_orders(state,orders,plan)
     for b in a.base_recommendations[:3]:
         orders.notes.append(f"v4 base-network: planet {b['planet_id']} -> {b['role']} priority={b['priority']:.2f}")
-    for t in a.population_transfers[:3]:
-        orders.notes.append(
-            f"v4 pop optimizer advisory: {t['source_planet_id']} -> {t['destination_planet_id']} "
-            f"{t['population']} colonists, score={t['score']:.2f}"
-        )
+    if pop_intents:
+        for t in pop_intents[:3]:
+            orders.notes.append(
+                f"onion population transfer: P{t.source_planet_id}->P{t.destination_planet_id} "
+                f"{t.population_colonists:,} colonists ({t.population_kt} kT), score={t.score:.2f}"
+            )
+    else:
+        for t in a.population_transfers[:3]:
+            orders.notes.append(
+                f"v4 pop optimizer advisory: {t['source_planet_id']} -> {t['destination_planet_id']} "
+                f"{t['population']} colonists, score={t['score']:.2f}"
+            )
     for w in a.native_warnings[:4]:
         orders.notes.append(f"native safety: {w}")
     return a

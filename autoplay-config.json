@@ -1,7 +1,7 @@
 
 {
   "stars_exe": "C:\\Dev\\repos\\stars-ai\\sandbox\\starsjrc4.exe",
-  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\TwoAIOneComp",
+  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\maxmineralaccel2",
   "output_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\runs\\latestdemo",
   "game_name": "GAME",
   "player_ids": [

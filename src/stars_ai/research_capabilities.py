@@ -42,18 +42,37 @@ def _requirements(values: Iterable[int]) -> dict[str, int]:
     }
 
 
-def stock_capability_catalog(*, include_ife: bool = False, total_terraforming: bool = False) -> list[ResearchCapability]:
-    """Build the catalog from bundled authoritative hull and terraforming data."""
+def stock_capability_catalog(
+    *,
+    include_ife: bool = False,
+    total_terraforming: bool = False,
+    improved_starbases: bool = False,
+    prt_id: int | None = None,
+) -> list[ResearchCapability]:
+    """Build the catalog from bundled authoritative hull/terraforming data.
+
+    Race legality belongs in the capability catalog, not only in the eventual
+    ship/base designer.  In particular, Space Dock and Ultra Station are ISB
+    (Improved Starbases) LRT hulls and must never become research goals for a
+    race without ISB.
+    """
     hulls = stock_hulls()
     capabilities: list[ResearchCapability] = []
 
-    hull_specs = (
+    hull_specs = [
         (1, "logistics", "Upgrade an existing freighter design and expand population transport."),
         (2, "logistics", "Develop a Large Freighter design for high-volume colonization logistics."),
-        (3, "logistics", "Develop a Super Freighter design for mature empire logistics."),
-        (33, "expansion", "Develop and queue a Space Dock support-base upgrade."),
-        (35, "mature", "Develop and queue an Ultra Station support-base upgrade."),
-    )
+    ]
+    # Super Freighter is Inner Strength PRT-only; never turn it into a generic
+    # Construction research goal for another race.
+    if prt_id == 4:
+        hull_specs.append((3, "logistics", "Develop a Super Freighter design for mature Inner Strength logistics."))
+    if improved_starbases:
+        hull_specs.extend([
+            (33, "expansion", "Develop and queue a Space Dock support-base upgrade."),
+            (35, "mature", "Develop and queue an Ultra Station support-base upgrade."),
+        ])
+
     for hull_id, category, action in hull_specs:
         hull = hulls[hull_id]
         capabilities.append(ResearchCapability(

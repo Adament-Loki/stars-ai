@@ -6,6 +6,8 @@ import math
 import re
 from typing import Any
 
+from .expansion_network import ExpansionNetworkSnapshot, evaluate_expansion_network
+from .expansion_research import expansion_research_demands
 from .models import GameState
 from .persona import StrategicPlan
 from .planet_economy import decode_race_economy, estimated_operating_resources
@@ -16,6 +18,7 @@ from .util import distance
 
 FIELDS = ("energy", "weapons", "propulsion", "construction", "electronics", "biotechnology")
 EXPANSION_CATEGORIES = {"expansion", "logistics", "terraforming"}
+ONION_NETWORK_TAG = "onion_network"
 
 
 class ResearchPosture(str, Enum):
@@ -134,56 +137,89 @@ def _goal_capabilities(state: GameState, plan: StrategicPlan | None) -> list[Res
     return result
 
 
+def _demand_from_raw(raw: dict, index: int, *, default_source: str) -> ResearchDemand | None:
+    if not isinstance(raw, dict):
+        return None
+    req = {
+        field: int(level)
+        for field, level in dict(raw.get("requirements") or raw.get("tech_required") or {}).items()
+        if field in FIELDS and int(level) > 0
+    }
+    if not req:
+        return None
+    capability = ResearchCapability(
+        capability_id=str(raw.get("capability_id") or f"external:{index}"),
+        name=str(raw.get("name") or raw.get("capability_id") or f"Strategic demand {index + 1}"),
+        category=str(raw.get("category") or "strategic"),
+        requirements=req,
+        post_unlock_action=str(raw.get("post_unlock_action") or "Re-evaluate the requesting strategy module."),
+        source=str(raw.get("source") or default_source),
+        executable=bool(raw.get("executable", True)),
+        tags=tuple(raw.get("tags") or ()),
+    )
+    return ResearchDemand(
+        capability=capability,
+        need=float(raw.get("need", 1.0)),
+        urgency=float(raw.get("urgency", 1.0)),
+        utilization=float(raw.get("utilization", 1.0)),
+        value=float(raw.get("value", 1.0)),
+        military_emergency=bool(raw.get("military_emergency", False)),
+        explanation=str(raw.get("explanation") or "Demand supplied by another strategy module."),
+    )
+
+
 def _external_demands(state: GameState) -> list[ResearchDemand]:
     out = []
     for index, raw in enumerate((state.native or {}).get("research_demands", []) or []):
-        if not isinstance(raw, dict):
-            continue
-        req = {
-            field: int(level)
-            for field, level in dict(raw.get("requirements") or raw.get("tech_required") or {}).items()
-            if field in FIELDS and int(level) > 0
-        }
-        if not req:
-            continue
-        capability = ResearchCapability(
-            capability_id=str(raw.get("capability_id") or f"external:{index}"),
-            name=str(raw.get("name") or raw.get("capability_id") or f"Strategic demand {index + 1}"),
-            category=str(raw.get("category") or "strategic"),
-            requirements=req,
-            post_unlock_action=str(raw.get("post_unlock_action") or "Re-evaluate the requesting strategy module."),
-            source=str(raw.get("source") or "state.native research_demands"),
-            executable=bool(raw.get("executable", True)),
-            tags=tuple(raw.get("tags") or ()),
-        )
-        out.append(ResearchDemand(
-            capability=capability,
-            need=float(raw.get("need", 1.0)),
-            urgency=float(raw.get("urgency", 1.0)),
-            utilization=float(raw.get("utilization", 1.0)),
-            value=float(raw.get("value", 1.0)),
-            military_emergency=bool(raw.get("military_emergency", False)),
-            explanation=str(raw.get("explanation") or "Demand supplied by another strategy module."),
-        ))
+        demand = _demand_from_raw(raw, index, default_source="state.native research_demands")
+        if demand is not None:
+            out.append(demand)
     return out
 
 
-def _build_demands(state: GameState, plan: StrategicPlan | None) -> list[ResearchDemand]:
+def _build_demands(
+    state: GameState,
+    plan: StrategicPlan | None,
+    network: ExpansionNetworkSnapshot | None = None,
+) -> list[ResearchDemand]:
     native = state.native or {}
-    lrts = set((state.race.native or {}).get("lrts", []) or [])
-    catalog = stock_capability_catalog(include_ife="IFE" in lrts, total_terraforming="TT" in lrts)
+    lrts = {str(x).upper() for x in ((state.race.native or {}).get("lrts", []) or [])}
+    network = network or evaluate_expansion_network(state)
+
+    # Expansion/logistics owns the detailed opening-network demand.  It uses the
+    # existing external-demand schema but is generated from actual empire
+    # geometry, breeder backlog, hub maturity, mineral bootstrap debt, and race
+    # legality.  Duplicate generic capabilities are suppressed below.
+    expansion_rows = expansion_research_demands(state, network)
+    expansion_demands = [
+        d for i, raw in enumerate(expansion_rows)
+        if (d := _demand_from_raw(raw, i, default_source="expansion_research onion-network doctrine")) is not None
+    ]
+    expansion_ids = {d.capability.capability_id for d in expansion_demands}
+
+    catalog = stock_capability_catalog(
+        include_ife="IFE" in lrts,
+        total_terraforming="TT" in lrts,
+        improved_starbases="ISB" in lrts,
+        prt_id=((state.race.native or {}).get("prt_id")),
+    )
     catalog.extend(_goal_capabilities(state, plan))
+
     watchdog = _watchdog(state)
     colonization_pressure = float(watchdog.get("colonization_pressure", 1.0))
     exploration_pressure = float(watchdog.get("exploration_pressure", 1.0))
     expansion_debt = bool(
-        watchdog.get("colonization_below_minimum")
+        network.expansion_network_debt
+        or watchdog.get("colonization_below_minimum")
         or watchdog.get("exploration_below_minimum")
         or colonization_pressure > 1.15
         or exploration_pressure > 1.15
     )
     designs = list(native.get("design_profiles", []) or [])
-    best_cargo = max((int(d.get("cargo_capacity", 0) or 0) for d in designs if d.get("role") == "freighter"), default=0)
+    best_cargo = max(
+        (int(d.get("cargo_capacity", 0) or 0) for d in designs if d.get("role") == "freighter"),
+        default=0,
+    )
     operational_bases = sum(
         1 for p in state.planets
         if p.owner == state.player_id
@@ -193,6 +229,10 @@ def _build_demands(state: GameState, plan: StrategicPlan | None) -> list[Researc
 
     for capability in catalog:
         if capability.unlocked(state.tech):
+            continue
+        if capability.capability_id in expansion_ids:
+            # The network-aware demand contains stronger current-state evidence
+            # than the generic stock catalog entry.
             continue
         if capability.capability_id.startswith("goal:"):
             demands.append(ResearchDemand(
@@ -210,14 +250,12 @@ def _build_demands(state: GameState, plan: StrategicPlan | None) -> list[Researc
         if capability.capability_id.startswith("hull:"):
             hull_id = int(capability.capability_id.split(":", 1)[1])
             if hull_id in (1, 2, 3):
-                cargo = {1: 450, 2: 1200, 3: 3000}[hull_id]
+                cargo = {1: 210, 2: 1200, 3: 3000}[hull_id]
                 if best_cargo >= cargo:
                     continue
-                # Research only the nearest material cargo upgrade, not every
-                # future freighter at once.
-                construction_requirements = {450: 3, 1200: 8, 3000: 13}
+                construction_requirements = {210: 3, 1200: 8, 3000: 13}
                 smaller_locked = [
-                    x for x in (450, 1200, 3000)
+                    x for x in (210, 1200, 3000)
                     if best_cargo < x < cargo
                     and int(state.tech.construction or 0) < construction_requirements[x]
                 ]
@@ -225,18 +263,36 @@ def _build_demands(state: GameState, plan: StrategicPlan | None) -> list[Researc
                     continue
                 need = max(1.0, colonization_pressure, (plan.objective("logistics") if plan else 1.0))
                 demands.append(ResearchDemand(
-                    capability, need, 1.15 if expansion_debt else 1.0, 0.70, min(3.0, cargo / max(450, best_cargo or 450)), False,
+                    capability,
+                    need,
+                    1.15 if expansion_debt else 1.0,
+                    0.70,
+                    min(3.0, cargo / max(210, best_cargo or 210)),
+                    False,
                     f"Best known freighter carries {best_cargo} kT; {capability.name} carries {cargo} kT.",
                 ))
             elif hull_id == 33 and operational_bases == 0:
+                # This catalog entry exists only for ISB races.
                 demands.append(ResearchDemand(
-                    capability, max(1.2, expansion_pressure(state)), 1.3, 0.60, 2.2, False,
-                    "No operational shipyard/refuel base exists; Space Dock is the nearest authoritative hub unlock.",
+                    capability,
+                    max(1.2, expansion_pressure(state)),
+                    1.3,
+                    0.60,
+                    2.2,
+                    False,
+                    "ISB race has no operational shipyard/refuel base; Space Dock is its cheap frontier hub hull.",
                 ))
-            elif hull_id == 35 and operational_bases > 0 and int(state.year) >= 2420:
+            elif hull_id == 35 and operational_bases > 0 and int(state.year) >= 2430:
+                # Ultra Station is also ISB-only and is deliberately deferred
+                # until after the opening expansion window.
                 demands.append(ResearchDemand(
-                    capability, 0.8, 0.8, 0.45, 1.3, False,
-                    "A mature empire can use the Ultra Station upgrade, subject to stronger demands.",
+                    capability,
+                    0.8,
+                    0.8,
+                    0.45,
+                    1.3,
+                    False,
+                    "After the opening expansion window, an ISB empire can consider Ultra Station when stronger network demands are satisfied.",
                 ))
             continue
         if capability.category == "terraforming":
@@ -253,6 +309,8 @@ def _build_demands(state: GameState, plan: StrategicPlan | None) -> list[Researc
                 f"This exact breakpoint improves {improved} observed world(s); aggregate habitability gain={round(value * 35)}.",
             ))
 
+    demands.extend(expansion_demands)
+
     threats = _nearby_threats(state, plan)
     if threats:
         level = int(state.tech.weapons or 0) + 1
@@ -266,7 +324,12 @@ def _build_demands(state: GameState, plan: StrategicPlan | None) -> list[Researc
             tags=("military",),
         )
         demands.append(ResearchDemand(
-            capability, min(3.0, 1.5 + len(threats) * 0.5), 2.0, 1.0, 2.0, True,
+            capability,
+            min(3.0, 1.5 + len(threats) * 0.5),
+            2.0,
+            1.0,
+            2.0,
+            True,
             f"{len(threats)} hostile fleet(s) are inside the defense radius.",
         ))
 
@@ -276,7 +339,10 @@ def _build_demands(state: GameState, plan: StrategicPlan | None) -> list[Researc
 
 def expansion_pressure(state: GameState) -> float:
     watchdog = _watchdog(state)
+    network = evaluate_expansion_network(state)
+    network_pressure = 1.45 if network.expansion_network_debt else 1.0
     return max(
+        network_pressure,
         float(watchdog.get("colonization_pressure", 1.0)),
         float(watchdog.get("exploration_pressure", 1.0)),
     )
@@ -286,7 +352,13 @@ def _remaining_total(capability: ResearchCapability, state: GameState) -> int:
     return sum(capability.remaining(state.tech).values())
 
 
-def _score(demand: ResearchDemand, state: GameState, plan: StrategicPlan | None, expansion_debt: bool) -> float:
+def _score(
+    demand: ResearchDemand,
+    state: GameState,
+    plan: StrategicPlan | None,
+    expansion_debt: bool,
+    opening_network_debt: bool,
+) -> float:
     remaining = demand.capability.remaining(state.tech)
     field_factor = max(
         (float(plan.research(field)) if plan else 1.0)
@@ -298,22 +370,40 @@ def _score(demand: ResearchDemand, state: GameState, plan: StrategicPlan | None,
         + 18.0 * demand.value
     ) * demand.utilization * min(1.6, field_factor)
     score -= 5.0 * sum(remaining.values())
+
     if demand.military_emergency:
         score += 100.0
     elif "explicit_goal" in demand.capability.tags:
         score += 160.0
+    elif opening_network_debt:
+        # Before ~T30 the default research problem is expansion infrastructure:
+        # range, freighter throughput, legal frontier bases, and useful gates.
+        # Terraforming can still matter, but normally after mobility/logistics.
+        if ONION_NETWORK_TAG in demand.capability.tags:
+            score *= 1.75
+        elif demand.capability.category == "terraforming":
+            score *= 0.55
+        elif demand.capability.category in EXPANSION_CATEGORIES:
+            score *= 1.20
+        else:
+            score *= 0.12
     elif expansion_debt:
         score *= 1.35 if demand.capability.category in EXPANSION_CATEGORIES else 0.25
+
     if not demand.capability.executable:
         score *= 0.78
     return round(score, 3)
 
 
-def _field_sequence(capability: ResearchCapability, state: GameState, plan: StrategicPlan | None) -> tuple[str, str]:
+def _field_sequence(
+    capability: ResearchCapability,
+    state: GameState,
+    plan: StrategicPlan | None,
+) -> tuple[str, str]:
     remaining = capability.remaining(state.tech)
     ranked = sorted(
         remaining,
-        key=lambda field=(None): (
+        key=lambda field: (
             -remaining[field],
             -(float(plan.research(field)) if plan else 1.0),
             FIELDS.index(field),
@@ -324,7 +414,12 @@ def _field_sequence(capability: ResearchCapability, state: GameState, plan: Stra
     return current, next_field
 
 
-def _contributors(state: GameState, sprint: bool, expansion_debt: bool, military_emergency: bool) -> tuple[tuple[int, ...], tuple[int, ...]]:
+def _contributors(
+    state: GameState,
+    sprint: bool,
+    expansion_debt: bool,
+    military_emergency: bool,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
     owned = [p for p in state.planets if p.owner == state.player_id]
     existing = (state.native or {}).get("production_by_planet", {}) or {}
     economy = decode_race_economy(state.race)
@@ -332,7 +427,11 @@ def _contributors(state: GameState, sprint: bool, expansion_debt: bool, military
     candidates = []
     for planet in owned:
         queue = existing.get(str(planet.id), existing.get(planet.id, [])) or []
-        custom = any(int(q.get("item_type", 0) or 0) == 4 and int(q.get("count", 0) or 0) > 0 for q in queue)
+        custom = any(
+            int(q.get("item_type", 0) or 0) == 4
+            and int(q.get("count", 0) or 0) > 0
+            for q in queue
+        )
         shipyard = bool(((planet.native or {}).get("starbase_capabilities") or {}).get("can_build_ships"))
         fragile = int(planet.population or 0) < 50000
         if custom or fragile or (shipyard and (expansion_debt or military_emergency)):
@@ -348,14 +447,45 @@ def _contributors(state: GameState, sprint: bool, expansion_debt: bool, military
     return selected, tuple(sorted(protected))
 
 
-def _incumbent(memory, candidates: list[tuple[ResearchDemand, float]]) -> tuple[ResearchDemand, float] | None:
+def _incumbent(
+    memory,
+    candidates: list[tuple[ResearchDemand, float]],
+) -> tuple[ResearchDemand, float] | None:
     if memory is None:
         return None
     goal_id = str((memory.research_state or {}).get("capability_id") or "")
-    return next((row for row in candidates if row[0].capability.capability_id == goal_id), None)
+    return next(
+        (row for row in candidates if row[0].capability.capability_id == goal_id),
+        None,
+    )
 
 
-def _fallback_demand(state: GameState) -> ResearchDemand:
+def _fallback_demand(
+    state: GameState,
+    network: ExpansionNetworkSnapshot | None = None,
+) -> ResearchDemand:
+    network = network or evaluate_expansion_network(state)
+    if network.turn <= 30 and network.expansion_network_debt:
+        level = int(state.tech.construction or 0) + 1
+        capability = ResearchCapability(
+            capability_id=f"expansion:construction_consolidation:{level}",
+            name=f"Expansion Construction consolidation {level}",
+            category="expansion",
+            requirements={"construction": level},
+            post_unlock_action="Re-evaluate freighter, hull, base, and ring-building options while the opening network consolidates.",
+            source="opening onion-network fallback",
+            tags=("fallback", "expansion_enabler", ONION_NETWORK_TAG),
+        )
+        return ResearchDemand(
+            capability,
+            0.9,
+            0.75,
+            1.0,
+            0.9,
+            False,
+            "No stronger named expansion unlock is currently locked; keep low-intensity Construction progress while population/mineral logistics execute.",
+        )
+
     level = int(state.tech.energy or 0) + 1
     capability = ResearchCapability(
         capability_id=f"economy:energy_efficiency:{level}",
@@ -366,21 +496,55 @@ def _fallback_demand(state: GameState) -> ResearchDemand:
         source="named strategic fallback breakpoint",
         tags=("fallback",),
     )
-    return ResearchDemand(capability, 0.8, 0.7, 1.0, 0.8, False, "No higher-value actionable unlock is currently visible.")
+    return ResearchDemand(
+        capability,
+        0.8,
+        0.7,
+        1.0,
+        0.8,
+        False,
+        "No higher-value actionable unlock is currently visible.",
+    )
 
 
-def plan_research(state: GameState, plan: StrategicPlan | None = None, memory=None) -> ResearchDecision:
-    demands = [d for d in _build_demands(state, plan) if not d.capability.unlocked(state.tech)]
+def plan_research(
+    state: GameState,
+    plan: StrategicPlan | None = None,
+    memory=None,
+) -> ResearchDecision:
+    network = evaluate_expansion_network(state)
+    state.native["expansion_network"] = network.to_dict()
+
+    demands = [
+        d for d in _build_demands(state, plan, network)
+        if not d.capability.unlocked(state.tech)
+    ]
     if not demands:
-        demands = [_fallback_demand(state)]
+        demands = [_fallback_demand(state, network)]
+
     watchdog = _watchdog(state)
     expansion_debt = bool(
-        watchdog.get("colonization_below_minimum")
+        network.expansion_network_debt
+        or watchdog.get("colonization_below_minimum")
         or watchdog.get("exploration_below_minimum")
         or expansion_pressure(state) > 1.15
     )
+    opening_network_debt = bool(network.turn <= 30 and network.expansion_network_debt)
+
     candidates = sorted(
-        ((demand, _score(demand, state, plan, expansion_debt)) for demand in demands),
+        (
+            (
+                demand,
+                _score(
+                    demand,
+                    state,
+                    plan,
+                    expansion_debt,
+                    opening_network_debt,
+                ),
+            )
+            for demand in demands
+        ),
         key=lambda row: row[1],
         reverse=True,
     )
@@ -388,7 +552,6 @@ def plan_research(state: GameState, plan: StrategicPlan | None = None, memory=No
     incumbent = _incumbent(memory, candidates)
     hysteresis_note = ""
     if incumbent is not None and chosen.capability.capability_id != incumbent[0].capability.capability_id:
-        # A challenger must be materially stronger to prevent yearly oscillation.
         if chosen_score < incumbent[1] * 1.25 and not chosen.military_emergency:
             chosen, chosen_score = incumbent
             hysteresis_note = " Incumbent retained because the challenger was less than 25% stronger."
@@ -402,10 +565,15 @@ def plan_research(state: GameState, plan: StrategicPlan | None = None, memory=No
         int(getattr(state.tech, field, 0) or 0) >= int(level)
         for field, level in previous_req.items()
     ):
-        recently_unlocked.append(str(previous.get("capability_name") or previous["capability_id"]))
+        recently_unlocked.append(
+            str(previous.get("capability_name") or previous["capability_id"])
+        )
 
     sprint_stalled = False
-    if previous.get("capability_id") == chosen.capability.capability_id and previous.get("posture") == ResearchPosture.SPRINT.value:
+    if (
+        previous.get("capability_id") == chosen.capability.capability_id
+        and previous.get("posture") == ResearchPosture.SPRINT.value
+    ):
         start_year = int(previous.get("selected_year", state.year))
         expected = int(previous.get("estimated_turns", estimated_turns))
         start_remaining = int(previous.get("remaining_total", sum(remaining.values())))
@@ -442,6 +610,12 @@ def plan_research(state: GameState, plan: StrategicPlan | None = None, memory=No
         f"{chosen.explanation} Post-unlock: {chosen.capability.post_unlock_action}"
         f"{hysteresis_note}"
     )
+    if opening_network_debt:
+        reason += (
+            f" OPENING NETWORK: radius={network.owned_radius_ly:.0f}/{network.target_radius_ly:.0f} ly; "
+            f"outer hubs={list(network.outer_hub_ids)}; pop import backlog={network.population_import_backlog:,}; "
+            f"bootstrap base={network.bootstrap_base_name}; ISB={'yes' if network.improved_starbases else 'no'}."
+        )
     if sprint_stalled:
         reason += " WARNING - prior sprint exceeded its horizon without measurable tech progress; 15% recovery posture selected."
 
@@ -472,7 +646,11 @@ def plan_research(state: GameState, plan: StrategicPlan | None = None, memory=No
         sprint_stalled=sprint_stalled,
     )
     if memory is not None:
-        selected_year = int(previous.get("selected_year", state.year)) if previous.get("capability_id") == decision.capability_id else int(state.year)
+        selected_year = (
+            int(previous.get("selected_year", state.year))
+            if previous.get("capability_id") == decision.capability_id
+            else int(state.year)
+        )
         memory.research_state = {
             **decision.to_payload(),
             "selected_year": selected_year,

@@ -1,6 +1,6 @@
 {
   "game_basename": "GAME",
-  "game_id": 637535921,
+  "game_id": 688037609,
   "starting_turn": 0,
   "mode": "seed_reset",
   "play_on": false,
@@ -8,7 +8,7 @@
     1,
     2
   ],
-  "seed_directory": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\TwoAIOneComp",
+  "seed_directory": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\maxmineralaccel2",
   "execution_directory": "C:\\Dev\\repos\\stars-ai\\sandbox",
   "snapshot_files": [
     "GAME.h1",
@@ -20,7 +20,6 @@
     "GAME.m3",
     "GAME.x1",
     "GAME.x2",
-    "GAME.x3",
     "GAME.xy"
   ],
   "staged_files": [
@@ -33,11 +32,10 @@
     "GAME.m3",
     "GAME.x1",
     "GAME.x2",
-    "GAME.x3",
     "GAME.xy"
   ],
   "initial_x_sha256": {
-    "1": "b0ae08dbc364867a76da35fc7e3dece61556b176ae1bf1143e3bb0010f1be1c3",
-    "2": "313fa4c863181a6dab4aaedd935892810af61fc059609c2e443e638db81c532a"
+    "1": "954a5632d796ffa934999b22a9ad6dbcb0ac26c3a09a265eb4e909e185a3c204",
+    "2": "d805858a16e9affac03eb482d64b85cd38741d1d12a0bb89262ea6986547eae0"
   }
 }

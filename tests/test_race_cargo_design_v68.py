@@ -217,7 +217,7 @@ def test_transport_writer_uses_order_specific_load_and_full_unload_policy():
 
 
 def _design_state():
-    race=RaceProfile(native={"lrts":["IFE"],"universal_hab":False})
+    race=RaceProfile(native={"lrts":["IFE","ISB"],"universal_hab":False})
     planets=[
         Planet(
             0,"Home",Position(0,0),owner=1,observed=True,population=300000,
@@ -259,15 +259,20 @@ def _design_state():
     )
 
 
-def test_design_planner_proposes_fuel_mizer_scout_and_real_space_dock():
+def test_design_planner_does_not_propose_unproven_scout_and_still_proposes_real_space_dock():
     proposals=plan_design_development(_design_state())
     names={p.name for p in proposals}
-    assert "Long Range Scout Mk II" in names
+    # v8.6 requires a material mission-performance improvement and exact raw
+    # current-design slots before proposing a native scout clone.
+    assert "Long Range Scout Mk II" not in names
     assert "Fleet Support Space Dock" in names
     dock=next(p for p in proposals if p.name=="Fleet Support Space Dock")
     assert dock.desired_hull_id==33
     assert dock.is_starbase is True
 
 
-def test_new_design_native_creation_is_still_safety_gated():
-    assert capability("create_design").status=="BLOCKED"
+def test_native_design_capabilities_are_explicitly_split():
+    assert capability("create_design").status=="BLOCKED"  # advisory generic design
+    assert capability("create_ship_design").status=="PARTIAL"
+    assert capability("delete_ship_design").status=="PARTIAL"
+    assert capability("replace_ship_design").status=="BLOCKED"

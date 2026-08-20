@@ -1,0 +1,270 @@
+{
+  "version": "8.7.0",
+  "cumulative_from": "8.6.1",
+  "base_repository": "Adament-Loki/stars-ai",
+  "base_commit": "1c45444abef9982ab6af6bc94cb48c96783bcbaf",
+  "scope": "StarsAPI DesignBlock codec port + Type27 isolation diagnostic + cumulative onion/design lifecycle",
+  "starsapi_reference": {
+    "repository": "stars-4x/starsapi",
+    "commit": "194732ce0d018b8ca818e5d732d0b14c01739768",
+    "files": [
+      "DesignBlock.java",
+      "DesignChangeBlock.java"
+    ],
+    "note": "DesignBlock encode/decode ported; DesignChangeBlock encode remains empirical because StarsAPI leaves it unimplemented."
+  },
+  "validation": {
+    "focused_tests": "13 passed, 0 failed",
+    "controlled_client_x_files": "4 inspected, 0 StarsAPI body failures",
+    "package_python_ast": "PASS",
+    "isolated_x_structure": "PASS: [8,9,27,27,46,0], FileHash stored length == actual order length",
+    "full_current_main_suite": "not rerun in this runtime; historical compatibility checkout lacks newer colony_planner/population_units APIs required by cumulative source"
+  },
+  "files": [
+    {
+      "path": "APPLY_COLONY_LAYER1_PATCH.py",
+      "sha256": "9e690012fd4e47f52d6f293e2e34af01ec3b87f5324d5df43b244098f5ad5862",
+      "size": 6337
+    },
+    {
+      "path": "APPLY_NATIVE_WRITER_PATCH.py",
+      "sha256": "cd58d20d4edda4ce885a4e3df2f58a47c23d440357dd8bb5dba55a2be78b92f6",
+      "size": 11135
+    },
+    {
+      "path": "APPLY_V87_STARSAPI_NATIVE_PATCH.py",
+      "sha256": "d5c35febb7d6a9e39b4d3405dea937b9adbde186581ca57f4b48f7a4277e12d8",
+      "size": 7589
+    },
+    {
+      "path": "INSPECT_TYPE27_STARSAPI_V87.py",
+      "sha256": "bee50737fd95f5e16b3fc3ec79a9cecacaeb2ac6eebc5e519dacff942404f854",
+      "size": 1943
+    },
+    {
+      "path": "README_DROPIN.md",
+      "sha256": "ff822188186eafdb4e39a84639dbd01d3b55c0cc99dba0d3717c751af8eb56bb",
+      "size": 19279
+    },
+    {
+      "path": "README_STARSAPI_TYPE27_V87.md",
+      "sha256": "9824e4214da88fa1f5cedefed8864aeaa78b9421f218fe77e4cd2971ad8521ce",
+      "size": 7887
+    },
+    {
+      "path": "README_TYPE27_V861.md",
+      "sha256": "5fbaf243c1aa91d46ec731f3e34b415391035a08d57f3cd26f341b5d573d3741",
+      "size": 3320
+    },
+    {
+      "path": "VERIFY_TYPE27_STARSAPI_V87.py",
+      "sha256": "1bde7f2f7cc12801e890c7765de22e4e56e40fac41163ec6837cced3236782e0",
+      "size": 6025
+    },
+    {
+      "path": "VERIFY_TYPE27_V86.py",
+      "sha256": "55809ea3ae0e351e6c89dbac1304c57644b44c83331231c51d4eb58a1298e62d",
+      "size": 3507
+    },
+    {
+      "path": "VERIFY_TYPE27_V861.py",
+      "sha256": "609225bed761d97f5b6d63f032f069b2b7e365acb36a7a659754ee1ef2b63568",
+      "size": 4235
+    },
+    {
+      "path": "__pycache__/APPLY_NATIVE_WRITER_PATCH.cpython-313.pyc",
+      "sha256": "e010c157a63a7e3d41ceb25281bea3d50e3f084ee4c5b4a747fb6ae44b895a69",
+      "size": 12391
+    },
+    {
+      "path": "__pycache__/APPLY_V87_STARSAPI_NATIVE_PATCH.cpython-313.pyc",
+      "sha256": "18140ceea5f19d0889d39a414c1a514c3018f842d2f4f894cbadf4b8b22136e7",
+      "size": 8647
+    },
+    {
+      "path": "__pycache__/INSPECT_TYPE27_STARSAPI_V87.cpython-313.pyc",
+      "sha256": "57c2887b3bc462593ba85492f1efdd8a34cbbc726c5604f457e7cd1cf7a08dde",
+      "size": 3986
+    },
+    {
+      "path": "__pycache__/VERIFY_TYPE27_STARSAPI_V87.cpython-313.pyc",
+      "sha256": "bff762b38d83d814722fbc687e8909fe5d8d9ab3b0f0da56cd12217327ed9059",
+      "size": 8856
+    },
+    {
+      "path": "src/stars_ai/design_development.py",
+      "sha256": "225b6c095ae434e27cb862897131bb624b732f25dbe0c34eadf2fbad0fcc82f7",
+      "size": 12330
+    },
+    {
+      "path": "src/stars_ai/design_legality.py",
+      "sha256": "d0a9a166160bc51d298214e093dde37e17c167bdec0a3e063beb0bb3c7c1e293",
+      "size": 7673
+    },
+    {
+      "path": "src/stars_ai/expansion_network.py",
+      "sha256": "12f9ca79b0be9821eea7792f89adfb5249dc77a8e25cea4ec200fcd33da98977",
+      "size": 25313
+    },
+    {
+      "path": "src/stars_ai/expansion_research.py",
+      "sha256": "213d62429f7828b21297ec3aff1287047067a8fe1bba98a097f0e9188cee2c53",
+      "size": 12529
+    },
+    {
+      "path": "src/stars_ai/fleet_intent.py",
+      "sha256": "a50bc8a3419d4f2c1bd58ed38527e73253b8035b61977e92854f043ecc54cc48",
+      "size": 10172
+    },
+    {
+      "path": "src/stars_ai/logistics_capacity.py",
+      "sha256": "f3828b9eb0337ab081e20a2528714740512b02b17aafc396085a58703abee10a",
+      "size": 12828
+    },
+    {
+      "path": "src/stars_ai/native/__pycache__/design_change.cpython-313.pyc",
+      "sha256": "59f8bacbc51ad9d0c7cb09fc8717e74eaea0250ebbf4fe411880e1ddbc471428",
+      "size": 17049
+    },
+    {
+      "path": "src/stars_ai/native/__pycache__/starsapi_design_codec.cpython-313.pyc",
+      "sha256": "057f86861dac5d1063aef571e3366a4ed423e240811361e8db13432b3f5eca02",
+      "size": 17125
+    },
+    {
+      "path": "src/stars_ai/native/design_change.py",
+      "sha256": "117906e5f3ed3f5a2a4508ddac5f1ce2f9db61a1cc272d8d2e562c0be7c41af9",
+      "size": 11103
+    },
+    {
+      "path": "src/stars_ai/native/population_transport.py",
+      "sha256": "9502f1e59889f989ac02ad150a4363bf2052d82ec1577a67c3746bb6212bf0e5",
+      "size": 1927
+    },
+    {
+      "path": "src/stars_ai/native/starsapi_design_codec.py",
+      "sha256": "63090cd2d3ca049aacd6944572bd5d663f6983fe2e7ea49cc7ea0c971f45e8b4",
+      "size": 12867
+    },
+    {
+      "path": "src/stars_ai/native_capabilities.py",
+      "sha256": "090d33e8712a75c62ae01e343e6096d6188ec8ed5550320fcc4da57ae3e2d7e6",
+      "size": 4501
+    },
+    {
+      "path": "src/stars_ai/objective_production.py",
+      "sha256": "f73984e2f573df34c7afbd0a8f9ce14ff30aa3eb026cdda90dac3911476ce89d",
+      "size": 13784
+    },
+    {
+      "path": "src/stars_ai/population_redistribution.py",
+      "sha256": "fb439c2b9ea6b6617d07160d1d5117dd74d58d4099c1cd0a8513dc8df1a0c395",
+      "size": 17024
+    },
+    {
+      "path": "src/stars_ai/research_capabilities.py",
+      "sha256": "8757588f9fcdc01abd8f68e1f1078070de59d3b138c7d30a48d5622a83b926f7",
+      "size": 5195
+    },
+    {
+      "path": "src/stars_ai/research_planner.py",
+      "sha256": "d06c853ed6d21d1bded357c576e7bd33f470b6690f6aa487a453ea668a06eb5a",
+      "size": 25724
+    },
+    {
+      "path": "src/stars_ai/ship_design_synth.py",
+      "sha256": "f2978868017a23024eb784006c09db144a0a0f4cde5d69b13d0bb99be53d4793",
+      "size": 20270
+    },
+    {
+      "path": "src/stars_ai/starbase_planner.py",
+      "sha256": "cfed4d739998447b5f937e919b9780ab44ad76b68e66fee6d0a460acb469755f",
+      "size": 13107
+    },
+    {
+      "path": "src/stars_ai/v4_coordinator.py",
+      "sha256": "d4b754bf2c4a90344f5a7702d337fdc9d555742b71448fd3677c5143b886ae31",
+      "size": 3861
+    },
+    {
+      "path": "tests/test_expansion_network_v82.py",
+      "sha256": "6c06db89cf794f7ff4487935f6a3ad93d9bfbaa67793a4024e9a2a7170be2489",
+      "size": 6227
+    },
+    {
+      "path": "tests/test_expansion_research_v82.py",
+      "sha256": "4ee2916ae3a47e9f5c35791c35b8d2fada9806de1f8fdfbd7359cd53cd6ea7a9",
+      "size": 6014
+    },
+    {
+      "path": "tests/test_expansion_research_v85.py",
+      "sha256": "05f66a23eb04632968fa40a3a596c839b67c8e5c253dfcbe1884f951653c5fc7",
+      "size": 1803
+    },
+    {
+      "path": "tests/test_exploration_routing_v71.py",
+      "sha256": "7b8c4b9ae17789d3c75868be385b63a6eefaf0f465670480a53abea22a0aff42",
+      "size": 5953
+    },
+    {
+      "path": "tests/test_logistics_capacity_v85.py",
+      "sha256": "c1013db533f1cffd95f01d06be8ed78319803bc808699aa1b989072d9d537bd8",
+      "size": 1873
+    },
+    {
+      "path": "tests/test_objective_transport_v83.py",
+      "sha256": "e85aa3a538503ea30f398fb4d1f62bd87d97e7b79a9555952a3ebe4181d9d610",
+      "size": 2261
+    },
+    {
+      "path": "tests/test_objective_transport_v85.py",
+      "sha256": "e85aa3a538503ea30f398fb4d1f62bd87d97e7b79a9555952a3ebe4181d9d610",
+      "size": 2261
+    },
+    {
+      "path": "tests/test_population_redistribution_v83.py",
+      "sha256": "89fe80c288fb10f5b81ebaac6d7ec83a44b5f29b3f4a154eacc925457123ee3c",
+      "size": 4205
+    },
+    {
+      "path": "tests/test_population_redistribution_v85.py",
+      "sha256": "89fe80c288fb10f5b81ebaac6d7ec83a44b5f29b3f4a154eacc925457123ee3c",
+      "size": 4205
+    },
+    {
+      "path": "tests/test_privateer_onion_v85.py",
+      "sha256": "8df148e33d05267289097e53d1524cc8e4a87fb888fe4512cfa0b7e024409763",
+      "size": 1769
+    },
+    {
+      "path": "tests/test_race_cargo_design_v68.py",
+      "sha256": "d2e74d21440400c0e9b828519a97b9fd086f8156f076445de306472fa29d726f",
+      "size": 9343
+    },
+    {
+      "path": "tests/test_ship_design_lifecycle_v86.py",
+      "sha256": "b586b75c0b9fd7d3c47f038abc391d5a1ef457b8e0f2cd60652d82873925a471",
+      "size": 7203
+    },
+    {
+      "path": "tests/test_ship_design_v83.py",
+      "sha256": "50a38b61fc1e07092df3473f5e8e31004587751cbe81b05a22578cb1771e14b9",
+      "size": 4369
+    },
+    {
+      "path": "tests/test_starbase_network_v83.py",
+      "sha256": "a36dc66435122d558d411441ec64f3acec498c60202062ec52977586a2b14011",
+      "size": 1918
+    },
+    {
+      "path": "tests/test_starsapi_design_codec_v87.py",
+      "sha256": "c8dc6b6e170121daee3433efada4b77d865bca348fcf33a3a2aa516b4d6f0872",
+      "size": 4457
+    },
+    {
+      "path": "tests/test_type27_client_turn3_v861.py",
+      "sha256": "571026e3de43cee1f9aeb43cc89d7161a9c00be146a4760f0e4282847446270e",
+      "size": 1900
+    }
+  ]
+}

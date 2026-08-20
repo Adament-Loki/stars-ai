@@ -19,6 +19,7 @@ from .native.history_merge import (
     merge_history_file,
 )
 from .native_observer import read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn, build_human_report
+from .turn_archive import archive_turn_phase
 
 @dataclass
 class WindowsAutoHostConfig:
@@ -36,6 +37,9 @@ class WindowsAutoHostConfig:
     checkpoints: list[int] = field(default_factory=lambda: [10,25,50])
     host_password: str | None = None
     keep_every_turn: bool = True
+    # v8.7.1: immutable before/after snapshots for native-order debugging.
+    turn_archive_enabled: bool = True
+    turn_archive_include_logs: bool = True
     # Merge each current M file into its cumulative H file in native Python.
     # This replaces the Stars! client-open step required by headless hosting.
     auto_merge_history: bool = True
@@ -1637,6 +1641,15 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 game,validated.basename,f".m{cfg.player_ids[0]}"
             )
             year_before=_read_year(first_pre_m,xy)
+            if cfg.turn_archive_enabled:
+                archive_turn_phase(
+                    logs_root/"turn-archive", turn_tag=turn_tag, phase="00-pre-write",
+                    game_dir=game, basename=validated.basename,
+                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
+                    templates_root=templates_root, ai_state_root=ai_state_root,
+                    config=cfg,
+                    metadata={"execution_turn":turn,"native_year_before":year_before},
+                )
             # This is deliberately before deleting or generating any X file.
             # A current M that has not been consumed by the Stars! client must
             # not be superseded by another submitted turn.
@@ -1688,6 +1701,16 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             if missing and cfg.stop_on_missing_x:
                 raise RuntimeError(f"Missing native order files for players: {missing}")
 
+            if cfg.turn_archive_enabled:
+                archive_turn_phase(
+                    logs_root/"turn-archive", turn_tag=turn_tag, phase="10-pre-host",
+                    game_dir=game, basename=validated.basename,
+                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
+                    templates_root=templates_root, ai_state_root=ai_state_root,
+                    config=cfg,
+                    metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files)},
+                )
+
             # Hard barrier. Stars! is not launched unless every X file passes.
             pre_audit = (
                 _pre_host_audit(cfg, game, hst, xy, logs_root, turn)
@@ -1717,6 +1740,19 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             year_advanced=(year_before is None or year_after is None or year_after>year_before)
             x_consumed=bool(post_audit.get("all_consumed",False))
             host_success=cp.returncode==0 and settled and year_advanced and x_consumed
+            if cfg.turn_archive_enabled:
+                archive_turn_phase(
+                    logs_root/"turn-archive", turn_tag=turn_tag, phase="20-post-host-attempt",
+                    game_dir=game, basename=validated.basename,
+                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
+                    templates_root=templates_root, ai_state_root=ai_state_root,
+                    config=cfg,
+                    metadata={
+                        "execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,
+                        "host_returncode":cp.returncode,"host_settled":bool(settled),
+                        "all_x_consumed":x_consumed,"host_success":host_success,
+                    },
+                )
             if cfg.keep_every_turn:
                 _snapshot(
                     game,
@@ -1759,6 +1795,15 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     order_bridge.commit_pending_memory()
                 else:
                     order_bridge.discard_pending_memory()
+            if success and cfg.turn_archive_enabled:
+                archive_turn_phase(
+                    logs_root/"turn-archive", turn_tag=turn_tag, phase="30-committed",
+                    game_dir=game, basename=validated.basename,
+                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
+                    templates_root=templates_root, ai_state_root=ai_state_root,
+                    config=cfg,
+                    metadata={"execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,"success":True},
+                )
             msg=(
                 "Host generated next turn, consumed all generated X order files, "
                 "and cumulative player histories were merged and validated."
@@ -1825,6 +1870,21 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 break
 
         except Exception as exc:
+            if getattr(cfg,"turn_archive_enabled",False):
+                try:
+                    archive_turn_phase(
+                        logs_root/"turn-archive", turn_tag=turn_tag, phase="99-failure",
+                        game_dir=game, basename=validated.basename,
+                        logs_root=(logs_root if getattr(cfg,"turn_archive_include_logs",True) else None),
+                        templates_root=templates_root, ai_state_root=ai_state_root,
+                        config=cfg,
+                        metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files),
+                                  "exception_type":type(exc).__name__,"exception":str(exc)},
+                    )
+                except Exception as archive_exc:
+                    (logs_root/f"{turn_tag}-TURN_ARCHIVE_ERROR.txt").write_text(
+                        f"{type(archive_exc).__name__}: {archive_exc}",encoding="utf-8"
+                    )
             if isinstance(order_bridge, IntegratedNativeOrderBridge):
                 order_bridge.discard_pending_memory()
             e = TurnExecution(
