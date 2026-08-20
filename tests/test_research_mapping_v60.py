@@ -2,17 +2,19 @@
 import pytest
 from stars_ai.native.x_writer import _research_change_block
 
-@pytest.mark.parametrize("field,hex_payload",[
-    ("energy","0F 60"),
-    ("weapons","0F 61"),
-    ("propulsion","0F 62"),
-    ("construction","0F 63"),
-    ("electronics","0F 64"),
-    ("biotechnology","0F 65"),
+@pytest.mark.parametrize("current,next_field,pct,hex_payload",[
+    ("energy","construction",15,"0F 30"),
+    ("energy","weapons",15,"0F 10"),
+    ("construction","electronics",25,"19 43"),
+    ("electronics","weapons",15,"0F 14"),
 ])
-def test_research_payloads(field,hex_payload):
-    assert _research_change_block(field,100).data==bytes.fromhex(hex_payload)
+def test_research_payloads(current,next_field,pct,hex_payload):
+    assert _research_change_block(current,pct,next_field).data==bytes.fromhex(hex_payload)
 
 def test_unknown_field_rejected():
     with pytest.raises(ValueError):
-        _research_change_block("alchemy",100)
+        _research_change_block("alchemy",15,"energy")
+
+def test_unvalidated_allocation_rejected():
+    with pytest.raises(ValueError):
+        _research_change_block("energy",100,"weapons")

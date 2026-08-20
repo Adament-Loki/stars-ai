@@ -1,0 +1,56 @@
+STARS! AI DECISION REPORT — A Rumble in the Jungle — Year 2425 — Player 1
+
+Format: Object Name - Action - Reason/Justification
+
+COMMAND OUTCOME STATUS
+NO PRIOR EMITTED COMMANDS DUE - Nothing to verify against this M file.
+SUMMARY - completed=0; pending=0; warnings=0; unverified=0.
+
+FLEETS
+Fleet #1 - CONTINUE WAYPOINT -> Bentley - Fleet already has active destination planet 84; preserve current mission.
+Fleet #3 - HOLD / DEFEND - Armed fleet has no higher-priority military mission; remain available for local defense or concentration.
+Fleet #4 - HOLD FOR LOGISTICS - No explicit cargo route was selected. Cargo ships do not reposition or scout merely to avoid idling.
+Fleet #5 - CONTINUE WAYPOINT -> Excel - Fleet already has active destination planet 32; preserve current mission.
+Fleet #6 - CONTINUE WAYPOINT -> Capricornus - Fleet already has active destination planet 113; preserve current mission.
+Fleet #7 - CONTINUE WAYPOINT -> Dawn - Fleet already has active destination planet 7; preserve current mission.
+Fleet #8 - CONTINUE WAYPOINT -> Io - Fleet already has active destination planet 40; preserve current mission.
+Fleet #9 - CONTINUE WAYPOINT -> Accord - Fleet already has active destination planet 90; preserve current mission.
+Fleet #10 - HOLD FOR COLONY INTEL - No known colony world meets the opening_broadening racial-habitability floor of 50%. Preserve the colony ship at owned population while scouts gather better options.
+
+COLONIZATION PRIORITY
+Fleet #10 - NO COLONY TARGET - No known colony world meets the opening_broadening racial-habitability floor of 50%. Preserve the colony ship at owned population while scouts gather better options.
+
+DESIGN DEVELOPMENT
+Long Range Scout Mk II - PROPOSE SCOUT - hull=Scout; engine=Fuel Mizer - 282 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it. Objectives: maximize sustainable exploration range, retain the best currently available scanner, avoid unnecessary weapon mass on pure exploration hulls, add fuel capacity when a legal slot/component permits. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+Strategic Transport Mk II - PROPOSE FREIGHTER - hull=Privateer; engine=Fuel Mizer - Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True. Objectives: maximize useful cargo per fuel-safe trip, favor efficient engines over maximum nominal warp, retain adequate fuel reserve for round-trip logistics, support mineral redistribution, especially Germanium. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+Colonizer Mk II - PROPOSE COLONY - hull=Colony Ship; engine=Fuel Mizer - 1 viable colony targets are known and Fuel Mizer improves colonization range. Objectives: reach new colonies with a safe one-way fuel budget, carry the required colonization module, minimize nonessential mass. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+
+PLANET PRODUCTION
+Narnia - BUILD 1x Starbase, 1x max_terraform, 1x factory, 1x mine - Y2425 M-file pop raw=267x100 => 26,700; capacity 3.0% of 1,000,000; projected growth +1,300 -> 28,000; factories 4/26; mines 10/29; Germanium 313kT (factory cost 3kT; conc=69); base=Orbital Fort shipyard=N refuel=N. Balanced: objective production first: continue the in-progress Starbase fuel-hub project at Narnia; native completion is 47%. | terraform Narnia from 50% toward 73% (17 available steps)
+Pansy - BUILD 3x Smaugarian Peeping Tom, 10x factory, 8x mine - Y2425 M-file pop raw=2163x100 => 216,300; capacity 22.0% of 1,000,000; projected growth +21,600 -> 237,900; factories 94/216; mines 74/237; Germanium 147kT (factory cost 3kT; conc=30); base=Space Station shipyard=Y refuel=Y. Balanced: objective production first: 282 worlds remain unknown; exploration milestone needs 44 more known worlds by T25 (~44.00/turn); measured scout productivity ~0.55 discoveries/scout-turn; target scout force=12; available/queued=6. Existing scout choice favors free cruise then efficient Warp-7 range.
+Gargantua - BUILD 1x max_terraform, 1x factory, 1x mine - Y2425 M-file pop raw=37x100 => 3,700; capacity 1.0% of 1,000,000; projected growth +300 -> 4,000; factories 0/3; mines 0/4; Germanium 24kT (factory cost 3kT; conc=27). Balanced: objective production first: terraform Gargantua from 82% toward 92% (11 available steps)
+
+RESEARCH
+Empire Research - Temperature Terraforming 7% - SPRINT - ENERGY -> ENERGY at 25% - contributors=() - Balanced: SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit. Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up.
+
+DIPLOMACY
+Diplomacy - NO RELATION CHANGE - Preserve current relations.
+
+NATIVE WAYPOINT LIFECYCLE
+No native movement transaction requested.
+
+MOVEMENT PROGRESS
+No same-destination prior-turn range is available yet.
+
+NATIVE EXECUTION DETAILS
+
+NATIVE WRITER LIMITATIONS / SKIPPED ACTIONS
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+
+COLONIZE NATIVE STATUS
+Native Colonize task - DEFERRED - Colony asset is intentionally holding or returning for population; no purposeless colony movement emitted.
+
+ACTIVITY CHECK
+PASS - ALL OWNED FLEETS ACCOUNTED FOR - Every fleet has movement, an existing waypoint, or a conscious armed hold.

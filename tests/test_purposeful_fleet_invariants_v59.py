@@ -52,7 +52,7 @@ def test_known_viable_colony_at_home_triggers_load_plus_colonize():
     s=state([Fleet(2,"Colony",1,Position(0,0),role="colony",cargo_population=0,speed=8)],planets)
     o=OrderSet("g",2400,1); add_economic_orders(s,o,None)
     c=next(x for x in o.orders if x.kind=="colony_operation")
-    assert c.payload["load_25k_population"] is True
+    assert c.payload["load_25kt_population"] is True
     assert c.payload["destination_planet_id"]==1
 
 def test_empty_colony_away_from_home_returns_for_population():

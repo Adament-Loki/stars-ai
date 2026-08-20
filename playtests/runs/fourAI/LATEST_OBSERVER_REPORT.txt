@@ -3,37 +3,37 @@ Stars! AI Observer Report — Turn 50 / Year 2450
 
 EXECUTIVE SUMMARY
 -----------------
-P3 Ubert has a clear lead. Observer score gap over second place: 128.0%.
-No clear evidence of player-vs-player fighting yet; expansion and buildup still dominate.
+P3 Felite has a clear lead. Observer score gap over second place: 88.9%.
+Likely fighting has begun: major fleet losses are visible, although no enemy planet changed hands in this window.
 
 CURRENT STANDINGS
 -----------------
-1. P3 Ubert [Packet Physics] — 34 planets, pop 27,559, 219 factories, 69 ships / 0 fleet mass, techΣ 31, 5 starbases.
-2. P1 SuperRabits [Interstellar Traveler / Balanced] — 8 planets, pop 8,846, 114 factories, 7 ships / 0 fleet mass, techΣ 41, 2 starbases.
-3. P2 Rush'n [Interstellar Traveler / Expansionist] — 7 planets, pop 7,973, 37 factories, 7 ships / 0 fleet mass, techΣ 40, 2 starbases.
+1. P3 Felite [Packet Physics] — 37 planets, pop 22,591, 304 factories, 45 ships / 0 fleet mass, techΣ 31, 4 starbases.
+2. P1 SuperRabits [Interstellar Traveler / Balanced] — 11 planets, pop 7,843, 302 factories, 20 ships / 0 fleet mass, techΣ 39, 2 starbases.
+3. P2 House Cat [Interstellar Traveler / Expansionist] — 5 planets, pop 7,797, 357 factories, 21 ships / 0 fleet mass, techΣ 41, 2 starbases.
 
 CHANGE SINCE TURN 25
 -----------------------------
-P3: planets +21, population +23,715, factories +175, ships +63, fleet mass +0, techΣ +16.
-P1: planets +0, population +6,177, factories +54, ships +0, fleet mass +0, techΣ +16.
-P2: planets +0, population +5,468, factories +9, ships +0, fleet mass +0, techΣ +16.
+P3: planets +22, population +18,321, factories +254, ships +41, fleet mass +0, techΣ +14.
+P1: planets +8, population +5,524, factories +188, ships +7, fleet mass +0, techΣ +15.
+P2: planets +3, population +5,450, factories +236, ships +10, fleet mass +0, techΣ +18.
 
 WAR & CONTACT
 -------------
-- No captures or major net fleet-loss events detected in this reporting window.
+- P1 suffered a major net fleet loss (4 ships, 0 mass).
 
 WHO IS STRONGEST?
 -----------------
-- Territory: P3 with 34 planets.
-- Population: P3 with 27,559.
-- Industry: P3 with 219 factories.
+- Territory: P3 with 37 planets.
+- Population: P3 with 22,591.
+- Industry: P2 with 357 factories.
 - Fleet by mass: P3 with 0.
-- Technology: P1 with techΣ 41.
+- Technology: P2 with techΣ 41.
 
 MOMENTUM / RISK
 ---------------
-- Current leader: P3 Ubert.
-- Current last place: P2 Rush'n.
+- Current leader: P3 Felite.
+- Current last place: P2 House Cat.
 - P1 is materially behind the leader (<60% of leader observer score).
 - P2 is materially behind the leader (<60% of leader observer score).
 

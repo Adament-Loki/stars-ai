@@ -22,7 +22,7 @@ def test_colony_load_decision_surfaces_diagnostics():
     o=OrderSet("g",2400,1)
     add_economic_orders(s,o,None)
     c=next(x for x in o.orders if x.kind=="colony_operation")
-    assert c.payload["load_25k_population"] is True
+    assert c.payload["load_25kt_population"] is True
     assert c.payload["cargo_population_before"]==0
     assert c.payload["source_population"]==250000
     assert c.payload["warp"] in (7,8)
@@ -38,4 +38,4 @@ def test_colony_source_coordinate_fallback():
     o=OrderSet("g",2400,1); add_economic_orders(s,o,None)
     c=next(x for x in o.orders if x.kind=="colony_operation")
     assert c.payload["source_planet_id"]==5
-    assert c.payload["load_25k_population"] is True
+    assert c.payload["load_25kt_population"] is True

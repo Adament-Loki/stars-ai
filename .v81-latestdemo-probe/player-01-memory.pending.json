@@ -1,0 +1,884 @@
+{
+  "schema_version": 6,
+  "game_id": 637535921,
+  "player_id": 1,
+  "start_year": 2425,
+  "last_year": 2425,
+  "known_enemy_planets": {},
+  "planet_scores": {
+    "16": -11.0,
+    "37": 50.0,
+    "71": 100.0,
+    "85": -5.0,
+    "102": 82.0,
+    "123": 32.0
+  },
+  "strategic_notes": [
+    "Persona: Balanced",
+    "PERSISTENT INTEL: current M observed=6, ever observed=6/288, restored from memory=0.",
+    "Opening hard goal by T25: explore >= 35 (optimal 50), create >= 13 new colonies (optimal 20).",
+    "Actual: explored 6/288 (2.1%), new colonies=0, owned=3, new discoveries last 5 turns=6.",
+    "RESEARCH PLAN: SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+    "v4 strategic lookahead: CONSOLIDATE_AND_GROW",
+    "v4 race doctrine: INTERSTELLAR TRAVELER",
+    "v4 base-network: planet 37 -> FUEL_HUB priority=0.60",
+    "v4 base-network: planet 102 -> FUEL_HUB priority=0.52",
+    "v4 base-network: planet 71 -> ECONOMIC_BASE priority=0.35",
+    "v4 pop optimizer advisory: 71 -> 102 21630 colonists, score=1.02",
+    "v4 pop optimizer advisory: 71 -> 37 2500 colonists, score=0.49",
+    "native safety: population_transfer: PARTIAL \u2014 General transport remains incomplete; scoped observed forms are supported.",
+    "native safety: player_relation_change: PARTIAL \u2014 Friend relation is empirically validated; Neutral/Enemy native writes remain disabled.",
+    "native safety: set_battle_plan: BLOCKED \u2014 SetFleetBattlePlan native writer remains unvalidated.",
+    "native safety: create_design: BLOCKED \u2014 Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+    "FLEET STATE: id=0 role=scout pos=(1458,1333) dest=84 destination_warp=7 destination_task=0 speed=8",
+    "FLEET STATE: id=2 role=combat pos=(1369,1298) dest=None destination_warp=None destination_task=None speed=8",
+    "FLEET STATE: id=3 role=freighter pos=(1483,1153) dest=None destination_warp=None destination_task=None speed=8",
+    "FLEET STATE: id=4 role=scout pos=(1114,1093) dest=32 destination_warp=7 destination_task=0 speed=8",
+    "FLEET STATE: id=5 role=scout pos=(1548,1400) dest=113 destination_warp=7 destination_task=0 speed=8",
+    "FLEET STATE: id=6 role=scout pos=(1091,1309) dest=7 destination_warp=7 destination_task=0 speed=8",
+    "FLEET STATE: id=7 role=scout pos=(1139,1148) dest=40 destination_warp=7 destination_task=0 speed=8",
+    "FLEET STATE: id=8 role=scout pos=(1433,1399) dest=90 destination_warp=7 destination_task=0 speed=8",
+    "FLEET STATE: id=9 role=colony pos=(1483,1153) dest=None destination_warp=None destination_task=None speed=8"
+  ],
+  "goal_progress": {
+    "explored_count": 6.0,
+    "explored_percent": 2.1,
+    "new_colonies": 0.0,
+    "exploration_pressure": 2.0,
+    "colonization_pressure": 2.0
+  },
+  "diplomacy": {},
+  "initial_owned_planet_ids": [
+    37,
+    71,
+    102
+  ],
+  "planet_intel": {
+    "16": {
+      "planet_id": 16,
+      "name": "Wellington",
+      "x": 1091.0,
+      "y": 1309.0,
+      "ever_observed": true,
+      "first_seen_year": 2425,
+      "last_seen_year": 2425,
+      "last_known_owner": null,
+      "habitability": -11,
+      "environment": [
+        12,
+        89,
+        90
+      ],
+      "original_environment": [
+        null,
+        null,
+        null
+      ],
+      "mineral_concentrations": [
+        93,
+        16,
+        66
+      ],
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "has_starbase": false,
+      "starbase_hull_id": null
+    },
+    "37": {
+      "planet_id": 37,
+      "name": "Narnia",
+      "x": 1147.0,
+      "y": 1083.0,
+      "ever_observed": true,
+      "first_seen_year": 2425,
+      "last_seen_year": 2425,
+      "last_known_owner": 1,
+      "habitability": 50,
+      "environment": [
+        60,
+        65,
+        72
+      ],
+      "original_environment": [
+        null,
+        null,
+        null
+      ],
+      "mineral_concentrations": [
+        70,
+        25,
+        69
+      ],
+      "population": 26700,
+      "factories": 4,
+      "mines": 10,
+      "defenses": 0,
+      "ironium": 316,
+      "boranium": 144,
+      "germanium": 313,
+      "has_starbase": true,
+      "starbase_hull_id": 32
+    },
+    "71": {
+      "planet_id": 71,
+      "name": "Pansy",
+      "x": 1311.0,
+      "y": 1281.0,
+      "ever_observed": true,
+      "first_seen_year": 2425,
+      "last_seen_year": 2425,
+      "last_known_owner": 1,
+      "habitability": 100,
+      "environment": [
+        50,
+        50,
+        50
+      ],
+      "original_environment": [
+        null,
+        null,
+        null
+      ],
+      "mineral_concentrations": [
+        30,
+        30,
+        30
+      ],
+      "population": 216300,
+      "factories": 94,
+      "mines": 74,
+      "defenses": 10,
+      "ironium": 452,
+      "boranium": 492,
+      "germanium": 147,
+      "has_starbase": true,
+      "starbase_hull_id": 34
+    },
+    "85": {
+      "planet_id": 85,
+      "name": "Resort",
+      "x": 1369.0,
+      "y": 1298.0,
+      "ever_observed": true,
+      "first_seen_year": 2425,
+      "last_seen_year": 2425,
+      "last_known_owner": null,
+      "habitability": -5,
+      "environment": [
+        9,
+        53,
+        22
+      ],
+      "original_environment": [
+        null,
+        null,
+        null
+      ],
+      "mineral_concentrations": [
+        8,
+        90,
+        87
+      ],
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "has_starbase": false,
+      "starbase_hull_id": null
+    },
+    "102": {
+      "planet_id": 102,
+      "name": "Gargantua",
+      "x": 1483.0,
+      "y": 1153.0,
+      "ever_observed": true,
+      "first_seen_year": 2425,
+      "last_seen_year": 2425,
+      "last_known_owner": 1,
+      "habitability": 82,
+      "environment": [
+        51,
+        58,
+        61
+      ],
+      "original_environment": [
+        null,
+        null,
+        null
+      ],
+      "mineral_concentrations": [
+        6,
+        6,
+        27
+      ],
+      "population": 3700,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "ironium": 24,
+      "boranium": 20,
+      "germanium": 24,
+      "has_starbase": false,
+      "starbase_hull_id": null
+    },
+    "123": {
+      "planet_id": 123,
+      "name": "Radium",
+      "x": 1548.0,
+      "y": 1400.0,
+      "ever_observed": true,
+      "first_seen_year": 2425,
+      "last_seen_year": 2425,
+      "last_known_owner": null,
+      "habitability": 32,
+      "environment": [
+        37,
+        44,
+        84
+      ],
+      "original_environment": [
+        null,
+        null,
+        null
+      ],
+      "mineral_concentrations": [
+        86,
+        56,
+        71
+      ],
+      "population": 0,
+      "factories": 0,
+      "mines": 0,
+      "defenses": 0,
+      "ironium": 0,
+      "boranium": 0,
+      "germanium": 0,
+      "has_starbase": false,
+      "starbase_hull_id": null
+    }
+  },
+  "colonized_years": {},
+  "scan_target_history": {},
+  "scout_routes": {
+    "0": {
+      "fleet_id": 0,
+      "planet_ids": [
+        84
+      ],
+      "waypoints": [
+        {
+          "planet_id": 84,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "4": {
+      "fleet_id": 4,
+      "planet_ids": [
+        32,
+        65,
+        62,
+        59,
+        82,
+        93,
+        135
+      ],
+      "waypoints": [
+        {
+          "planet_id": 32,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 65,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 62,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 59,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 82,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 93,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 135,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "5": {
+      "fleet_id": 5,
+      "planet_ids": [
+        113,
+        128,
+        129
+      ],
+      "waypoints": [
+        {
+          "planet_id": 113,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 128,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 129,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "6": {
+      "fleet_id": 6,
+      "planet_ids": [
+        7,
+        2,
+        13,
+        3,
+        41
+      ],
+      "waypoints": [
+        {
+          "planet_id": 7,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 2,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 13,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 3,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 41,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "7": {
+      "fleet_id": 7,
+      "planet_ids": [
+        40
+      ],
+      "waypoints": [
+        {
+          "planet_id": 40,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "8": {
+      "fleet_id": 8,
+      "planet_ids": [
+        90,
+        77
+      ],
+      "waypoints": [
+        {
+          "planet_id": 90,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 77,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    }
+  },
+  "kpi_history": [
+    {
+      "year": 2425,
+      "turn": 25,
+      "total_planets": 288,
+      "explored_count": 6,
+      "explored_percent": 2.1,
+      "new_colonies": 0,
+      "owned_planets": 3,
+      "discoveries_last_5_turns": 6,
+      "scan_orders_total": 0,
+      "unique_scan_targets_total": 0,
+      "milestone": {
+        "mode": "hard_numbers",
+        "deadline_turn": 25,
+        "explored_min": 35,
+        "explored_optimal": 50,
+        "new_colonies_min": 13,
+        "new_colonies_optimal": 20
+      },
+      "exploration_pressure": 2.0,
+      "colonization_pressure": 2.0,
+      "exploration_below_minimum": true,
+      "colonization_below_minimum": true,
+      "scan_target_reuse_ratio": 0.0,
+      "notes": [
+        "Opening hard goal by T25: explore >= 35 (optimal 50), create >= 13 new colonies (optimal 20).",
+        "Actual: explored 6/288 (2.1%), new colonies=0, owned=3, new discoveries last 5 turns=6."
+      ]
+    }
+  ],
+  "fleet_movement_history": {
+    "0": {
+      "fleet_id": 0,
+      "destination_planet_id": 84,
+      "year": 2425,
+      "range": 107.93516572461452,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "suspicious_slow_turns": 0
+    },
+    "4": {
+      "fleet_id": 4,
+      "destination_planet_id": 32,
+      "year": 2425,
+      "range": 27.65863337187866,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "suspicious_slow_turns": 0
+    },
+    "5": {
+      "fleet_id": 5,
+      "destination_planet_id": 113,
+      "year": 2425,
+      "range": 29.614185789921695,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "suspicious_slow_turns": 0
+    },
+    "6": {
+      "fleet_id": 6,
+      "destination_planet_id": 7,
+      "year": 2425,
+      "range": 48.27007354458868,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "suspicious_slow_turns": 0
+    },
+    "7": {
+      "fleet_id": 7,
+      "destination_planet_id": 40,
+      "year": 2425,
+      "range": 34.058772731852805,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "suspicious_slow_turns": 0
+    },
+    "8": {
+      "fleet_id": 8,
+      "destination_planet_id": 90,
+      "year": 2425,
+      "range": 54.56189146281496,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "suspicious_slow_turns": 0
+    }
+  },
+  "action_expectations": {
+    "2425:set_planet_research_mode:37:0": {
+      "id": "2425:set_planet_research_mode:37:0",
+      "group": "planet_research_mode:37",
+      "kind": "planet_research_mode",
+      "command_kind": "set_planet_research_mode",
+      "planet_id": 37,
+      "planet_name": "Narnia",
+      "leftover_only": true,
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Narnia leftover-only research mode"
+    },
+    "2425:set_planet_research_mode:71:1": {
+      "id": "2425:set_planet_research_mode:71:1",
+      "group": "planet_research_mode:71",
+      "kind": "planet_research_mode",
+      "command_kind": "set_planet_research_mode",
+      "planet_id": 71,
+      "planet_name": "Pansy",
+      "leftover_only": true,
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Pansy leftover-only research mode"
+    },
+    "2425:set_planet_queue:37:2": {
+      "id": "2425:set_planet_queue:37:2",
+      "group": "production:37",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 37,
+      "planet_name": "Narnia",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "starbase_design",
+          "design_slot": 0,
+          "design_name": "Starbase",
+          "hull_name": "Space Station",
+          "quantity": 1,
+          "role": "fuel_hub",
+          "complete_percent": 47
+        },
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 50,
+          "target_habitability": 73,
+          "terraform_steps": 17,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 313
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 4,
+        "mine": 10,
+        "defense": 0,
+        "ship_slots": {
+          "0": 6,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 1,
+        "habitability": 50,
+        "environment": [
+          60,
+          65,
+          72
+        ]
+      },
+      "description": "Narnia production queue"
+    },
+    "2425:set_planet_queue:71:3": {
+      "id": "2425:set_planet_queue:71:3",
+      "group": "production:71",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 71,
+      "planet_name": "Pansy",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "ship_design",
+          "design_slot": 0,
+          "design_name": "Smaugarian Peeping Tom",
+          "quantity": 3,
+          "role": "scout"
+        },
+        {
+          "item": "factory",
+          "quantity": 10,
+          "germanium_cost_each": 3,
+          "germanium_available": 147
+        },
+        {
+          "item": "mine",
+          "quantity": 8
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 94,
+        "mine": 74,
+        "defense": 10,
+        "ship_slots": {
+          "0": 6,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 0,
+        "habitability": 100,
+        "environment": [
+          50,
+          50,
+          50
+        ]
+      },
+      "description": "Pansy production queue"
+    },
+    "2425:set_research:4": {
+      "id": "2425:set_research:4",
+      "group": "research:empire",
+      "kind": "research",
+      "command_kind": "set_research",
+      "field": "energy",
+      "next_field": "energy",
+      "allocation_percent": 25,
+      "capability_id": "terraform:temperature:7",
+      "baseline_tech": {
+        "energy": 4,
+        "weapons": 5,
+        "propulsion": 6,
+        "construction": 5,
+        "electronics": 0,
+        "biotechnology": 3
+      },
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Empire research switch to energy"
+    },
+    "2425:set_planet_queue:102:5": {
+      "id": "2425:set_planet_queue:102:5",
+      "group": "production:102",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 102,
+      "planet_name": "Gargantua",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 82,
+          "target_habitability": 92,
+          "terraform_steps": 11,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 24
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 0,
+        "mine": 0,
+        "defense": 0,
+        "ship_slots": {
+          "0": 6,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": null,
+        "habitability": 82,
+        "environment": [
+          51,
+          58,
+          61
+        ]
+      },
+      "description": "Gargantua production queue"
+    }
+  },
+  "action_outcome_history": [],
+  "research_state": {
+    "capability_id": "terraform:temperature:7",
+    "capability_name": "Temperature Terraforming 7%",
+    "category": "terraforming",
+    "posture": "SPRINT",
+    "current_field": "energy",
+    "next_field": "energy",
+    "allocation_percent": 25,
+    "score": 119.07,
+    "estimated_turns": 1,
+    "estimate_confidence": "low",
+    "requirements": {
+      "energy": 5,
+      "biotechnology": 2
+    },
+    "remaining_requirements": {
+      "energy": 1
+    },
+    "contributor_planet_ids": [],
+    "protected_production_planet_ids": [
+      37,
+      71,
+      102
+    ],
+    "post_unlock_action": "Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+    "reason": "SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+    "candidate_scores": [
+      {
+        "capability_id": "terraform:temperature:7",
+        "name": "Temperature Terraforming 7%",
+        "score": 119.07,
+        "remaining": {
+          "energy": 1
+        }
+      },
+      {
+        "capability_id": "terraform:gravity:11",
+        "name": "Gravity Terraforming 11%",
+        "score": 108.136,
+        "remaining": {
+          "propulsion": 4
+        }
+      },
+      {
+        "capability_id": "terraform:radiation:11",
+        "name": "Radiation Terraforming 11%",
+        "score": 98.319,
+        "remaining": {
+          "weapons": 5
+        }
+      },
+      {
+        "capability_id": "terraform:temperature:11",
+        "name": "Temperature Terraforming 11%",
+        "score": 89.486,
+        "remaining": {
+          "energy": 6
+        }
+      },
+      {
+        "capability_id": "hull:2",
+        "name": "Large Freighter",
+        "score": 81.207,
+        "remaining": {
+          "construction": 3
+        }
+      },
+      {
+        "capability_id": "terraform:gravity:15",
+        "name": "Gravity Terraforming 15%",
+        "score": 68.384,
+        "remaining": {
+          "propulsion": 10,
+          "biotechnology": 1
+        }
+      },
+      {
+        "capability_id": "terraform:radiation:15",
+        "name": "Radiation Terraforming 15%",
+        "score": 61.483,
+        "remaining": {
+          "weapons": 11,
+          "biotechnology": 1
+        }
+      },
+      {
+        "capability_id": "terraform:temperature:15",
+        "name": "Temperature Terraforming 15%",
+        "score": 47.096,
+        "remaining": {
+          "energy": 12,
+          "biotechnology": 1
+        }
+      }
+    ],
+    "recently_unlocked": [],
+    "sprint_stalled": false,
+    "field": "energy",
+    "selected_year": 2425,
+    "remaining_total": 1
+  },
+  "research_history": [
+    {
+      "year": 2425,
+      "capability_id": "terraform:temperature:7",
+      "posture": "SPRINT",
+      "field": "energy",
+      "next_field": "energy",
+      "allocation_percent": 25,
+      "remaining": {
+        "energy": 1
+      },
+      "recently_unlocked": []
+    }
+  ]
+}

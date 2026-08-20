@@ -25,7 +25,7 @@ def test_colony_intent_contains_ranked_candidates_but_does_not_move_empty():
     c=next(x for x in intents if x["role"]=="colony")
     assert c["action"]=="HOLD / COLONY READY"
     assert c["destination_planet_id"] is None
-    assert len(c["colony_candidates"])>=3
+    assert len(c["colony_candidates"])==2
     assert c["colony_candidates"][0]["planet_name"]=="ExcellentNear"
     assert not any(x.kind=="move_fleet" and x.payload.get("fleet_id")==0 for x in o.orders)
 

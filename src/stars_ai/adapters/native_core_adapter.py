@@ -10,6 +10,7 @@ from ..models import GameState, Planet, Fleet, Position, Tech, RaceProfile, Orde
 from ..native.player_state import PlayerState
 from ..fuel_planner import design_fuel_profile, fleet_fuel_profile, has_ife, has_ce
 from ..starbase_capabilities import starbase_capabilities
+from ..population_units import colonists_from_cargo_kt
 
 
 def _infer_xy(m_path: Path) -> Path | None:
@@ -53,6 +54,77 @@ def _fleet_role(ship_count: list[int], roles: dict[int, str]) -> str:
         if preferred in present:
             return preferred
     return 'unknown'
+
+
+_SAFE_WAYPOINT_TASK_MISSIONS = {
+    0: 'move',
+    1: 'transport',
+    2: 'colonize',
+    3: 'remote_mine',
+}
+
+_RESEARCH_FIELD_BY_CODE = {
+    0:'energy',
+    1:'weapons',
+    2:'propulsion',
+    3:'construction',
+    4:'electronics',
+    5:'biotechnology',
+}
+
+
+def _current_research_field(native: PlayerState) -> str | None:
+    for change in reversed(native.research_changes):
+        code=change.current_field_code
+        if code is not None and int(code) in _RESEARCH_FIELD_BY_CODE:
+            return _RESEARCH_FIELD_BY_CODE[int(code)]
+    return None
+
+
+def _next_research_field(native: PlayerState) -> str | None:
+    for change in reversed(native.research_changes):
+        code=change.next_field_code
+        if code is not None and int(code) in _RESEARCH_FIELD_BY_CODE:
+            return _RESEARCH_FIELD_BY_CODE[int(code)]
+    return None
+
+
+def _research_percent(native: PlayerState) -> int | None:
+    return next((int(x.percent) for x in reversed(native.research_changes) if x.percent is not None),None)
+
+
+def _planet_research_modes(native: PlayerState) -> dict[str,int]:
+    result={}
+    for change in native.planet_changes:
+        if change.leftover_only_raw is not None:
+            result[str(int(change.planet_id))]=int(change.leftover_only_raw)
+    return result
+
+
+def _normalize_active_waypoint(waypoints) -> dict:
+    """Normalize native waypoint #1 without guessing undocumented task values."""
+    result={
+        'destination_planet_id':None,
+        'destination_warp':None,
+        'destination_task':None,
+        'destination_mission':None,
+    }
+    if len(waypoints) < 2:
+        return result
+    waypoint=waypoints[1]
+    object_type=int(waypoint.position_object_type)
+    # Controlled native samples use 0x11/0x51/0x91 for planet targets. The
+    # upper bits carry state we preserve; low nibble 1 identifies the planet.
+    if (object_type & 0x0f) != 1:
+        return result
+    task=int(waypoint.waypoint_task)
+    result.update({
+        'destination_planet_id':int(waypoint.position_object) & 0x7ff,
+        'destination_warp':int(waypoint.warp),
+        'destination_task':task,
+        'destination_mission':_SAFE_WAYPOINT_TASK_MISSIONS.get(task),
+    })
+    return result
 
 
 def _environment_tuple(p):
@@ -285,7 +357,8 @@ class NativeCoreTurnAdapter(TurnAdapter):
         fleets: list[Fleet] = []
         for (owner, fid), f in sorted(best_fleets.items()):
             waypoints = native.waypoints_by_fleet.get(fid, []) if owner == player_id else []
-            destination = None
+            active_waypoint=_normalize_active_waypoint(waypoints)
+            destination=active_waypoint['destination_planet_id']
             # IMPORTANT: f.warp / waypoint.warp is the CURRENT order speed, not
             # the fleet's maximum useful movement speed. Using it as a capability
             # ceiling caused fleets ordered at low warp once to remain permanently
@@ -296,9 +369,6 @@ class NativeCoreTurnAdapter(TurnAdapter):
             if len(waypoints) >= 2:
                 wp = waypoints[1]
                 observed_warp = int(wp.warp or observed_warp)
-                arrived = (int(f.x) == int(wp.x) and int(f.y) == int(wp.y))
-                if wp.position_object_type == 17 and not arrived:
-                    destination = wp.position_object
             role = _fleet_role(f.ship_count, design_roles) if owner == player_id else 'unknown'
             at_starbase=False
             if owner==player_id:
@@ -324,11 +394,14 @@ class NativeCoreTurnAdapter(TurnAdapter):
                 position=Position(float(f.x), float(f.y)),
                 destination_planet_id=destination,
                 role=role,
-                # Fleet population cargo uses the same thousand-colonist unit.
-                cargo_population=int(f.population or 0) * 1000,
+                # Fleet cargo is native kT: one kT carries 100 colonists.
+                cargo_population=colonists_from_cargo_kt(f.population),
                 cargo_capacity=int(fuel_profile.get('cargo_capacity',0)),
                 combat_power=float(f.mass or 0),
                 speed=speed,
+                destination_warp=active_waypoint['destination_warp'],
+                destination_task=active_waypoint['destination_task'],
+                destination_mission=active_waypoint['destination_mission'],
                 native={
                     'kind': f.kind,
                     'position_object_id': f.position_object_id,
@@ -350,8 +423,12 @@ class NativeCoreTurnAdapter(TurnAdapter):
                         }
                         for w in waypoints
                     ],
-                    'population_raw_thousands': int(f.population or 0),
+                    'population_raw_kt': int(f.population or 0),
                     'observed_warp': observed_warp,
+                    'native_destination_planet_id':active_waypoint['destination_planet_id'],
+                    'native_destination_warp':active_waypoint['destination_warp'],
+                    'native_destination_task':active_waypoint['destination_task'],
+                    'native_destination_mission':active_waypoint['destination_mission'],
                     'mass': fuel_profile.get('mass',f.mass),
                     'fuel_profile': fuel_profile,
                     'cargo_capacity': int(fuel_profile.get('cargo_capacity',0)),
@@ -375,6 +452,11 @@ class NativeCoreTurnAdapter(TurnAdapter):
                 'battle_plans': [asdict(x) for x in native.battle_plans],
                 'objects': [asdict(x) for x in native.objects],
                 'production_by_planet': {str(k): [asdict(x) for x in v] for k, v in native.production_by_planet.items()},
+                'research_changes': [asdict(x) for x in native.research_changes],
+                'current_research_field': _current_research_field(native),
+                'next_research_field': _next_research_field(native),
+                'research_allocation_percent': _research_percent(native),
+                'planet_research_modes': _planet_research_modes(native),
                 'designs': [asdict(x) for x in native.designs_for_player(player_id)],
                 'design_profiles': design_profile_list,
                 'starbase_profiles': starbase_profile_list,

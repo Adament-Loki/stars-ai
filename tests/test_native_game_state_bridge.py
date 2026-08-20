@@ -1,12 +1,21 @@
+import os
 from pathlib import Path
+import pytest
 from stars_ai.adapters.native_core_adapter import NativeCoreTurnAdapter
 from stars_ai.agent import StarsAgent
 
-DATA = Path('/mnt/data')
+DATA = Path(os.environ.get('STARS_NATIVE_FIXTURE_ROOT','/mnt/data'))
+FIXTURE_BASENAME = os.environ.get('STARS_NATIVE_BRIDGE_BASENAME','AI(2)')
+pytestmark = pytest.mark.skipif(
+    not all((DATA/f'{FIXTURE_BASENAME}.{suffix}').exists() for suffix in ('m1','x1','xy')),
+    reason='external controlled Stars! native bridge fixture is unavailable',
+)
 
 
 def test_native_bridge_ai_fixture():
-    state = NativeCoreTurnAdapter(DATA/'AI(2).xy', DATA/'AI(2).x1').read_state(DATA/'AI(2).m1', 1)
+    state = NativeCoreTurnAdapter(
+        DATA/f'{FIXTURE_BASENAME}.xy',DATA/f'{FIXTURE_BASENAME}.x1'
+    ).read_state(DATA/f'{FIXTURE_BASENAME}.m1',1)
     assert state.player_id == 1
     assert state.tech.energy == 3
     assert state.race.primary_trait == 'Jack of All Trades'
@@ -23,7 +32,9 @@ def test_native_bridge_ai_fixture():
 
 
 def test_native_state_runs_agent():
-    state = NativeCoreTurnAdapter(DATA/'AI(2).xy', DATA/'AI(2).x1').read_state(DATA/'AI(2).m1', 1)
+    state = NativeCoreTurnAdapter(
+        DATA/f'{FIXTURE_BASENAME}.xy',DATA/f'{FIXTURE_BASENAME}.x1'
+    ).read_state(DATA/f'{FIXTURE_BASENAME}.m1',1)
     orders = StarsAgent(state).play_turn()
     kinds = [o.kind for o in orders.orders]
     assert 'set_research' in kinds

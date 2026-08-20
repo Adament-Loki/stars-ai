@@ -1,0 +1,28 @@
+{
+  "game_basename": "GAME",
+  "game_id": 637535921,
+  "starting_turn": 0,
+  "configured_players": [
+    1,
+    2
+  ],
+  "seed_directory": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\TwoAIOneComp",
+  "execution_directory": "C:\\Dev\\repos\\stars-ai\\.native-smoke-v74\\live",
+  "staged_files": [
+    "GAME.h1",
+    "GAME.h2",
+    "GAME.h3",
+    "GAME.hst",
+    "GAME.m1",
+    "GAME.m2",
+    "GAME.m3",
+    "GAME.x1",
+    "GAME.x2",
+    "GAME.x3",
+    "GAME.xy"
+  ],
+  "initial_x_sha256": {
+    "1": "b0ae08dbc364867a76da35fc7e3dece61556b176ae1bf1143e3bb0010f1be1c3",
+    "2": "313fa4c863181a6dab4aaedd935892810af61fc059609c2e443e638db81c532a"
+  }
+}

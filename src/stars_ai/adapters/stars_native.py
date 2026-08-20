@@ -249,7 +249,7 @@ def inspect_m_file(m_path:str|Path, xy_path:str|Path)->dict:
             if meta: p.update(name=meta.name,name_id=meta.name_id,x=meta.x,y=meta.y)
             planets.append(p)
         elif b.type_id in (16,17): fleets.append(parse_fleet_block(b))
-        elif b.type_id==20: waypoints.append(parse_waypoint(b))
+        elif b.type_id in (19,20): waypoints.append(parse_waypoint(b))
     # Waypoint blocks follow full fleet blocks in fleet order; attach sequentially by waypoint_count.
     wi=0
     for f in fleets:
@@ -267,12 +267,12 @@ def decode_x_orders(x_path:str|Path, xy_path:str|Path)->dict:
     for b in bs:
         d=b.data
         if b.type_id==4 and len(d)>=12:
-            fleet=_u16(d,0)+1; wp=_u16(d,2); x=_u16(d,4); y=_u16(d,6); target=_u16(d,8); warp=d[10]>>4; task=d[10]&15; obj=d[11]
+            fleet=(_u16(d,0)&0x1ff)+1; wp=_u16(d,2); x=_u16(d,4); y=_u16(d,6); target=_u16(d,8); warp=d[10]>>4; task=d[10]&15; obj=d[11]
             meta=coords.get(target)
             orders.append({'type':'WaypointAdd','fleet_display_id':fleet,'waypoint_index':wp,'x':x,'y':y,'target_planet_id':target,
                            'target_planet_display_id':target+1,'target_name':meta.name if meta else None,'warp':warp,'task':task,'object_type':obj})
         elif b.type_id==5 and len(d)>=12:
-            fleet=_u16(d,0)+1; wp=_u16(d,2); x=_u16(d,4); y=_u16(d,6); target=_u16(d,8); warp=d[10]>>4; task=d[10]&15; obj=d[11]
+            fleet=(_u16(d,0)&0x1ff)+1; wp=_u16(d,2); x=_u16(d,4); y=_u16(d,6); target=_u16(d,8); warp=d[10]>>4; task=d[10]&15; obj=d[11]
             meta=coords.get(target)
             orders.append({'type':'WaypointChangeTask','fleet_display_id':fleet,'waypoint_index':wp,'x':x,'y':y,'target_planet_id':target,
                            'target_planet_display_id':target+1,'target_name':meta.name if meta else None,'warp':warp,'task':task,'object_type':obj})
@@ -290,7 +290,12 @@ def decode_x_orders(x_path:str|Path, xy_path:str|Path)->dict:
                             6:'Mineral Packets (Auto Build)',7:'Factory',8:'Mine',9:'Defenses',11:'Mineral Alchemy',
                             14:'Ironium Mineral Packet',15:'Boranium Mineral Packet',16:'Germanium Mineral Packet',
                             17:'Mixed Mineral Packet',27:'Planetary Scanner'}
-                item_name=(f'DesignSlot#{item_id}' if item_type==4 else item_names.get(item_id,f'Item#{item_id}'))
+                if item_type==4 and 0<=item_id<16:
+                    item_name=f'DesignSlot#{item_id}'
+                elif item_type==4 and 16<=item_id<26:
+                    item_name=f'StarbaseDesignSlot#{item_id-16}'
+                else:
+                    item_name=item_names.get(item_id,f'Item#{item_id}')
                 items.append({'item_id':item_id,'item':item_name,'count':count,
                               'complete_percent':complete_percent,'item_type':item_type,'raw':q.hex()})
             meta=coords.get(planet)

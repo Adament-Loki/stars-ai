@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $env:PYTHONPATH = Join-Path $PSScriptRoot "src"
 
 if ($Noop) {
-Write-Host "Stars! autoplay: direct-seed mode. Game files remain in the configured seed_dir."
+Write-Host "Stars! autoplay: immutable seed validation and executable-directory staging enabled."
 Write-Host "Observer summaries will print after each generated turn."
 Write-Host ""
   python -m stars_ai.autoplay_cli --config $Config --noop

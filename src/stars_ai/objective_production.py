@@ -4,6 +4,12 @@ from dataclasses import dataclass
 import math
 
 from .fuel_planner import best_range_ly,has_ife,ENGINE_DATA
+from .population_units import (
+    COLONY_LOAD_COLONISTS,
+    COLONY_LOAD_KT,
+    colony_source_reserve_for_turn,
+)
+from .colony_planner import colony_planet_is_eligible, colonization_policy
 
 
 @dataclass
@@ -48,7 +54,7 @@ def _queued(state):
     out={}
     for qs in state.native.get('production_by_planet',{}).values():
         for q in qs:
-            if int(q.get('item_type',0))==4:
+            if int(q.get('item_type',0))==4 and 0<=int(q.get('item_id',0))<16:
                 slot=int(q.get('item_id',0))
                 out[slot]=out.get(slot,0)+int(q.get('count',0))
     return out
@@ -165,53 +171,79 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
 
 def _desired_colony_force(state,viable,plan)->tuple[int,str]:
     """
-    Keep a useful colony pipeline without manufacturing a parking lot of empty
-    colony hulls.
+    Size the colony pipeline from the next settlement milestone and travel lead.
 
     Demand is bounded by:
       - actual known viable claims;
-      - exportable 25k population packets;
-      - a small pipeline allowance;
-      - opening/midgame concurrency cap.
+      - exportable 25 kT / 2,500-colonist packets;
+      - settlement throughput required by the next deadline;
+      - an opening/midgame concurrency cap.
     """
     if not viable:
-        return 0,"no known viable unowned claims"
+        policy=colonization_policy(state,plan)
+        floor=(
+            "resource-driven universal habitability"
+            if policy.normal_habitability_floor is None
+            else f"race-adjusted habitability floor {policy.normal_habitability_floor}%"
+        )
+        return 0,f"no known {policy.stage} claims meeting {floor}"
 
     turn=max(0,int(state.year)-2400)
     owned=[p for p in state.planets if p.owner==state.player_id]
 
-    # Preserve 50k on each source before counting 25k export packets.
+    source_reserve=colony_source_reserve_for_turn(turn)
     export_packets=sum(
-        max(0,(int(p.population or 0)-50000)//25000)
+        max(0,(int(p.population or 0)-source_reserve)//COLONY_LOAD_COLONISTS)
         for p in owned
     )
     loaded=sum(
         1 for f in state.fleets
         if f.owner==state.player_id
         and f.role=='colony'
-        and int(f.cargo_population or 0)>=25000
+        and int(f.cargo_population or 0)>=COLONY_LOAD_COLONISTS
     )
 
     watchdog=(state.native or {}).get('strategic_watchdog') or {}
     pressure=float(watchdog.get('colonization_pressure',1.0))
 
-    if turn<=10:
-        concurrency_cap=3
+    milestone=watchdog.get('milestone') or {}
+    deadline=int(milestone.get('deadline_turn',turn+10) or turn+10)
+    new_colonies=int(watchdog.get('new_colonies',0) or 0)
+    optimal=int(milestone.get('new_colonies_optimal',new_colonies+4) or (new_colonies+4))
+    turns_left=max(1,deadline-turn)
+    settlement_gap=max(0,optimal-new_colonies)
+    required_rate=settlement_gap/turns_left
+    # Four turns represents a practical build/load/travel/colonize pipeline.
+    throughput_force=math.ceil(required_rate*4.0) if settlement_gap else 0
+
+    if turn<=5:
+        concurrency_cap=5
+    elif turn<=15:
+        concurrency_cap=7
     elif turn<=25:
-        concurrency_cap=4
+        concurrency_cap=10
     else:
-        concurrency_cap=6
+        concurrency_cap=10
     if pressure>=1.75:
+        concurrency_cap+=2
+    elif pressure>=1.45:
         concurrency_cap+=1
 
-    # One empty hull may wait in the pipeline; beyond that, require population
-    # that can actually launch colonies.
-    supported=max(1,loaded+min(export_packets,concurrency_cap)+1)
-    desired=min(len(viable),concurrency_cap,supported)
+    # Two empty hulls may wait at population hubs; beyond that, require a real
+    # 2,500-colonist packet. This keeps production ahead of discoveries without
+    # allowing an unlimited parking lot.
+    supported=max(2,loaded+min(export_packets,concurrency_cap)+2)
+    base_pipeline=3 if turn<=10 else 4
+    desired=max(base_pipeline,throughput_force)
+    desired=min(len(viable),concurrency_cap,supported,desired)
 
     reason=(
-        f"{len(viable)} viable unowned claims; {export_packets} exportable "
-        f"25k population packets; {loaded} colony ships already loaded; "
+        f"{len(viable)} phase-eligible unowned claims under "
+        f"{colonization_policy(state,plan).stage}; {export_packets} exportable "
+        f"{COLONY_LOAD_KT} kT / {COLONY_LOAD_COLONISTS:,}-colonist packets; "
+        f"source reserve={source_reserve:,}; milestone needs {settlement_gap} more "
+        f"colonies by T{deadline} (~{required_rate:.2f}/turn); "
+        f"{loaded} colony ships already loaded; "
         f"target concurrent colony force={desired}"
     )
     return int(desired),reason
@@ -232,23 +264,31 @@ def plan_objective_ship_builds(state,plan=None):
 
     viable=[
         p for p in state.planets
-        if p.observed
-        and p.owner is None
-        and p.habitability is not None
-        and p.habitability>=25
+        if colony_planet_is_eligible(state,p,plan)
     ]
 
     colony_assets=_role_count(ds,counts,'colony')
+    active_claims=[
+        int(f.destination_planet_id)
+        for f in state.fleets
+        if f.owner==state.player_id
+        and f.role=='colony'
+        and f.destination_planet_id is not None
+    ]
+    duplicate_commitments=max(0,len(active_claims)-len(set(active_claims)))
+    effective_colony_assets=max(0,colony_assets-duplicate_commitments)
     desired_colonies,colony_reason=_desired_colony_force(state,viable,plan)
-    gap=max(0,desired_colonies-colony_assets)
+    gap=max(0,desired_colonies-effective_colony_assets)
     if gap and (d:=_pick(state,'colony')):
         req.append(BuildRequest(
             'colony',
             int(d['design_number']),
             d['name'],
-            min(2,gap),
+            min(4,gap),
             130,
-            f"{colony_reason}; available/queued={colony_assets}.",
+            f"{colony_reason}; available/queued={colony_assets}; "
+            f"effective distinct-claim pipeline={effective_colony_assets}; "
+            f"duplicate active commitments={duplicate_commitments}.",
         ))
 
     unknown=sum(1 for p in state.planets if not p.observed)

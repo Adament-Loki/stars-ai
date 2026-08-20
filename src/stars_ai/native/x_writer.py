@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from pathlib import Path
+import copy
 import secrets
 from typing import Any
 import json
@@ -32,6 +33,13 @@ class NativeWriteResult:
     emitted: list[dict]
     skipped: list[dict]
     output_x: str
+    waypoint_diagnostics: list[dict]
+
+
+class UnsafeWaypointMutationError(RuntimeError):
+    def __init__(self, diagnostic:dict):
+        self.diagnostic=dict(diagnostic)
+        super().__init__(str(self.diagnostic.get("reason","unsafe native waypoint mutation blocked")))
 
 def _u16(v:int)->bytes:
     return int(v).to_bytes(2,"little",signed=False)
@@ -103,59 +111,93 @@ def _updated_x_header(template_header: bytes, m_header: bytes, player_id:int, *,
     return bytes(out)
 
 
-def _encode_queue_item(item_name:str, quantity:int, design_slot:int|None=None)->bytes:
+def _encode_queue_item(
+    item_name:str,
+    quantity:int,
+    design_slot:int|None=None,
+    complete_percent:int=0,
+)->bytes:
     qty=max(0,min(1023,int(quantity)))
+    complete=max(0,min(0xfff,int(complete_percent)))
     if item_name=='ship_design':
         if design_slot is None or not (0<=int(design_slot)<=15): raise ValueError(f'Invalid ship design slot: {design_slot}')
-        return _u16((int(design_slot)<<10)|qty)+_u16(4)
-    ids={'factory':7,'mine':8,'defense':9}
+        return _u16((int(design_slot)<<10)|qty)+_u16((complete<<4)|4)
+    if item_name=='starbase_design':
+        if design_slot is None or not (0<=int(design_slot)<=9): raise ValueError(f'Invalid starbase design slot: {design_slot}')
+        # Native custom production IDs share one six-bit namespace: ship slots
+        # are 0..15 and starbase slots are 16..25.
+        return _u16(((16+int(design_slot))<<10)|qty)+_u16((complete<<4)|4)
+    ids={'max_terraform':5,'factory':7,'mine':8,'defense':9}
     if item_name not in ids: raise ValueError(f'Unsupported validated production item: {item_name}')
-    return _u16((ids[item_name]<<10)|qty)+_u16(2)
+    return _u16((ids[item_name]<<10)|qty)+_u16((complete<<4)|2)
 
 
 def _production_block(planet_id:int, queue:list[dict])->NativeBlock:
     data=bytearray(_u16(planet_id & 0x7ff))
     for q in queue:
-        data += _encode_queue_item(str(q['item']),int(q['quantity']),int(q['design_slot']) if q.get('design_slot') is not None else None)
+        data += _encode_queue_item(
+            str(q['item']),
+            int(q['quantity']),
+            int(q['design_slot']) if q.get('design_slot') is not None else None,
+            int(q.get('complete_percent',0) or 0),
+        )
     return NativeBlock(29,len(data),bytes(data))
 
 
 RESEARCH_FIELD_CODES = {
-    "energy": 0x60,
-    "weapons": 0x61,
-    "propulsion": 0x62,
-    "construction": 0x63,
-    "electronics": 0x64,
-    "biotechnology": 0x65,
+    "energy": 0,
+    "weapons": 1,
+    "propulsion": 2,
+    "construction": 3,
+    "electronics": 4,
+    "biotechnology": 5,
 }
 
-def _research_change_block(field: str, allocation_percent: int = 100) -> NativeBlock:
+def _research_change_block(
+    current_field: str,
+    allocation_percent: int = 15,
+    next_field: str | None = None,
+) -> NativeBlock:
     """
     Empirical Stars! ResearchChange encoding.
 
-    Controlled samples:
-      Electronics    -> 0F 64
-      Biotechnology -> 0F 65
+    Byte 0 is the actual global research percentage. Autonomous policy uses
+    only empirically observed 15% (0F) and 25% (19).
 
-    The second byte maps cleanly to field codes 0x60..0x65.
-    The first byte 0x0F is empirically observed for a normal 100% field switch,
-    but its complete bit semantics are not yet decoded.
+    Byte 1 packs next field in the high nibble and current field in the low:
+      15% Energy -> Construction = 0F 30
+      25% Construction -> Electronics = 19 43
     """
-    key=str(field).lower()
+    key=str(current_field).lower()
     if key not in RESEARCH_FIELD_CODES:
         raise ValueError(
-            f"Unknown Stars! research field {field!r}. "
+            f"Unknown Stars! research field {current_field!r}. "
             "Supported fields: energy, weapons, propulsion, construction, electronics, biotechnology."
         )
-    if int(allocation_percent) != 100:
+    next_key=str(next_field if next_field is not None else current_field).lower()
+    if next_key not in RESEARCH_FIELD_CODES:
+        raise ValueError(f"Unknown Stars! next research field {next_field!r}.")
+    if int(allocation_percent) not in (15,25):
         raise ValueError(
-            "Integrated writer currently supports only the empirically validated "
-            "100% research allocation form."
+            "Autonomous research allocation must be one of the empirically validated 15% or 25% forms."
         )
-    data=bytes([0x0F, RESEARCH_FIELD_CODES[key]])
+    packed=(RESEARCH_FIELD_CODES[next_key] << 4) | RESEARCH_FIELD_CODES[key]
+    data=bytes([int(allocation_percent),packed])
     return NativeBlock(34,len(data),data)
 
-def _waypoint_add_block(state:Any, payload:dict, object_type:int=0x11)->NativeBlock:
+
+def _planet_leftover_research_block(planet_id:int)->NativeBlock:
+    """Empirical PlanetChange: leftover-only ON. OFF is not synthesized."""
+    data=_u16(int(planet_id) & 0x7FF)+_u16(1)+_u16(0)
+    return NativeBlock(35,len(data),data)
+
+def _waypoint_add_block(
+    state:Any,
+    payload:dict,
+    object_type:int=0x11,
+    *,
+    waypoint_index:int=1,
+)->NativeBlock:
     fleet_id=int(payload["fleet_id"])
     target_id=int(payload["destination_planet_id"])
     target=next((p for p in state.planets if p.id==target_id),None)
@@ -165,7 +207,9 @@ def _waypoint_add_block(state:Any, payload:dict, object_type:int=0x11)->NativeBl
     mission=str(payload.get("mission","")).lower()
     task=0
     object_type=int(object_type) & 0xff  # low nibble 1 = planet; preserve observed upper bits when known
-    waypoint_index=1
+    waypoint_index=int(waypoint_index)
+    if waypoint_index<1 or waypoint_index>0xffff:
+        raise ValueError(f"Invalid native waypoint index {waypoint_index}")
     # Real Stars! four-player samples preserve owner/player bits in the raw
     # fleet number: P1=0x0000, P2=0x0200, P3=0x0400, P4=0x0600 for fleet 0.
     player_id=int(getattr(state,"player_id",1))
@@ -185,7 +229,8 @@ def _raw_fleet_number(state:Any, fleet_id:int) -> int:
     player_id=int(getattr(state,"player_id",1))
     return ((player_id-1) << 9) | (int(fleet_id) & 0x1ff)
 
-def _manual_load_population_25k_block(state:Any, fleet_id:int)->NativeBlock:
+def _manual_load_population_25kt_block(state:Any, fleet_id:int)->NativeBlock:
+    """Load 25 kT of population cargo: 2,500 colonists."""
     return NativeBlock(1,7,_u16(_raw_fleet_number(state,fleet_id))+bytes.fromhex("25 00 12 08 19"))
 
 def _manual_load_minerals_block(state:Any, fleet_id:int, load:dict)->NativeBlock:
@@ -238,11 +283,12 @@ def _manual_load_minerals_10_20_30_block(state:Any, fleet_id:int)->NativeBlock:
     )
 
 def _waypoint_change_task_block(state:Any, *, fleet_id:int, destination_planet_id:int,
-                                warp:int, task:int, additional:bytes=b"", object_type:int=0x51)->NativeBlock:
+                                warp:int, task:int, additional:bytes=b"", object_type:int=0x51,
+                                waypoint_index:int=1)->NativeBlock:
     target=next((p for p in state.planets if p.id==int(destination_planet_id)),None)
     if target is None: raise ValueError(f"Unknown destination planet {destination_planet_id}")
     data=(
-        _u16(_raw_fleet_number(state,fleet_id))+_u16(1)
+        _u16(_raw_fleet_number(state,fleet_id))+_u16(int(waypoint_index))
         +_u16(int(target.position.x))+_u16(int(target.position.y))
         +_u16(int(destination_planet_id)&0x7ff)
         +bytes([((max(0,min(15,int(warp)))<<4)|(int(task)&0x0f)),object_type])
@@ -278,8 +324,118 @@ def _existing_waypoint_object_type(state:Any, fleet_id:int, fallback:int=0x11)->
     return fallback
 
 
-def _native_waypoint_action(state:Any, fleet_id:int)->str:
-    return "CHANGE" if _has_destination_waypoint_slot(state,fleet_id) else "ADD"
+def _native_waypoint_details(state:Any, fleet_id:int)->dict:
+    fleet=_fleet_state(state,fleet_id)
+    out={
+        "normalized_destination":None,
+        "native_waypoint_destination":None,
+        "native_waypoint_warp":None,
+        "native_waypoint_task":None,
+        "native_waypoint_object_type":None,
+        "has_waypoint_slot":False,
+    }
+    if fleet is None:
+        return out
+    out["normalized_destination"]=getattr(fleet,"destination_planet_id",None)
+    native=fleet.native or {}
+    wps=native.get("waypoints") or []
+    out["has_waypoint_slot"]=(
+        int(native.get("waypoint_count") or 0)>=2 or len(wps)>=2
+    )
+    out["native_waypoint_destination"]=native.get("native_destination_planet_id")
+    out["native_waypoint_warp"]=native.get("native_destination_warp")
+    out["native_waypoint_task"]=native.get("native_destination_task")
+    if len(wps)>=2:
+        wp=wps[1]
+        object_type=int(wp.get("position_object_type",0)) & 0xff
+        out["native_waypoint_object_type"]=object_type
+        out["native_waypoint_warp"]=int(wp.get("warp",0))
+        out["native_waypoint_task"]=int(wp.get("task",0))
+        if (object_type & 0x0f)==1 and wp.get("position_object") is not None:
+            out["native_waypoint_destination"]=int(wp["position_object"]) & 0x7ff
+    if out["native_waypoint_destination"] is None:
+        out["native_waypoint_destination"]=out["normalized_destination"]
+    return out
+
+
+def _requested_waypoint_task(payload:dict, *, operation_kind:str|None=None)->int:
+    mission=str(payload.get("mission","")).lower()
+    kind=str(operation_kind or "").lower()
+    if kind=="colony_operation" or mission in {"colonize","colonization"}:
+        return 2
+    if kind in {"transport_minerals","transport_unload_remainder"} or mission=="transport":
+        return 1
+    if mission in {"remote_mine","remote mining","mine"}:
+        return 3
+    # Scan/recon, refuel, defend, attack, and other validated movement use the
+    # task-0 movement form. Native task 0 does not distinguish those semantics.
+    return 0
+
+
+def _native_waypoint_decision(
+    state:Any,
+    payload:dict,
+    *,
+    operation_kind:str|None=None,
+)->dict:
+    fid=int(payload["fleet_id"])
+    desired=int(payload["destination_planet_id"])
+    requested_task=_requested_waypoint_task(payload,operation_kind=operation_kind)
+    details=_native_waypoint_details(state,fid)
+    existing=details["native_waypoint_destination"]
+    diagnostic={
+        "fleet_id":fid,
+        **details,
+        "requested_destination":desired,
+        "requested_warp":int(payload.get("warp",7)),
+        "requested_mission":str(payload.get("mission") or operation_kind or "move"),
+        "requested_task":requested_task,
+    }
+    if not details["has_waypoint_slot"]:
+        diagnostic.update(result="ADD",reason="No native destination waypoint #1 exists.")
+        return diagnostic
+    if existing is None:
+        diagnostic.update(
+            result="BLOCKED RETARGET",
+            reason=(
+                "Native waypoint #1 is active but is not a safely decoded planet destination; "
+                "preserving it instead of inserting or replacing native bytes."
+            ),
+        )
+        return diagnostic
+    if int(existing)!=desired:
+        diagnostic.update(
+            result="BLOCKED RETARGET",
+            reason=(
+                f"Native destination P{existing} differs from requested P{desired}; "
+                "the synthetic WaypointChangeTask retarget path is disabled."
+            ),
+        )
+        return diagnostic
+    native_task=details["native_waypoint_task"]
+    if native_task is not None and int(native_task)==requested_task:
+        diagnostic.update(
+            result="CONTINUE",
+            reason=(
+                f"Native waypoint already has destination P{desired} and compatible task {requested_task}; "
+                "preserving the active waypoint without a replacement order."
+            ),
+        )
+        return diagnostic
+    diagnostic.update(
+        result="BLOCKED MISSION CHANGE",
+        reason=(
+            f"Native waypoint already targets P{desired} with task {native_task}, but task "
+            f"{requested_task} was requested; preserving the active waypoint until this mutation is validated."
+        ),
+    )
+    return diagnostic
+
+
+def _native_waypoint_action(state:Any, fleet_id:int, payload:dict|None=None, *, operation_kind:str|None=None)->str:
+    if payload is None:
+        return "ACTIVE" if _has_destination_waypoint_slot(state,fleet_id) else "ADD"
+    return str(_native_waypoint_decision(state,payload,operation_kind=operation_kind)["result"])
 
 
 def _movement_to_planet_block(
@@ -287,34 +443,96 @@ def _movement_to_planet_block(
     payload:dict,
     *,
     initial_object_type:int=0x11,
-)->NativeBlock:
+)->NativeBlock|None:
     """
-    Multi-turn waypoint lifecycle.
+    Safe multi-turn waypoint lifecycle.
 
-    StarsAPI applies WaypointAdd as vector.add(index, waypoint), while a normal
-    WaypointChangeTask replaces vector[index]. Once waypoint #1 already exists,
-    another Type-4 Add is not a retarget operation. Replace waypoint #1 with a
-    task-0 Type-5 block instead.
+    Type-4 Add is emitted only when waypoint #1 is absent. An identical native
+    mission is preserved with no block, and a retarget is fail-closed. The old
+    synthetic Type-5 replacement path is intentionally disabled.
     """
     fid=int(payload["fleet_id"])
-    if _has_destination_waypoint_slot(state,fid):
-        object_type=_existing_waypoint_object_type(state,fid,initial_object_type)
-        return _waypoint_change_task_block(
-            state,
-            fleet_id=fid,
-            destination_planet_id=int(payload["destination_planet_id"]),
-            warp=int(payload.get("warp",7)),
-            task=0,
-            object_type=object_type,
-        )
+    diagnostic=_native_waypoint_decision(state,payload,operation_kind="move_fleet")
+    if diagnostic["result"]=="CONTINUE":
+        return None
+    if diagnostic["result"]!="ADD":
+        raise UnsafeWaypointMutationError(diagnostic)
     return _waypoint_add_block(state,payload,object_type=initial_object_type)
+
+
+def _movement_route_blocks(
+    state:Any,
+    payload:dict,
+    *,
+    initial_object_type:int=0x11,
+) -> list[NativeBlock]:
+    """Encode a validated semantic route as sequential WaypointAdd records."""
+    diagnostic=_native_waypoint_decision(state,payload,operation_kind="move_fleet")
+    if diagnostic["result"]=="CONTINUE":
+        return []
+    if diagnostic["result"]!="ADD":
+        raise UnsafeWaypointMutationError(diagnostic)
+
+    raw_specs=(payload.get("route_waypoints") or []) if payload.get("route_managed") else []
+    specs=[]
+    for raw in raw_specs:
+        if not isinstance(raw,dict):
+            raise ValueError("Route waypoint must be an object")
+        if raw.get("planet_id") is None or raw.get("warp") is None:
+            raise ValueError("Route waypoint requires planet_id and warp")
+        task=int(raw.get("task",0))
+        if task!=0:
+            raise ValueError("Scout route waypoints support only validated task 0")
+        specs.append({
+            "planet_id":int(raw["planet_id"]),
+            "warp":int(raw["warp"]),
+            "task":task,
+        })
+    if not specs:
+        specs=[{
+            "planet_id":int(payload["destination_planet_id"]),
+            "warp":int(payload.get("warp",7)),
+            "task":0,
+        }]
+
+    desired=int(payload["destination_planet_id"])
+    if int(specs[0]["planet_id"])!=desired:
+        raise ValueError(
+            f"Route head P{specs[0]['planet_id']} does not match requested destination P{desired}"
+        )
+    if len(specs)>32:
+        raise ValueError(f"Refusing oversized native waypoint route with {len(specs)} entries")
+
+    seen=set(); blocks=[]
+    for index,spec in enumerate(specs,start=1):
+        pid=int(spec["planet_id"])
+        if pid in seen:
+            raise ValueError(f"Duplicate planet P{pid} in native waypoint route")
+        seen.add(pid)
+        blocks.append(_waypoint_add_block(
+            state,
+            {
+                **payload,
+                "destination_planet_id":pid,
+                "warp":int(spec["warp"]),
+            },
+            object_type=initial_object_type,
+            waypoint_index=index,
+        ))
+    return blocks
 
 def _colonize_blocks(state:Any,payload:dict)->list[NativeBlock]:
     fid=int(payload["fleet_id"]); pid=int(payload["destination_planet_id"]); warp=int(payload.get("warp",7))
+    payload={**payload,"mission":"colonize"}
+    diagnostic=_native_waypoint_decision(state,payload,operation_kind="colony_operation")
+    if diagnostic["result"]=="CONTINUE":
+        return []
+    if diagnostic["result"]!="ADD":
+        raise UnsafeWaypointMutationError(diagnostic)
     out=[]
-    if payload.get("load_25k_population"):
-        out.append(_manual_load_population_25k_block(state,fid))
-    route_type=_existing_waypoint_object_type(state,fid,0x51) if _has_destination_waypoint_slot(state,fid) else 0x51
+    if payload.get("load_25kt_population"):
+        out.append(_manual_load_population_25kt_block(state,fid))
+    route_type=0x51
     out.append(_movement_to_planet_block(
         state,{"fleet_id":fid,"destination_planet_id":pid,"warp":warp,"mission":"colonize"},
         initial_object_type=0x51,
@@ -341,11 +559,13 @@ def _transport_mineral_blocks(state:Any,payload:dict)->list[NativeBlock]:
     fid=int(payload["fleet_id"])
     pid=int(payload["destination_planet_id"])
     warp=int(payload.get("warp",6))
-    route_type=(
-        _existing_waypoint_object_type(state,fid,0x51)
-        if _has_destination_waypoint_slot(state,fid)
-        else 0x51
-    )
+    payload={**payload,"mission":"transport"}
+    diagnostic=_native_waypoint_decision(state,payload,operation_kind="transport_minerals")
+    if diagnostic["result"]=="CONTINUE":
+        return []
+    if diagnostic["result"]!="ADD":
+        raise UnsafeWaypointMutationError(diagnostic)
+    route_type=0x51
     return [
         _manual_load_minerals_block(state,fid,payload.get("load") or {"ironium":10,"boranium":20,"germanium":30}),
         _movement_to_planet_block(
@@ -369,24 +589,16 @@ def _transport_mineral_blocks(state:Any,payload:dict)->list[NativeBlock]:
 
 def _transport_unload_remainder_blocks(state:Any,payload:dict)->list[NativeBlock]:
     """
-    Recovery only: if cargo is unexpectedly still aboard at an owned planet,
-    reissue the complete validated Transport policy locally.
+    Recovery guard: preserve an identical active Transport task and refuse any
+    synthetic replacement. A separately validated native recovery transaction
+    is required before this path may emit bytes again.
     """
-    fid=int(payload["fleet_id"])
-    pid=int(payload["destination_planet_id"])
-    warp=max(1,min(9,int(payload.get("warp",1) or 1)))
-    route_type=_existing_waypoint_object_type(state,fid,0x51)
-    return [
-        _waypoint_change_task_block(
-            state,
-            fleet_id=fid,
-            destination_planet_id=pid,
-            warp=warp,
-            task=1,
-            additional=TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL,
-            object_type=route_type,
-        )
-    ]
+    diagnostic=_native_waypoint_decision(
+        state,{**payload,"mission":"transport"},operation_kind="transport_unload_remainder"
+    )
+    if diagnostic["result"]=="CONTINUE":
+        return []
+    raise UnsafeWaypointMutationError(diagnostic)
 
 
 RELATION_CODES = {
@@ -472,7 +684,14 @@ def _object_name_for_fleet(state, fleet_id:int) -> str:
     f=next((f for f in state.fleets if f.id==fleet_id and f.owner==state.player_id),None)
     return f.name if f is not None else f"Fleet {fleet_id}"
 
-def _build_decision_report(state, orders, agent, emitted:list[dict], skipped:list[dict]) -> str:
+def _build_decision_report(
+    state,
+    orders,
+    agent,
+    emitted:list[dict],
+    skipped:list[dict],
+    waypoint_diagnostics:list[dict]|None=None,
+) -> str:
     """
     Human-readable decision rationale. This is an inspectable summary of the
     selected actions and justifications, not private chain-of-thought.
@@ -482,8 +701,25 @@ def _build_decision_report(state, orders, agent, emitted:list[dict], skipped:lis
         "",
         "Format: Object Name - Action - Reason/Justification",
         "",
-        "FLEETS",
+        "COMMAND OUTCOME STATUS",
     ]
+
+    command_outcomes=list(state.native.get("command_outcomes",[]) or [])
+    if command_outcomes:
+        for outcome in command_outcomes:
+            lines.append(str(outcome.get("message","UNVERIFIED - Missing outcome message.")))
+        warning_count=sum(1 for x in command_outcomes if x.get("status")=="WARNING")
+        completed_count=sum(1 for x in command_outcomes if x.get("status")=="COMPLETED")
+        pending_count=sum(1 for x in command_outcomes if x.get("status")=="PENDING")
+        unverified_count=sum(1 for x in command_outcomes if x.get("status")=="UNVERIFIED")
+        lines.append(
+            f"SUMMARY - completed={completed_count}; pending={pending_count}; "
+            f"warnings={warning_count}; unverified={unverified_count}."
+        )
+    else:
+        lines.append("NO PRIOR EMITTED COMMANDS DUE - Nothing to verify against this M file.")
+        lines.append("SUMMARY - completed=0; pending=0; warnings=0; unverified=0.")
+    lines += ["", "FLEETS"]
 
     by_fid={}
     for intent in getattr(agent,"fleet_intents",[]):
@@ -601,8 +837,8 @@ def _build_decision_report(state, orders, agent, emitted:list[dict], skipped:lis
         if queue:
             q=", ".join(
                 (
-                    f"{x.get('quantity',1)}x {x.get('design_name','Ship design')}"
-                    if x.get('item')=='ship_design'
+                    f"{x.get('quantity',1)}x {x.get('design_name','Design')}"
+                    if x.get('item') in ('ship_design','starbase_design')
                     else f"{x.get('quantity',1)}x {x.get('item','?')}"
                 )
                 for x in queue
@@ -615,10 +851,13 @@ def _build_decision_report(state, orders, agent, emitted:list[dict], skipped:lis
     research=[o for o in orders.orders if o.kind=="set_research"]
     if research:
         for o in research:
-            field=o.payload.get("field","unknown")
-            pct=o.payload.get("allocation_percent",100)
+            field=o.payload.get("current_field",o.payload.get("field","unknown"))
+            next_field=o.payload.get("next_field",field)
+            pct=o.payload.get("allocation_percent",15)
             lines.append(
-                f"Empire Research - {field.upper()} {pct}% - {o.reason}"
+                f"Empire Research - {o.payload.get('capability_name','named capability')} - "
+                f"{o.payload.get('posture','TARGETED')} - {field.upper()} -> {str(next_field).upper()} "
+                f"at {pct}% - contributors={o.payload.get('contributor_planet_ids',[])} - {o.reason}"
             )
     else:
         lines.append(
@@ -650,6 +889,38 @@ def _build_decision_report(state, orders, agent, emitted:list[dict], skipped:lis
         else:
             lines.append(f"Player {target} - FRIEND PENDING - Treated as Friend for decision safety; native Friend order is required this turn.")
 
+    lines += ["", "NATIVE WAYPOINT LIFECYCLE"]
+    for diagnostic in waypoint_diagnostics or []:
+        lines.append(
+            f"Fleet {diagnostic.get('fleet_id')} - {diagnostic.get('result')} - "
+            f"normalized destination={diagnostic.get('normalized_destination')}; "
+            f"native destination={diagnostic.get('native_waypoint_destination')}; "
+            f"native warp/task={diagnostic.get('native_waypoint_warp')}/"
+            f"{diagnostic.get('native_waypoint_task')}; requested "
+            f"{diagnostic.get('requested_mission')} -> P{diagnostic.get('requested_destination')} "
+            f"@ W{diagnostic.get('requested_warp')}. {diagnostic.get('reason')}"
+        )
+    if not waypoint_diagnostics:
+        lines.append("No native movement transaction requested.")
+
+    lines += ["", "MOVEMENT PROGRESS"]
+    progress=state.native.get("movement_progress_diagnostics",[])
+    compared=False
+    for diagnostic in progress:
+        if diagnostic.get("actual_progress") is None:
+            continue
+        compared=True
+        lines.append(
+            f"Fleet {diagnostic.get('fleet_id')} -> P{diagnostic.get('destination_planet_id')} - "
+            f"range {diagnostic.get('prior_range')} -> {diagnostic.get('current_range')}; "
+            f"commanded W{diagnostic.get('commanded_warp')}; expected movement "
+            f"~{diagnostic.get('expected_movement')} ly; actual progress "
+            f"{diagnostic.get('actual_progress')} ly. "
+            f"{diagnostic.get('flag') or ''}".rstrip()
+        )
+    if not compared:
+        lines.append("No same-destination prior-turn range is available yet.")
+
     lines += ["", "NATIVE EXECUTION DETAILS"]
     for e in emitted:
         payload=e.get("payload",{})
@@ -661,12 +932,30 @@ def _build_decision_report(state, orders, agent, emitted:list[dict], skipped:lis
             target_name=_object_name_for_planet(state,int(target)) if target is not None else "none"
             warp=payload.get("warp","?")
             if kind=="colony_operation":
-                load="YES - 25k" if payload.get("load_25k_population") else "NO"
+                loads_population=payload.get("load_25kt_population")
+                expected_transfer=payload.get("population_loaded")
+                load=(
+                    "YES - native 25 kT instruction; expected transfer="
+                    +(
+                        f"{int(expected_transfer):,} colonists"
+                        if expected_transfer is not None else "unknown"
+                    )
+                    if loads_population else "NO"
+                )
                 lines.append(
                     f"{name} - NATIVE COLONY ORDER -> {target_name} warp {warp} - "
+                    f"race-adjusted hab current={payload.get('target_current_habitability',payload.get('target_habitability','?'))}%; "
+                    f"current-tech terraform={payload.get('target_current_tech_terraform_habitability',payload.get('target_habitability','?'))}%; "
+                    f"eventual terraform={payload.get('target_eventual_terraform_habitability',payload.get('target_habitability','?'))}%; "
+                    f"planning value={payload.get('target_habitability','?')}%; "
+                    f"policy={payload.get('colonization_stage','?')} "
+                    f"floor={payload.get('habitability_floor','?')}% "
+                    f"basis={payload.get('selection_basis','?')}; "
+                    f"home distance={payload.get('target_distance_from_homeworld','?')} ly; "
                     f"route={payload.get('native_waypoint_action','?')} waypoint #1; "
                     f"load block emitted: {load}; population aboard before={payload.get('cargo_population_before','?')}; "
-                    f"source population={payload.get('source_population','?')}."
+                    f"source population={payload.get('source_population','?')}; "
+                    f"source after load={payload.get('source_population_after_load','?')}."
                 )
             elif kind=="transport_minerals":
                 lines.append(
@@ -743,6 +1032,7 @@ def write_ai_turn(
     trace_path:Path|None=None,
     friend_player_ids:list[int]|None=None,
     memory_path:Path|None=None,
+    memory_output_path:Path|None=None,
 ) -> NativeWriteResult:
     if not template_x_path.exists():
         raise FileNotFoundError(
@@ -774,6 +1064,8 @@ def write_ai_turn(
         state.race.native["player_relations"]=effective_relations
 
     memory=AgentMemory.load(memory_path)
+    prior_scout_routes=copy.deepcopy(memory.scout_routes)
+    prior_scan_history=copy.deepcopy(memory.scan_target_history)
     agent=StarsAgent(state,memory=memory,persona=_persona(persona_name))
     orders=agent.play_turn()
 
@@ -810,6 +1102,7 @@ def write_ai_turn(
     touched_fleets=set()
     touched_planets=set()
     touched_relations=set()
+    waypoint_diagnostics=[]
 
     for o in orders.orders:
         cap=capability(o.kind)
@@ -819,7 +1112,20 @@ def write_ai_turn(
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
-                native_action=_native_waypoint_action(state,fid)
+                movement_payload={**o.payload,"mission":"colonize"}
+                diagnostic=_native_waypoint_decision(
+                    state,movement_payload,operation_kind=o.kind
+                )
+                waypoint_diagnostics.append(diagnostic)
+                native_action=diagnostic["result"]
+                if native_action!="ADD":
+                    touched_fleets.add(fid)
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":diagnostic["reason"],
+                        "payload":{**o.payload,"native_waypoint_action":native_action},
+                    })
+                    continue
                 generated.extend(_colonize_blocks(state,o.payload))
                 touched_fleets.add(fid)
                 ep=dict(o.payload); ep["native_waypoint_action"]=native_action
@@ -829,15 +1135,43 @@ def write_ai_turn(
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
-                generated.extend(_transport_unload_remainder_blocks(state,o.payload))
+                diagnostic=_native_waypoint_decision(
+                    state,{**o.payload,"mission":"transport"},operation_kind=o.kind
+                )
+                if diagnostic["result"]=="ADD":
+                    diagnostic.update(
+                        result="BLOCKED MISSION CHANGE",
+                        reason=(
+                            "Transport-remainder recovery requires an existing validated destination task; "
+                            "no waypoint #1 exists, so no native bytes were emitted."
+                        ),
+                    )
+                waypoint_diagnostics.append(diagnostic)
                 touched_fleets.add(fid)
-                emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
+                skipped.append({
+                    "kind":o.kind,
+                    "reason":diagnostic["reason"],
+                    "payload":{**o.payload,"native_waypoint_action":diagnostic["result"]},
+                })
             elif o.kind=="transport_minerals":
                 fid=int(o.payload["fleet_id"])
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
-                native_action=_native_waypoint_action(state,fid)
+                movement_payload={**o.payload,"mission":"transport"}
+                diagnostic=_native_waypoint_decision(
+                    state,movement_payload,operation_kind=o.kind
+                )
+                waypoint_diagnostics.append(diagnostic)
+                native_action=diagnostic["result"]
+                if native_action!="ADD":
+                    touched_fleets.add(fid)
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":diagnostic["reason"],
+                        "payload":{**o.payload,"native_waypoint_action":native_action},
+                    })
+                    continue
                 generated.extend(_transport_mineral_blocks(state,o.payload))
                 touched_fleets.add(fid)
                 ep=dict(o.payload); ep["native_waypoint_action"]=native_action
@@ -850,10 +1184,28 @@ def write_ai_turn(
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Only highest-priority movement per fleet emitted.","payload":o.payload})
                     continue
-                native_action=_native_waypoint_action(state,fid)
-                generated.append(_movement_to_planet_block(state,o.payload,initial_object_type=0x11))
+                diagnostic=_native_waypoint_decision(
+                    state,o.payload,operation_kind=o.kind
+                )
+                waypoint_diagnostics.append(diagnostic)
+                native_action=diagnostic["result"]
                 touched_fleets.add(fid)
-                ep=dict(o.payload); ep["native_waypoint_action"]=native_action
+                if native_action!="ADD":
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":diagnostic["reason"],
+                        "payload":{**o.payload,"native_waypoint_action":native_action},
+                    })
+                    continue
+                movement_blocks=_movement_route_blocks(
+                    state,o.payload,initial_object_type=0x11
+                )
+                if not movement_blocks:
+                    raise RuntimeError("ADD waypoint decision unexpectedly produced no native blocks")
+                generated.extend(movement_blocks)
+                ep=dict(o.payload)
+                ep["native_waypoint_action"]=native_action
+                ep["native_waypoints_added"]=len(movement_blocks)
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="set_planet_queue":
                 pid=int(o.payload["planet_id"])
@@ -861,7 +1213,7 @@ def write_ai_turn(
                     continue
                 supported=[
                     q for q in o.payload.get('queue',[])
-                    if q.get('item') in ('factory','mine','defense','ship_design')
+                    if q.get('item') in ('max_terraform','factory','mine','defense','ship_design','starbase_design')
                 ]
                 clear_queue=bool(o.payload.get("clear_queue",False))
                 if not supported and not clear_queue:
@@ -884,11 +1236,13 @@ def write_ai_turn(
                     "reason":o.reason,
                 })
             elif o.kind=="set_research":
-                requested=str(o.payload["field"]).lower()
+                requested=str(o.payload.get("current_field") or o.payload.get("field")).lower()
+                next_field=str(o.payload.get("next_field",requested)).lower()
                 generated.append(
                     _research_change_block(
                         requested,
-                        int(o.payload.get("allocation_percent",100)),
+                        int(o.payload.get("allocation_percent",15)),
+                        next_field,
                     )
                 )
                 emitted.append({
@@ -896,6 +1250,13 @@ def write_ai_turn(
                     "payload":dict(o.payload),
                     "reason":o.reason,
                 })
+            elif o.kind=="set_planet_research_mode":
+                pid=int(o.payload["planet_id"])
+                if not bool(o.payload.get("leftover_only",False)):
+                    skipped.append({"kind":o.kind,"reason":"Only empirically validated leftover-only ON is supported.","payload":o.payload})
+                    continue
+                generated.append(_planet_leftover_research_block(pid))
+                emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
             elif o.kind=="set_player_relation":
                 target=int(o.payload["player_id"])
                 relation=str(o.payload.get("relation","")).lower()
@@ -974,14 +1335,27 @@ def write_ai_turn(
             f"Generated X FileHash order length {stored_order_len} != actual {actual_order_len}"
         )
 
-    # v7.0 persistent state is committed only after the generated X passes the
-    # writer's internal registration/FileHash validation. Memory contains only
-    # current observations and finalized intent history, so a host retry at the
-    # same M turn remains safe.
-    agent.memory.save(memory_path)
+    # Strategy mutates route memory for same-turn deconfliction. Restore the
+    # committed baseline, reconcile native M waypoints, then apply only scan
+    # routes whose native blocks survived writer validation.
+    agent.memory.scout_routes=prior_scout_routes
+    agent.memory.scan_target_history=prior_scan_history
+    agent.memory.prune_scout_routes(state)
+    agent.memory.sync_scout_routes_from_native(state)
+    agent.memory.record_emitted_scan_orders(emitted,state.year)
+    agent.memory.record_emitted_actions(emitted,state)
 
-    result=NativeWriteResult(player_id,state.year,emitted,skipped,str(output_x_path))
-    decision_report=_build_decision_report(state,orders,agent,emitted,skipped)
+    # Autoplay writes a pending memory transaction and promotes it only after
+    # host acceptance. Standalone callers keep the historical direct-save path.
+    memory_destination=memory_output_path or memory_path
+    agent.memory.save(memory_destination)
+
+    result=NativeWriteResult(
+        player_id,state.year,emitted,skipped,str(output_x_path),waypoint_diagnostics
+    )
+    decision_report=_build_decision_report(
+        state,orders,agent,emitted,skipped,waypoint_diagnostics
+    )
     if trace_path:
         trace_path.parent.mkdir(parents=True,exist_ok=True)
         trace_path.write_text(json.dumps({
@@ -998,8 +1372,13 @@ def write_ai_turn(
             "persistent_intel":state.native.get("persistent_intel",{}),
             "strategic_watchdog":state.native.get("strategic_watchdog",{}),
             "probe_route_diagnostics":state.native.get("probe_route_diagnostics",[]),
+            "movement_progress_diagnostics":state.native.get("movement_progress_diagnostics",[]),
+            "command_outcomes":state.native.get("command_outcomes",[]),
+            "pending_command_expectations":dict(getattr(agent.memory,"action_expectations",{})),
+            "waypoint_diagnostics":waypoint_diagnostics,
             "persistent_scout_routes":dict(getattr(agent.memory,"scout_routes",{})),
             "memory_path":str(memory_path) if memory_path else None,
+            "memory_output_path":str(memory_destination) if memory_destination else None,
             "native_result":asdict(result),
         },indent=2),encoding="utf-8")
         report_path=trace_path.with_name(

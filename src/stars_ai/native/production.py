@@ -13,6 +13,13 @@ def parse_queue(data:bytes, start:int=0)->list[QueueItem]:
     out=[]
     for i in range(start,len(data)-3,4):
         c1=u16(data,i); c2=u16(data,i+2); item_id=c1>>10; typ=c2&0x0F
-        name=(STANDARD_ITEM_NAMES.get(item_id,f'StandardItem#{item_id}') if typ==2 else f'DesignSlot#{item_id}' if typ==4 else f'Item#{item_id}/Type#{typ}')
+        if typ==2:
+            name=STANDARD_ITEM_NAMES.get(item_id,f'StandardItem#{item_id}')
+        elif typ==4 and 0<=item_id<16:
+            name=f'DesignSlot#{item_id}'
+        elif typ==4 and 16<=item_id<26:
+            name=f'StarbaseDesignSlot#{item_id-16}'
+        else:
+            name=f'Item#{item_id}/Type#{typ}'
         out.append(QueueItem(item_id,c1&0x3FF,c2>>4,typ,name))
     return out

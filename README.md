@@ -23,6 +23,12 @@ It currently supports:
 - A clean adapter interface where a real `.m#` reader and `.x#` writer can be added.
 - A dry-run mode suitable for development and testing.
 
+Current strategy/native milestone: **v8.1 capability-driven research**. The AI
+selects named, executable tech goals before production planning, supports safe
+15%/25% research postures, protects critical ship queues during sprints, and
+serializes explicit current/next research fields. See
+`V8_1_CAPABILITY_DRIVEN_RESEARCH.md`.
+
 ## Important limitation
 
 This V1 does **not yet write native Stars! `.x#` turn files**.

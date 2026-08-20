@@ -47,8 +47,60 @@ Place a disposable four-human-slot game in one directory:
 - `AIPLAY.m2`
 - `AIPLAY.m3`
 - `AIPLAY.m4`
+- `AIPLAY.x1`
+- `AIPLAY.x2`
+- `AIPLAY.x3`
+- `AIPLAY.x4`
 
 The slots should correspond to the four AI races/personas you want tested.
+
+`seed_dir` is the immutable source of the complete initial game. The basename
+is discovered from these files; `game_name` is not required. Before any live
+file changes, all required M/X pairs are parsed and checked for matching game,
+turn, player registration, FileHash length, and X lifecycle structure. The
+validated game is then staged into `Path(stars_exe).parent`, where all native
+reads, writes, observer work, and hosting occur. Only stale files for that exact
+game basename are removed from the executable directory.
+
+### Midgame play-on mode
+
+The default remains a clean seed reset. To continue the current validated game
+beside `stars_exe` instead, set:
+
+```json
+"play_on": true,
+"auto_merge_history": true,
+"require_history_sync": true,
+"turns": 10
+```
+
+This means “play 10 additional turns from the current live year.” In play-on
+mode the runner validates the live HST, XY, and every configured player M-file
+against the seed game id, player seats, and common current turn before changing
+anything. It does not stage the seed or remove/replace the current sandbox game
+at startup. The pre-run bootstrap directory is a snapshot of that midgame state.
+
+Live `.x#` files are not required because Stars! normally consumes them during
+hosting. The runner reuses matching persistent templates or bootstraps them from
+the seed’s validated X files. Set `play_on` back to `false` (or omit it) for the
+normal clean reset from `seed_dir`.
+
+With `auto_merge_history` enabled (the default), the runner natively merges each
+newly generated `.m#` into the matching cumulative `.h#`; opening each player
+turn in Stars! is no longer required. It preserves pre/post H copies and hashes
+under `logs/history/`, verifies that the current M was not changed, and checks
+embedded per-planet observation turns before another `.x#` is written.
+`require_history_sync` keeps that semantic verification fail-closed. Leave both
+settings enabled for editor-safe playtests.
+
+When `keep_every_turn` is enabled, every completed host attempt is frozen below
+`logs/native/turn-NNN-post-host/`. Each directory includes all native game
+files (including the pre-merge `.h#`) plus a manifest of sizes, hashes, and
+parsed headers. The matching merged histories are in `logs/history/`.
+
+`output_dir/bootstrap/manifest.json` records the source/execution paths,
+configured players, and SHA-256 for each initial X file. Keep `seed_dir`, the
+Stars! executable directory, `output_dir`, and `ai_state_dir` separate.
 
 Do not password-protect the host file for this automation.
 
@@ -109,6 +161,10 @@ It exists to test the Windows Stars! host invocation and snapshot behavior.
 The runner stops on the first failed generation and preserves the exact submitted
 and generated files. Resume/replay can therefore start from the previous snapshot
 without destroying evidence.
+
+The default host timeout is 180 seconds and remains configurable with
+`host_timeout_seconds`. Timeout diagnostics record file activity and detectable
+Stars! process state to distinguish slow hosting from a likely modal/error state.
 
 
 ## v4.4

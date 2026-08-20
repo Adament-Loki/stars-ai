@@ -179,7 +179,7 @@ because many viable planets were known.
 v7.1 bounds colony-fleet demand by:
 
 - number of known viable claims;
-- actual 25k population packets that mature owned worlds can export;
+- actual 25 kT / 2,500-colonist packets that mature owned worlds can export;
 - already-loaded colony ships;
 - a small one-hull pipeline allowance;
 - phase-dependent concurrency cap.

@@ -3,11 +3,11 @@
 
 Colonization now attempts the complete observed native workflow:
 - rank only known viable worlds;
-- load exactly 25k population when the colony fleet is on an owned world with enough population;
+- load exactly 25 kT of population cargo (2,500 colonists) when the colony fleet is on an owned world with enough population;
 - WaypointAdd;
 - WaypointChangeTask task 2 = Colonize.
 
-If a colony fleet already carries >=25k population, the load block is omitted.
+If a colony fleet already carries at least 2,500 colonists, the load block is omitted.
 
 Transports use a deliberately narrow but real observed logistics mission:
 - source must have >=10/20/30 kt Ironium/Boranium/Germanium;

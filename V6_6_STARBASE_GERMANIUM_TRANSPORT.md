@@ -100,8 +100,8 @@ instead of:
 
 `native_population * 1000`
 
-Fleet population cargo remains in the separately validated thousand-colonist
-representation used by the 25k colony-load command.
+Fleet population cargo is a kT value. v7.8 corrected its headcount conversion:
+one kT carries 100 colonists, so the validated 25 kT load moves 2,500.
 
 ## Current-year production state
 

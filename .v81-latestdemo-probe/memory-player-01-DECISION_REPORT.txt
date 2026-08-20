@@ -1,0 +1,92 @@
+STARS! AI DECISION REPORT — A Rumble in the Jungle — Year 2425 — Player 1
+
+Format: Object Name - Action - Reason/Justification
+
+COMMAND OUTCOME STATUS
+COMPLETED - Fleet #4 arrived at Gargantua by year 2425.
+COMPLETED - Fleet #6 explored Radium by year 2425.
+COMPLETED - Fleet #7 explored Wellington by year 2425.
+COMPLETED - Gargantua production command was applied by year 2425.
+COMPLETED - Narnia production command was applied by year 2425.
+COMPLETED - Pansy production command was applied by year 2425.
+COMPLETED - Empire research is executing weapons -> weapons at 100%.
+PENDING - Fleet #5 should arrive at Excel by year 2426.
+PENDING - Fleet #6 should arrive at Capricornus by year 2426.
+PENDING - Fleet #7 should arrive at Dawn by year 2426.
+PENDING - Fleet #8 should arrive at Io by year 2426.
+PENDING - Fleet #7 arrive at Doodles waits on an earlier route leg outcome.
+PENDING - Fleet #9 should arrive at Accord by year 2427.
+PENDING - Fleet #1 should arrive at Bentley by year 2428.
+PENDING - Fleet #6 arrive at Sands Of Time waits on an earlier route leg outcome.
+PENDING - Fleet #7 arrive at Truman waits on an earlier route leg outcome.
+PENDING - Fleet #9 arrive at Kitchener waits on an earlier route leg outcome.
+PENDING - Fleet #5 arrive at Bagnose waits on an earlier route leg outcome.
+PENDING - Fleet #6 arrive at Lithium waits on an earlier route leg outcome.
+PENDING - Fleet #5 arrive at Dollar waits on an earlier route leg outcome.
+PENDING - Fleet #7 arrive at Columbia waits on an earlier route leg outcome.
+PENDING - Fleet #5 arrive at Allen waits on an earlier route leg outcome.
+PENDING - Fleet #5 arrive at McIntyre waits on an earlier route leg outcome.
+PENDING - Fleet #7 arrive at Hydroplane waits on an earlier route leg outcome.
+PENDING - Fleet #5 arrive at Hawking's Gut waits on an earlier route leg outcome.
+PENDING - Fleet #5 arrive at Graz waits on an earlier route leg outcome.
+SUMMARY - completed=7; pending=19; warnings=0; unverified=0.
+
+FLEETS
+Fleet #1 - CONTINUE WAYPOINT -> Bentley - Fleet already has active destination planet 84; preserve current mission.
+Fleet #3 - HOLD / DEFEND - Armed fleet has no higher-priority military mission; remain available for local defense or concentration.
+Fleet #4 - HOLD FOR LOGISTICS - No explicit cargo route was selected. Cargo ships do not reposition or scout merely to avoid idling.
+Fleet #5 - CONTINUE WAYPOINT -> Excel - Fleet already has active destination planet 32; preserve current mission.
+Fleet #6 - CONTINUE WAYPOINT -> Capricornus - Fleet already has active destination planet 113; preserve current mission.
+Fleet #7 - CONTINUE WAYPOINT -> Dawn - Fleet already has active destination planet 7; preserve current mission.
+Fleet #8 - CONTINUE WAYPOINT -> Io - Fleet already has active destination planet 40; preserve current mission.
+Fleet #9 - CONTINUE WAYPOINT -> Accord - Fleet already has active destination planet 90; preserve current mission.
+Fleet #10 - LOAD + COLONIZE -> Bagnose - Balanced: colonize Bagnose; score=93.1; race-adjusted hab current=57%, current-tech terraform=72%, eventual terraform=93%, planning value=87.0; terraform steps now=11, speculation cost=7.6; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=39.8); mineral concentrations=[104, 54, 85] add 28.3; fleet distance 187.1 costs 48.6; support distance 100.8 costs 9.1; strategic cluster adds 7.5; home distance 100.8 adds 9.9 and costs 14.1; remembered intel age=14. Alternatives: Harris=73.8; Hell=63.0; Bootes=60.3. Use colonists already aboard.
+
+COLONIZATION PRIORITY
+Fleet #10 - BEST KNOWN CANDIDATE Bagnose - Balanced: colonize Bagnose; score=93.1; race-adjusted hab current=57%, current-tech terraform=72%, eventual terraform=93%, planning value=87.0; terraform steps now=11, speculation cost=7.6; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=39.8); mineral concentrations=[104, 54, 85] add 28.3; fleet distance 187.1 costs 48.6; support distance 100.8 costs 9.1; strategic cluster adds 7.5; home distance 100.8 adds 9.9 and costs 14.1; remembered intel age=14. Alternatives: Harris=73.8; Hell=63.0; Bootes=60.3. Use colonists already aboard.
+  #1 Bagnose - score 93.1 - habitability 87%; fleet distance 187.1; nearest-owned distance 100.8; race-adjusted hab current=57%, current-tech terraform=72%, eventual terraform=93%, planning value=87.0; terraform steps now=11, speculation cost=7.6; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=39.8); mineral concentrations=[104, 54, 85] add 28.3; fleet distance 187.1 costs 48.6; support distance 100.8 costs 9.1; strategic cluster adds 7.5; home distance 100.8 adds 9.9 and costs 14.1; remembered intel age=14
+  #2 Harris - score 73.8 - habitability 86%; fleet distance 127.8; nearest-owned distance 127.8; race-adjusted hab current=49%, current-tech terraform=67%, eventual terraform=94%, planning value=86.0; terraform steps now=17, speculation cost=10.7; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=39.0); mineral concentrations=[95, 72, 29] add 22.9; fleet distance 127.8 costs 33.2; support distance 127.8 costs 11.5; strategic cluster adds 6.0; home distance 186.0 adds 1.4 and costs 26.0; remembered intel age=5
+  #3 Hell - score 63.0 - habitability 84%; fleet distance 212.7; nearest-owned distance 134.9; race-adjusted hab current=42%, current-tech terraform=69%, eventual terraform=90%, planning value=84.0; terraform steps now=17, speculation cost=9.7; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=37.5); mineral concentrations=[97, 67, 82] add 28.7; fleet distance 212.7 costs 55.3; support distance 134.9 costs 12.1; strategic cluster adds 6.0; home distance 150.4 adds 5.0 and costs 21.1; remembered intel age=17
+  #4 Bootes - score 60.3 - habitability 86%; fleet distance 144.6; nearest-owned distance 144.6; race-adjusted hab current=47%, current-tech terraform=67%, eventual terraform=94%, planning value=86.0; terraform steps now=17, speculation cost=10.7; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=39.0); mineral concentrations=[84, 48, 53] add 21.6; fleet distance 144.6 costs 37.6; support distance 144.6 costs 13.0; strategic cluster adds 6.0; home distance 221.1 adds 0.0 and costs 31.0; remembered intel age=3
+  #5 McIntyre - score 39.7 - habitability 53%; fleet distance 165.7; nearest-owned distance 51.4; race-adjusted hab current=11%, current-tech terraform=24%, eventual terraform=65%, planning value=53.0; terraform steps now=17, speculation cost=13.2; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=14.2); mineral concentrations=[65, 75, 80] add 25.7; fleet distance 165.7 costs 43.1; support distance 51.4 costs 4.6; strategic cluster adds 0.0; home distance 51.4 adds 14.9 and costs 7.2; remembered intel age=16
+  #6 555-1212 - score 24.9 - habitability 87%; fleet distance 273.8; nearest-owned distance 248.9; race-adjusted hab current=52%, current-tech terraform=74%, eventual terraform=92%, planning value=87.0; terraform steps now=17, speculation cost=9.2; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=39.8); mineral concentrations=[107, 62, 112] add 32.8; fleet distance 273.8 costs 71.2; support distance 248.9 costs 22.4; strategic cluster adds 3.0; home distance 248.9 adds 0.0 and costs 34.8; remembered intel age=16
+  #7 Discovery - score 23.4 - habitability 58%; fleet distance 95.0; nearest-owned distance 95.0; race-adjusted hab current=11%, current-tech terraform=31%, eventual terraform=69%, planning value=58.0; terraform steps now=17, speculation cost=12.7; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=18.0); mineral concentrations=[4, 76, 94] add 20.3; fleet distance 95.0 costs 24.7; support distance 95.0 costs 8.6; strategic cluster adds 4.5; home distance 224.8 adds 0.0 and costs 31.5; remembered intel age=3
+  #8 Candy Corn - score 17.2 - habitability 72%; fleet distance 177.3; nearest-owned distance 177.3; race-adjusted hab current=30%, current-tech terraform=51%, eventual terraform=81%, planning value=72.0; terraform steps now=17, speculation cost=11.2; opening_broadening normal floor=50% (selection=racial_habitability, quality bonus=28.5); mineral concentrations=[80, 3, 88] add 19.9; fleet distance 177.3 costs 46.1; support distance 177.3 costs 16.0; strategic cluster adds 0.0; home distance 214.7 adds 0.0 and costs 30.1; remembered intel age=14
+
+DESIGN DEVELOPMENT
+Long Range Scout Mk II - PROPOSE SCOUT - hull=Scout; engine=Fuel Mizer - 239 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it. Objectives: maximize sustainable exploration range, retain the best currently available scanner, avoid unnecessary weapon mass on pure exploration hulls, add fuel capacity when a legal slot/component permits. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+Strategic Transport Mk II - PROPOSE FREIGHTER - hull=Privateer; engine=Fuel Mizer - Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True. Objectives: maximize useful cargo per fuel-safe trip, favor efficient engines over maximum nominal warp, retain adequate fuel reserve for round-trip logistics, support mineral redistribution, especially Germanium. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+Colonizer Mk II - PROPOSE COLONY - hull=Colony Ship; engine=Fuel Mizer - 20 viable colony targets are known and Fuel Mizer improves colonization range. Objectives: reach new colonies with a safe one-way fuel budget, carry the required colonization module, minimize nonessential mass. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+
+PLANET PRODUCTION
+Narnia - BUILD 1x Starbase, 1x max_terraform, 1x factory, 1x mine - Y2425 M-file pop raw=267x100 => 26,700; capacity 3.0% of 1,000,000; projected growth +1,300 -> 28,000; factories 4/26; mines 10/29; Germanium 313kT (factory cost 3kT; conc=69); base=Orbital Fort shipyard=N refuel=N. Balanced: objective production first: continue the in-progress Starbase fuel-hub project at Narnia; native completion is 47%. | terraform Narnia from 50% toward 73% (17 available steps)
+Pansy - BUILD 4x Mayflower, 10x factory, 8x mine - Y2425 M-file pop raw=2163x100 => 216,300; capacity 22.0% of 1,000,000; projected growth +21,600 -> 237,900; factories 94/216; mines 74/237; Germanium 147kT (factory cost 3kT; conc=30); base=Space Station shipyard=Y refuel=Y. Balanced: objective production first: 20 phase-eligible unowned claims under opening_broadening; 76 exportable 25 kT / 2,500-colonist packets; source reserve=25,000; milestone needs 19 more colonies by T25 (~19.00/turn); 1 colony ships already loaded; target concurrent colony force=12; available/queued=2; effective distinct-claim pipeline=2; duplicate active commitments=0.
+Gargantua - BUILD 1x max_terraform, 1x factory, 1x mine - Y2425 M-file pop raw=37x100 => 3,700; capacity 1.0% of 1,000,000; projected growth +300 -> 4,000; factories 0/3; mines 0/4; Germanium 24kT (factory cost 3kT; conc=27). Balanced: objective production first: terraform Gargantua from 82% toward 92% (11 available steps)
+
+RESEARCH
+Empire Research - Temperature Terraforming 7% - SPRINT - ENERGY -> ENERGY at 25% - contributors=() - Balanced: SPRINT: pursue Temperature Terraforming 7%; score=182.2, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 36 observed world(s); aggregate habitability gain=105. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit. Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up.
+
+DIPLOMACY
+Diplomacy - NO RELATION CHANGE - Preserve current relations.
+
+NATIVE WAYPOINT LIFECYCLE
+Fleet 9 - ADD - normalized destination=None; native destination=None; native warp/task=None/None; requested colonize -> P65 @ W7. No native destination waypoint #1 exists.
+
+MOVEMENT PROGRESS
+Fleet 0 -> P84 - range 156.78 -> 107.935; commanded W7; expected movement ~49.0 ly; actual progress 48.845 ly.
+Fleet 7 -> P40 - range 82.976 -> 34.059; commanded W7; expected movement ~49.0 ly; actual progress 48.917 ly.
+Fleet 8 -> P90 - range 103.392 -> 54.562; commanded W7; expected movement ~49.0 ly; actual progress 48.831 ly.
+
+NATIVE EXECUTION DETAILS
+Fleet #10 - NATIVE COLONY ORDER -> Bagnose warp 7 - race-adjusted hab current=57%; current-tech terraform=72%; eventual terraform=93%; planning value=87%; policy=opening_broadening floor=50% basis=racial_habitability; home distance=100.84 ly; route=ADD waypoint #1; load block emitted: NO; population aboard before=2500; source population=3700; source after load=None.
+
+NATIVE WRITER LIMITATIONS / SKIPPED ACTIONS
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+
+COLONIZE NATIVE STATUS
+Native Colonize task - EMITTED - Complete validated load/move/task=2 colony sequence generated.
+
+ACTIVITY CHECK
+PASS - ALL OWNED FLEETS ACCOUNTED FOR - Every fleet has movement, an existing waypoint, or a conscious armed hold.

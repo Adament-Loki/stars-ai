@@ -55,7 +55,9 @@ class PlayerState:
                     p=parse_planet(b.data,partial=(b.type_id==14)); state.planets.append(p); pending_planet_for_queue=p.planet_id
                 elif b.type_id==28 and pending_planet_for_queue is not None: state.production_by_planet[pending_planet_for_queue]=parse_queue(b.data)
                 elif b.type_id in (16,17): state.fleets.append(parse_fleet(b.data))
-                elif b.type_id==20: waypoints.append(parse_waypoint(b.data))
+                # StarsAPI models WaypointTask (19) as a specialized
+                # WaypointBlock. Both types occupy a fleet waypoint slot.
+                elif b.type_id in (19,20): waypoints.append(parse_waypoint(b.data))
                 elif b.type_id==26: state.designs.append(parse_design(b.data))
                 elif b.type_id==30: state.battle_plans.append(parse_battle_plan(b.data))
                 elif b.type_id==43: state.objects.append(parse_object(b.data))

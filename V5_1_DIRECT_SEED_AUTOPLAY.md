@@ -1,6 +1,10 @@
 
 # v5.1 Direct-Seed Autoplay
 
+> Superseded by v7.2 safety behavior: `seed_dir` is now immutable. After full
+> validation, the game is staged beside `stars_exe`; native hosting no longer
+> operates on the seed directory.
+
 The autoplay controller now uses the configured `seed_dir` as the **actual live
 Stars! game directory**. It does not copy the game into `live/`, `turn-001/`,
 `generated/`, or `submitted/` folders.

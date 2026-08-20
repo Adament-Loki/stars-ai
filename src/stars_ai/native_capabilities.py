@@ -9,13 +9,14 @@ class NativeCapability:
     reason: str
 
 CAPABILITIES = {
-    "move_fleet": NativeCapability("move_fleet","VALIDATED","Novel fleet movement has been empirically validated."),
-    "set_planet_queue": NativeCapability("set_planet_queue","VALIDATED","Production queue changes are validated; custom itemType=4 builds of existing ship designs are enabled from StarsAPI plus controlled X samples."),
+    "move_fleet": NativeCapability("move_fleet","VALIDATED","WaypointAdd movement and sequential indexed route construction have been empirically validated."),
+    "set_planet_queue": NativeCapability("set_planet_queue","VALIDATED","Production queue changes are validated, including Max Terraform auto-build; custom itemType=4 builds use native ship IDs 0..15 and starbase IDs 16..25 for existing designs."),
     "population_transfer": NativeCapability("population_transfer","PARTIAL","General transport remains incomplete; scoped observed forms are supported."),
-    "colony_operation": NativeCapability("colony_operation","VALIDATED","Observed 25k load + WaypointAdd + task 2 Colonize sequence."),
+    "colony_operation": NativeCapability("colony_operation","VALIDATED","Observed 25 kT (2,500-colonist) load + WaypointAdd + task 2 Colonize sequence."),
     "transport_minerals": NativeCapability("transport_minerals","VALIDATED","Small exact I/B/G load quantities are derived from two controlled Stars!-generated samples; destination Transport task unloads all cargo and loads optimal fuel."),
-    "transport_unload_remainder": NativeCapability("transport_unload_remainder","VALIDATED","Recovery reuses the complete validated Transport policy: Unload All I/B/G/Population + Load Optimal fuel."),
-    "research_change": NativeCapability("research_change","VALIDATED","ResearchChange uses 0F plus field code 60..65; Propulsion/Electronics/Biotechnology empirically confirmed and remaining fields follow the contiguous mapping."),
+    "transport_unload_remainder": NativeCapability("transport_unload_remainder","PARTIAL","An identical active Transport task is preserved idempotently; synthetic task replacement is blocked pending native validation."),
+    "research_change": NativeCapability("research_change","VALIDATED","ResearchChange byte 0 is the actual 15/25 percent; byte 1 packs next field in the high nibble and current field in the low nibble."),
+    "set_planet_research_mode": NativeCapability("set_planet_research_mode","VALIDATED","PlanetChange leftover-only ON is the empirically observed 6-byte planet-id, 1, 0 form. OFF remains intentionally unsupported."),
     "player_relation_change": NativeCapability("player_relation_change","PARTIAL","Friend relation is empirically validated; Neutral/Enemy native writes remain disabled."),
     "set_player_relation": NativeCapability("set_player_relation","PARTIAL","Friend relation is empirically validated; Neutral/Enemy native writes remain disabled."),
     "set_battle_plan": NativeCapability("set_battle_plan","BLOCKED","SetFleetBattlePlan native writer remains unvalidated."),

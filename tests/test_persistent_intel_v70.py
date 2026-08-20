@@ -129,7 +129,7 @@ def test_turn10_watchdog_uses_hard_numbers_requested_for_opening():
     assert m["deadline_turn"]==10
     assert m["explored_min"]==10
     assert m["explored_optimal"]==25
-    assert m["new_colonies_min"]==3
+    assert m["new_colonies_min"]==4
 
 
 def test_after_turn25_exploration_goal_becomes_percentage_based():

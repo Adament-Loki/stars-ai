@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from .models import GameState, OrderSet
 from .util import distance
-from .colony_planner import score_colony_candidates
+from .colony_planner import score_colony_candidates, colonization_policy
 from .warp_policy import mission_warp
 from .fuel_planner import mission_reachable
+from .population_units import COLONY_LOAD_COLONISTS
 
 
 RECON_ROLES = {"scout", "unknown"}
@@ -66,7 +67,7 @@ def _mining_candidates(state: GameState, fleet):
     return ranked
 
 
-def ensure_fleet_activity(state: GameState, orders: OrderSet) -> list[dict]:
+def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list[dict]:
     """
     Every owned fleet must have an explicit PURPOSE every turn.
 
@@ -110,7 +111,7 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet) -> list[dict]:
                 "reason":existing.reason,
                 "destination_planet_id":existing.payload.get("destination_planet_id"),
                 "colony_candidates":(
-                    [c.to_dict() for c in score_colony_candidates(state,fleet)[:8]]
+                    [c.to_dict() for c in score_colony_candidates(state,fleet,plan)[:8]]
                     if fleet.role=="colony" else []
                 ),
             })
@@ -134,14 +135,14 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet) -> list[dict]:
         # COLONY: never scout, never stage empty at an unknown/unchecked planet.
         if fleet.role=="colony":
             ranked=[
-                c for c in score_colony_candidates(state,fleet)
+                c for c in score_colony_candidates(state,fleet,plan)
                 if c.planet_id not in assigned_targets
             ]
             aboard=int(fleet.cargo_population or 0)
             at_owned=_owned_planet_under_fleet(state,fleet)
             owned=[p for p in state.planets if p.owner==state.player_id]
 
-            if aboard < 25000 and at_owned is None and owned:
+            if aboard < COLONY_LOAD_COLONISTS and at_owned is None and owned:
                 home=min(owned,key=lambda p:distance(fleet.position,p.position))
                 orders.add(
                     "move_fleet",
@@ -179,12 +180,24 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet) -> list[dict]:
                     "colony_candidates":[c.to_dict() for c in ranked[:8]],
                 })
             else:
+                policy=colonization_policy(state,plan)
+                quality=(
+                    "resource-driven universal-hab policy"
+                    if policy.normal_habitability_floor is None
+                    else (
+                        f"{policy.stage} racial-habitability floor of "
+                        f"{policy.normal_habitability_floor}%"
+                    )
+                )
                 intents.append({
                     "fleet_id":fleet.id,
                     "fleet_name":fleet.name,
                     "role":fleet.role,
                     "action":"HOLD FOR COLONY INTEL",
-                    "reason":"No known viable colony world. Preserve the colony ship at owned population while scouts gather information.",
+                    "reason":(
+                        f"No known colony world meets the {quality}. Preserve the colony "
+                        "ship at owned population while scouts gather better options."
+                    ),
                     "destination_planet_id":None,
                     "colony_candidates":[],
                 })

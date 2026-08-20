@@ -119,7 +119,7 @@ def test_orbital_fort_planet_does_not_receive_ship_build():
     )
 
 
-def test_known_transport_residual_uses_same_validated_unload_task():
+def test_known_transport_residual_preserves_identical_native_transport_task():
     state=GameState(
         "g",2405,1,race(),Tech(),
         [Planet(7,"Target",Position(100,200),owner=1,observed=True)],
@@ -133,14 +133,7 @@ def test_known_transport_residual_uses_same_validated_unload_task():
         state,
         {"fleet_id":3,"destination_planet_id":7,"warp":6}
     )
-    assert len(blocks)==1
-    b=blocks[0]
-    assert b.type_id==5
-    assert b.data.endswith(bytes.fromhex(
-        "00 20 00 20 00 20 00 20 00 70"
-    ))
-    # task low nibble 1 = Transport
-    assert b.data[10] & 0x0F == 1
+    assert blocks==[]
 
 
 def _record(pid,turn,pop,install=True,surface=True):

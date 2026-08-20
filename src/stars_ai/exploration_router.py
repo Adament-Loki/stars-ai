@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 from .util import distance
+from .empire_geometry import distance_from_homeworld, homeworld_center
 from .fuel_planner import (
     scout_one_way_warp,
     scout_one_way_reachable,
@@ -25,6 +26,7 @@ class ProbeRoute:
     sector_count:int
     terminal:bool=True
     free_cruise_warp:int=0
+    waypoints:list[dict[str,int]]|None=None
 
     def to_dict(self):
         return asdict(self)
@@ -74,6 +76,58 @@ def _cluster_count(candidate, candidates, radius:float=65.0)->int:
     )
 
 
+def _needs_recon(planet) -> bool:
+    # Exploration is discovery, not periodic re-survey. Persistent memory makes
+    # a planet observed forever once a scout has supplied environmental data.
+    return not planet.observed
+
+
+def _support_distance(state, position) -> float:
+    owned=[p for p in state.planets if p.owner==state.player_id]
+    return min(
+        (distance(position,p.position) for p in owned),
+        default=0.0,
+    )
+
+
+def route_waypoint_specs(
+    state,
+    fleet,
+    planet_ids,
+    *,
+    pressure:float=1.0,
+    start_position=None,
+    start_profile:dict[str,Any]|None=None,
+) -> list[dict[str,int]]:
+    """Rebuild a persisted planet chain into cumulative fuel-safe native legs."""
+    planets={int(p.id):p for p in state.planets}
+    pos=start_position or fleet.position
+    profile=dict(start_profile or ((fleet.native or {}).get("fuel_profile") or {}))
+    flags=(fleet.native or {}).get("race_fuel_flags",{})
+    ife=bool(flags.get("ife")); ce=bool(flags.get("ce"))
+    out=[]
+    for raw_pid in planet_ids:
+        pid=int(raw_pid)
+        target=planets.get(pid)
+        if target is None:
+            break
+        leg=distance(pos,target.position)
+        if profile:
+            warp=scout_one_way_warp(
+                profile,leg,ife=ife,ce=ce,pressure=pressure
+            )
+            if warp is None:
+                break
+            profile=profile_after_scout_leg(
+                profile,leg,warp,ife=ife
+            )
+        else:
+            warp=7 if leg<120 else 6
+        out.append({"planet_id":pid,"warp":int(warp),"task":0})
+        pos=target.position
+    return out
+
+
 def build_probe_route(
     state,
     fleet,
@@ -85,27 +139,29 @@ def build_probe_route(
     start_position=None,
     start_profile:dict[str,Any]|None=None,
     sector:tuple[int,int,float]|None=None,
+    max_support_distance:float=300.0,
 ) -> ProbeRoute|None:
     """
-    Build a forward-only exploration campaign.
+    Build a fuel-safe exploration campaign inside the supported frontier.
 
     Primary objective: maximize UNIQUE worlds visited before probe termination.
     Secondary objectives: low travel distance, geographic sector separation,
-    and continued outward movement.
-
-    This is deliberately not a round-trip route.
+    and proximity to the expanding owned-planet network.
     """
     reserved=set(reserved or ())
     remaining=[
         p for p in candidates
-        if int(p.id) not in reserved and not p.observed
+        if int(p.id) not in reserved
+        and _needs_recon(p)
+        and _support_distance(state,p.position)<=float(max_support_distance)
     ]
     if not remaining:
         return None
 
     sector=sector or scout_sector(state,fleet)
     sector_index,sector_count,sector_angle=sector
-    center=_empire_center(state)
+    center=homeworld_center(state)
+    turn=max(0,int(state.year)-2400)
     pos=start_position or fleet.position
     profile=dict(start_profile or ((fleet.native or {}).get("fuel_profile") or {}))
     flags=(fleet.native or {}).get("race_fuel_flags",{})
@@ -113,6 +169,7 @@ def build_probe_route(
     free=highest_zero_fuel_warp(profile) if profile else 0
 
     route=[]
+    waypoint_specs=[]
     total_distance=0.0
     est_turns=0.0
 
@@ -132,16 +189,25 @@ def build_probe_route(
             # Dense chains are valuable because a single probe can cover more
             # worlds before fuel/lifetime is exhausted.
             cluster=_cluster_count(p,remaining)
-            outward=distance(center,p.position)
+            support_distance=_support_distance(state,p.position)
+            home_distance=distance_from_homeworld(state,p.position)
             sector_fit=math.cos(_angle_delta(_angle(center,p.position),sector_angle))
 
             # Number of future possibilities dominates the score. Distance is
             # still meaningful so we do not jump across empty space needlessly.
+            if turn<=25:
+                home_penalty=home_distance*.16
+                local_bonus=max(0.0,180.0-home_distance)*.25
+            else:
+                home_penalty=home_distance*.05
+                local_bonus=max(0.0,120.0-home_distance)*.08
             score=(
                 cluster*7.5
-                + min(outward,300.0)*0.07
                 + sector_fit*18.0
-                - d*0.22
+                + local_bonus
+                - d*0.25
+                - support_distance*0.05
+                - home_penalty
             )
             # First leg should be practical; later legs can push farther outward.
             if step==0:
@@ -157,6 +223,11 @@ def build_probe_route(
         total_distance+=leg
         est_turns+=leg/max(1.0,float(warp*warp))
         route.append(int(target.id))
+        waypoint_specs.append({
+            "planet_id":int(target.id),
+            "warp":int(warp),
+            "task":0,
+        })
 
         if profile:
             profile=profile_after_scout_leg(
@@ -180,6 +251,7 @@ def build_probe_route(
         sector_count=sector_count,
         terminal=True,
         free_cruise_warp=free,
+        waypoints=waypoint_specs,
     )
 
 

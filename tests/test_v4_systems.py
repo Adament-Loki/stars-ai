@@ -16,14 +16,16 @@ def state():
       Planet(2,"Young",Position(50,0),owner=1,habitability=80,population=50000,factories=10,mines=10,native={"capacity_population":1000000,"strategic_value":0.6}),
       Planet(3,"Enemy",Position(180,0),owner=2,habitability=70,population=300000,factories=150,mines=100,defenses=30,native={"strategic_value":0.8}),
     ]
-    fs=[Fleet(1,"Freighter",1,Position(0,0),role="freighter",cargo_capacity=100000,speed=9,native={"fuel_range_ly":100}),
+    fs=[Fleet(1,"Freighter",1,Position(0,0),role="freighter",cargo_capacity=25,speed=9,native={"fuel_range_ly":100}),
         Fleet(2,"EnemyFleet",2,Position(170,0),role="combat",combat_power=100)]
     return GameState("x",2400,1,RaceProfile(name="R",primary_trait="IT"),Tech(),ps,fs)
 
 def test_empire_optimizer_and_base_network():
     s=state()
     assert classify_planet_role(s.planets[1]).role in ("BREEDER","DEVELOPING")
-    assert optimize_population_transfers(s)
+    transfers=optimize_population_transfers(s)
+    assert transfers
+    assert transfers[0].population==2500
     bases=evaluate_base_network(s)
     assert bases and bases[0].priority>0
 

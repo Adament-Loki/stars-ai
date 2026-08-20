@@ -53,14 +53,14 @@ and the M-file waypoint count.
 
 ## 3. Population units
 
-Native Stars! population is represented in thousands. The adapter previously
-passed raw values directly into an AI model whose thresholds use individual
-colonists. A homeworld value such as 287 therefore looked like 287 people rather
-than 287,000.
+Native Stars! surface and fleet-cargo population use different representations.
+The adapter previously passed raw values directly into an AI model whose
+thresholds use individual colonists.
 
 v6.2 normalizes:
-- planet population: raw * 1000;
-- fleet population cargo: raw * 1000.
+- planet population was initially believed to be raw * 1000 (corrected to
+  raw * 100 in v6.6);
+- fleet population cargo was initially believed to be raw * 1000 (corrected
+  to raw kT * 100 colonists in v7.8).
 
-This allows the colony planner's 75,000 source-population prerequisite to work
-and allows a native cargo value of 25 to correctly mean 25,000 colonists.
+A native fleet cargo value of 25 means 25 kT, or 2,500 colonists.

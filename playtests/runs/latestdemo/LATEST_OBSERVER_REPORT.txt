@@ -1,0 +1,40 @@
+Stars! AI Observer Report — Turn 25 / Year 2425
+==================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+P3 Felite has a clear lead. Observer score gap over second place: 39.3%.
+Likely fighting has begun: major fleet losses are visible, although no enemy planet changed hands in this window.
+
+CURRENT STANDINGS
+-----------------
+1. P3 Felite [Packet Physics] — 15 planets, pop 4,224, 50 factories, 4 ships / 0 fleet mass, techΣ 16, 2 starbases.
+2. P1 SuperRabits [Interstellar Traveler / Balanced] — 7 planets, pop 2,468, 25 factories, 14 ships / 0 fleet mass, techΣ 20, 2 starbases.
+3. P2 House Cat [Interstellar Traveler / Expansionist] — 9 planets, pop 2,714, 20 factories, 10 ships / 0 fleet mass, techΣ 15, 2 starbases.
+
+CHANGE SINCE TURN 10
+-----------------------------
+P3: planets +9, population +3,514, factories +31, ships +3, fleet mass +0, techΣ +4.
+P1: planets +4, population +1,791, factories +4, ships -1, fleet mass +0, techΣ +6.
+P2: planets +6, population +2,037, factories +2, ships -3, fleet mass +0, techΣ +1.
+
+WAR & CONTACT
+-------------
+- P1 suffered a major net fleet loss (3 ships, 0 mass).
+
+WHO IS STRONGEST?
+-----------------
+- Territory: P3 with 15 planets.
+- Population: P3 with 4,224.
+- Industry: P3 with 50 factories.
+- Fleet by mass: P3 with 0.
+- Technology: P1 with techΣ 20.
+
+MOMENTUM / RISK
+---------------
+- Current leader: P3 Felite.
+- Current last place: P2 House Cat.
+
+INTERPRETATION
+--------------
+Observer score is a transparent diagnostic composite, not the Stars! built-in score. Planet captures are strong evidence of war; abrupt fleet losses are treated as probable combat but can also reflect scrapping/merging until battle blocks are fully decoded.

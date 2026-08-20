@@ -157,17 +157,18 @@ def test_milestone_deficit_can_raise_scout_force_above_old_cap():
 
 def test_colony_force_is_bounded_by_population_export_capacity():
     s=_state(20,year=2410)
-    # Many known viable claims, but homeworld cannot safely export any 25k packet.
+    # Many known viable claims, but homeworld cannot safely export a 2,500-colonist packet.
     for p in s.planets[1:11]:
         p.observed=True
         p.habitability=80
-    s.planets[0].population=60000
+    s.planets[0].population=12400
 
     desired,reason=_desired_colony_force(
         s,[p for p in s.planets if p.owner is None and p.observed],None
     )
-    assert desired<=1
-    assert "exportable 25k population packets" in reason
+    # Two empty hulls may stage ahead of growth, but no larger unsupported fleet.
+    assert desired<=2
+    assert "25 kT / 2,500-colonist packets" in reason
 
 
 def test_exploration_order_contains_route_diagnostics():

@@ -9,7 +9,7 @@ The v5.7 playtest exposed a strategy sequencing bug:
 - The empty colony ship fell through the generic "unarmed fleet should move" rule.
 - It was sent away from the homeworld.
 - Later, when scouts discovered a viable target, the colony ship was no longer at
-  a populated owned planet, so the validated 25k load block could not be used.
+  a populated owned planet, so the validated 25 kT population load block could not be used.
 
 v5.8 changes colony ships into protected mission assets:
 
@@ -18,7 +18,7 @@ v5.8 changes colony ships into protected mission assets:
    - Do not scout/reposition.
 
 2. **Known viable colony + empty + at owned populated planet**
-   - load 25k colonists using the observed native form;
+   - load 25 kT of population cargo (2,500 colonists) using the observed native form;
    - WaypointAdd;
    - WaypointChangeTask task 2 = Colonize.
 

@@ -1,7 +1,13 @@
+import os
 from pathlib import Path
+import pytest
 from stars_ai.adapters.stars_native import inspect_m_file, decode_x_orders
 
-FIXTURE_ROOT = Path('/mnt/data')
+FIXTURE_ROOT = Path(os.environ.get('STARS_NATIVE_FIXTURE_ROOT','/mnt/data'))
+pytestmark = pytest.mark.skipif(
+    not all((FIXTURE_ROOT/name).exists() for name in ('AI.m1','AI.x1','AI.xy')),
+    reason='external controlled Stars! AI fixture is unavailable',
+)
 
 def test_real_ai_m1_fixture():
     state = inspect_m_file(FIXTURE_ROOT/'AI.m1', FIXTURE_ROOT/'AI.xy')

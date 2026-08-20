@@ -37,11 +37,17 @@ class Fleet:
     position: Position
     destination_planet_id: int | None = None
     role: str = "unknown"
+    # Normalized headcount. Native fleet population cargo is converted from
+    # kT at 100 colonists per kT by the native adapter.
     cargo_population: int = 0
+    # Cargo capacity remains mass in native kT.
     cargo_capacity: int = 0
     combat_power: float = 0.0
     speed: int = 7
     native: dict[str, Any] = field(default_factory=dict)
+    destination_warp: int | None = None
+    destination_task: int | None = None
+    destination_mission: str | None = None
 
 
 @dataclass
@@ -117,6 +123,9 @@ class GameState:
                 combat_power=f.get("combat_power", 0.0),
                 speed=f.get("speed", 7),
                 native=f.get("native", {}),
+                destination_warp=f.get("destination_warp"),
+                destination_task=f.get("destination_task"),
+                destination_mission=f.get("destination_mission"),
             )
             for f in data.get("fleets", [])
         ]

@@ -9,10 +9,12 @@ from typing import Any
 # These are explicit accomplishments expected from an opening empire.
 OPENING_HARD_MILESTONES = [
     # turn, minimum explored, optimal explored, minimum NEW colonies, optimal NEW colonies
-    (5,   5, 10, 1,  2),
-    (10, 10, 25, 3,  5),
-    (15, 20, 35, 5,  8),
-    (25, 35, 50, 8, 12),
+    (5,   5, 10, 1,  3),
+    (10, 10, 25, 4,  7),
+    (15, 20, 35, 7, 12),
+    # A two-planet start plus 13..20 new colonies produces 15..22 owned
+    # worlds, inside the requested 15..25-planet opening outcome.
+    (25, 35, 50, 13, 20),
 ]
 
 # After Turn 25, exploration coverage begins to scale with galaxy size.

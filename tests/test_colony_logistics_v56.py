@@ -1,7 +1,7 @@
 
 from stars_ai.models import GameState,RaceProfile,Tech,Planet,Fleet,Position,OrderSet
 from stars_ai.strategy.economy import add_economic_orders
-from stars_ai.native.x_writer import _manual_load_population_25k_block,_manual_load_minerals_10_20_30_block,_colonize_blocks,_transport_mineral_blocks
+from stars_ai.native.x_writer import _manual_load_population_25kt_block,_manual_load_minerals_10_20_30_block,_colonize_blocks,_transport_mineral_blocks
 
 def _state():
     planets=[
@@ -14,13 +14,13 @@ def _state():
     return GameState("g",2400,1,RaceProfile(),Tech(),planets,fleets)
 
 def test_exact_population_load():
-    assert _manual_load_population_25k_block(_state(),0).data==bytes.fromhex("00 00 25 00 12 08 19")
+    assert _manual_load_population_25kt_block(_state(),0).data==bytes.fromhex("00 00 25 00 12 08 19")
 
 def test_exact_mineral_load():
     assert _manual_load_minerals_10_20_30_block(_state(),1).data==bytes.fromhex("01 00 25 00 12 07 0A 14 1E")
 
 def test_colonize_sequence():
-    bs=_colonize_blocks(_state(),{"fleet_id":0,"destination_planet_id":1,"warp":6,"load_25k_population":True})
+    bs=_colonize_blocks(_state(),{"fleet_id":0,"destination_planet_id":1,"warp":6,"load_25kt_population":True})
     assert [b.type_id for b in bs]==[1,4,5]
     assert bs[-1].data[10:12]==bytes.fromhex("62 51")
 

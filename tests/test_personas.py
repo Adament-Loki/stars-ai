@@ -35,7 +35,7 @@ def test_expansionist_changes_macro_plan():
     assert any(o.kind in ("move_fleet","colony_operation") and o.payload.get("mission") == "colonize" for o in orders.orders)
 
 
-def test_personas_choose_different_research_priorities():
+def test_personas_choose_named_capabilities_not_lowest_field_balancing():
     state = fixture_state()
     exp_orders = StarsAgent(state, persona=ExpansionistPersona()).play_turn()
     mil_orders = StarsAgent(state, persona=MilitaristPersona()).play_turn()
@@ -43,9 +43,9 @@ def test_personas_choose_different_research_priorities():
     exp = next(o for o in exp_orders.orders if o.kind == "set_research")
     mil = next(o for o in mil_orders.orders if o.kind == "set_research")
     tech = next(o for o in tech_orders.orders if o.kind == "set_research")
-    assert exp.payload["field"] == "propulsion"
-    assert mil.payload["field"] == "weapons"
-    assert tech.payload["field"] == "electronics"
+    assert {exp.payload["capability_id"],mil.payload["capability_id"],tech.payload["capability_id"]} <= {"hull:2","hull:33"}
+    assert {exp.payload["field"],mil.payload["field"],tech.payload["field"]} == {"construction"}
+    assert all(x.payload["capability_name"] in {"Large Freighter","Space Dock"} for x in (exp,mil,tech))
 
 
 def test_industrialist_prioritizes_development():

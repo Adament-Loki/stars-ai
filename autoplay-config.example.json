@@ -1,8 +1,7 @@
 {
   "stars_exe": "C:\\Games\\Stars!\\stars!.exe",
-  "seed_dir": "C:\\Dev\\stars-ai\\playtests\\seed",
+  "seed_dir": "C:\\Dev\\stars-ai\\playtests\\seed\\AIPLAY",
   "output_dir": "C:\\Dev\\stars-ai\\playtests\\runs\\four-ai-001",
-  "game_name": "AIPLAY",
   "player_ids": [
     1,
     2,
@@ -10,6 +9,7 @@
     4
   ],
   "turns": 50,
+  "play_on": false,
   "checkpoints": [
     10,
     25,
@@ -17,8 +17,10 @@
   ],
   "host_password": null,
   "keep_every_turn": true,
+  "auto_merge_history": true,
+  "require_history_sync": true,
   "stop_on_missing_x": true,
-  "host_timeout_seconds": 60,
+  "host_timeout_seconds": 180,
   "personas": {
     "1": "Balanced",
     "2": "Expansionist",
@@ -28,7 +30,7 @@
   "host_poll_seconds": 0.5,
   "host_settle_seconds": 1.5,
   "prevent_parallel_stars": true,
-  "use_seed_as_live": true,
+  "use_seed_as_live": false,
   "pre_host_audit": true,
   "print_observer_each_turn": true,
   "cleanup_output_on_start": true,

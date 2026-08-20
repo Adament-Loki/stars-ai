@@ -1,0 +1,1402 @@
+{
+  "state": {
+    "game": "A Rumble in the Jungle",
+    "year": 2425,
+    "player": 1
+  },
+  "orders": {
+    "game_name": "A Rumble in the Jungle",
+    "year": 2425,
+    "player_id": 1,
+    "orders": [
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 37,
+          "leftover_only": true,
+          "capability_id": "terraform:temperature:7"
+        },
+        "reason": "Protect Narnia production during the Temperature Terraforming 7% sprint; contribute leftover resources only.",
+        "priority": 146
+      },
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 71,
+          "leftover_only": true,
+          "capability_id": "terraform:temperature:7"
+        },
+        "reason": "Protect Pansy production during the Temperature Terraforming 7% sprint; contribute leftover resources only.",
+        "priority": 146
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 37,
+          "queue": [
+            {
+              "item": "starbase_design",
+              "design_slot": 0,
+              "design_name": "Starbase",
+              "hull_name": "Space Station",
+              "quantity": 1,
+              "role": "fuel_hub",
+              "complete_percent": 47
+            },
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 50,
+              "target_habitability": 73,
+              "terraform_steps": 17,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 313
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "economy": {
+            "population": 26700,
+            "factory_cap": 26,
+            "mine_cap": 29,
+            "factories": 4,
+            "mines": 10,
+            "factory_headroom": 22,
+            "mine_headroom": 19,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 31,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 313,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 69,
+            "population_raw_hundreds": 267,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 3.0,
+            "projected_growth": 1300,
+            "projected_next_population": 28000
+          }
+        },
+        "reason": "Balanced: objective production first: continue the in-progress Starbase fuel-hub project at Narnia; native completion is 47%. | terraform Narnia from 50% toward 73% (17 available steps)",
+        "priority": 146
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 71,
+          "queue": [
+            {
+              "item": "ship_design",
+              "design_slot": 0,
+              "design_name": "Smaugarian Peeping Tom",
+              "quantity": 3,
+              "role": "scout"
+            },
+            {
+              "item": "factory",
+              "quantity": 10,
+              "germanium_cost_each": 3,
+              "germanium_available": 147
+            },
+            {
+              "item": "mine",
+              "quantity": 8
+            }
+          ],
+          "economy": {
+            "population": 216300,
+            "factory_cap": 216,
+            "mine_cap": 237,
+            "factories": 94,
+            "mines": 74,
+            "factory_headroom": 122,
+            "mine_headroom": 163,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 347,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 147,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 30,
+            "population_raw_hundreds": 2163,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 22.0,
+            "projected_growth": 21600,
+            "projected_next_population": 237900
+          }
+        },
+        "reason": "Balanced: objective production first: 282 worlds remain unknown; exploration milestone needs 44 more known worlds by T25 (~44.00/turn); measured scout productivity ~0.55 discoveries/scout-turn; target scout force=12; available/queued=6. Existing scout choice favors free cruise then efficient Warp-7 range.",
+        "priority": 145
+      },
+      {
+        "kind": "set_research",
+        "payload": {
+          "capability_id": "terraform:temperature:7",
+          "capability_name": "Temperature Terraforming 7%",
+          "category": "terraforming",
+          "posture": "SPRINT",
+          "current_field": "energy",
+          "next_field": "energy",
+          "allocation_percent": 25,
+          "score": 119.07,
+          "estimated_turns": 1,
+          "estimate_confidence": "low",
+          "requirements": {
+            "energy": 5,
+            "biotechnology": 2
+          },
+          "remaining_requirements": {
+            "energy": 1
+          },
+          "contributor_planet_ids": [],
+          "protected_production_planet_ids": [
+            37,
+            71,
+            102
+          ],
+          "post_unlock_action": "Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+          "reason": "SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+          "candidate_scores": [
+            {
+              "capability_id": "terraform:temperature:7",
+              "name": "Temperature Terraforming 7%",
+              "score": 119.07,
+              "remaining": {
+                "energy": 1
+              }
+            },
+            {
+              "capability_id": "terraform:gravity:11",
+              "name": "Gravity Terraforming 11%",
+              "score": 108.136,
+              "remaining": {
+                "propulsion": 4
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:11",
+              "name": "Radiation Terraforming 11%",
+              "score": 98.319,
+              "remaining": {
+                "weapons": 5
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:11",
+              "name": "Temperature Terraforming 11%",
+              "score": 89.486,
+              "remaining": {
+                "energy": 6
+              }
+            },
+            {
+              "capability_id": "hull:2",
+              "name": "Large Freighter",
+              "score": 81.207,
+              "remaining": {
+                "construction": 3
+              }
+            },
+            {
+              "capability_id": "terraform:gravity:15",
+              "name": "Gravity Terraforming 15%",
+              "score": 68.384,
+              "remaining": {
+                "propulsion": 10,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:15",
+              "name": "Radiation Terraforming 15%",
+              "score": 61.483,
+              "remaining": {
+                "weapons": 11,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:15",
+              "name": "Temperature Terraforming 15%",
+              "score": 47.096,
+              "remaining": {
+                "energy": 12,
+                "biotechnology": 1
+              }
+            }
+          ],
+          "recently_unlocked": [],
+          "sprint_stalled": false,
+          "field": "energy",
+          "fuel_mizer_available": true,
+          "early_mizer_doctrine": true
+        },
+        "reason": "Balanced: SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit. Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up.",
+        "priority": 145
+      },
+      {
+        "kind": "create_design",
+        "payload": {
+          "role": "scout",
+          "name": "Long Range Scout Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 4,
+          "desired_hull_name": "Scout",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize sustainable exploration range",
+            "retain the best currently available scanner",
+            "avoid unnecessary weapon mass on pure exploration hulls",
+            "add fuel capacity when a legal slot/component permits"
+          ],
+          "reason": "282 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it.",
+          "priority": 125,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        },
+        "reason": "282 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it.",
+        "priority": 125
+      },
+      {
+        "kind": "create_design",
+        "payload": {
+          "role": "freighter",
+          "name": "Strategic Transport Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 11,
+          "desired_hull_name": "Privateer",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize useful cargo per fuel-safe trip",
+            "favor efficient engines over maximum nominal warp",
+            "retain adequate fuel reserve for round-trip logistics",
+            "support mineral redistribution, especially Germanium"
+          ],
+          "reason": "Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True.",
+          "priority": 118,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        },
+        "reason": "Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True.",
+        "priority": 118
+      },
+      {
+        "kind": "create_design",
+        "payload": {
+          "role": "colony",
+          "name": "Colonizer Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 15,
+          "desired_hull_name": "Colony Ship",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "reach new colonies with a safe one-way fuel budget",
+            "carry the required colonization module",
+            "minimize nonessential mass"
+          ],
+          "reason": "1 viable colony targets are known and Fuel Mizer improves colonization range.",
+          "priority": 116,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        },
+        "reason": "1 viable colony targets are known and Fuel Mizer improves colonization range.",
+        "priority": 116
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 102,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 82,
+              "target_habitability": 92,
+              "terraform_steps": 11,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 24
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "economy": {
+            "population": 3700,
+            "factory_cap": 3,
+            "mine_cap": 4,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 3,
+            "mine_headroom": 4,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 3,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 24,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 27,
+            "population_raw_hundreds": 37,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 300,
+            "projected_next_population": 4000
+          }
+        },
+        "reason": "Balanced: objective production first: terraform Gargantua from 82% toward 92% (11 available steps)",
+        "priority": 110
+      }
+    ],
+    "notes": [
+      "Persona: Balanced",
+      "PERSISTENT INTEL: current M observed=6, ever observed=6/288, restored from memory=0.",
+      "Opening hard goal by T25: explore >= 35 (optimal 50), create >= 13 new colonies (optimal 20).",
+      "Actual: explored 6/288 (2.1%), new colonies=0, owned=3, new discoveries last 5 turns=6.",
+      "RESEARCH PLAN: SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+      "v4 strategic lookahead: CONSOLIDATE_AND_GROW",
+      "v4 race doctrine: INTERSTELLAR TRAVELER",
+      "v4 base-network: planet 37 -> FUEL_HUB priority=0.60",
+      "v4 base-network: planet 102 -> FUEL_HUB priority=0.52",
+      "v4 base-network: planet 71 -> ECONOMIC_BASE priority=0.35",
+      "v4 pop optimizer advisory: 71 -> 102 21630 colonists, score=1.02",
+      "v4 pop optimizer advisory: 71 -> 37 2500 colonists, score=0.49",
+      "native safety: population_transfer: PARTIAL \u2014 General transport remains incomplete; scoped observed forms are supported.",
+      "native safety: player_relation_change: PARTIAL \u2014 Friend relation is empirically validated; Neutral/Enemy native writes remain disabled.",
+      "native safety: set_battle_plan: BLOCKED \u2014 SetFleetBattlePlan native writer remains unvalidated.",
+      "native safety: create_design: BLOCKED \u2014 Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+      "FLEET STATE: id=0 role=scout pos=(1458,1333) dest=84 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=2 role=combat pos=(1369,1298) dest=None destination_warp=None destination_task=None speed=8",
+      "FLEET STATE: id=3 role=freighter pos=(1483,1153) dest=None destination_warp=None destination_task=None speed=8",
+      "FLEET STATE: id=4 role=scout pos=(1114,1093) dest=32 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=5 role=scout pos=(1548,1400) dest=113 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=6 role=scout pos=(1091,1309) dest=7 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=7 role=scout pos=(1139,1148) dest=40 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=8 role=scout pos=(1433,1399) dest=90 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=9 role=colony pos=(1483,1153) dest=None destination_warp=None destination_task=None speed=8"
+    ]
+  },
+  "fleet_intents": [
+    {
+      "fleet_id": 0,
+      "fleet_name": "Fleet #1",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 84; preserve current mission.",
+      "destination_planet_id": 84
+    },
+    {
+      "fleet_id": 2,
+      "fleet_name": "Fleet #3",
+      "role": "combat",
+      "action": "HOLD / DEFEND",
+      "reason": "Armed fleet has no higher-priority military mission; remain available for local defense or concentration.",
+      "destination_planet_id": null
+    },
+    {
+      "fleet_id": 3,
+      "fleet_name": "Fleet #4",
+      "role": "freighter",
+      "action": "HOLD FOR LOGISTICS",
+      "reason": "No explicit cargo route was selected. Cargo ships do not reposition or scout merely to avoid idling.",
+      "destination_planet_id": null
+    },
+    {
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 32; preserve current mission.",
+      "destination_planet_id": 32
+    },
+    {
+      "fleet_id": 5,
+      "fleet_name": "Fleet #6",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 113; preserve current mission.",
+      "destination_planet_id": 113
+    },
+    {
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 7; preserve current mission.",
+      "destination_planet_id": 7
+    },
+    {
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 40; preserve current mission.",
+      "destination_planet_id": 40
+    },
+    {
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 90; preserve current mission.",
+      "destination_planet_id": 90
+    },
+    {
+      "fleet_id": 9,
+      "fleet_name": "Fleet #10",
+      "role": "colony",
+      "action": "HOLD FOR COLONY INTEL",
+      "reason": "No known colony world meets the opening_broadening racial-habitability floor of 50%. Preserve the colony ship at owned population while scouts gather better options.",
+      "destination_planet_id": null,
+      "colony_candidates": []
+    }
+  ],
+  "x_lifecycle": {
+    "fresh_salt": 72,
+    "template_salt": 1382,
+    "m_salt": 1097,
+    "save_submit_count": 3,
+    "filehash_order_length": 90
+  },
+  "persistent_intel": {
+    "memory_reset": false,
+    "current_m_observed": 6,
+    "ever_observed": 6,
+    "restored_from_memory": 0,
+    "total_planets": 288
+  },
+  "strategic_watchdog": {
+    "year": 2425,
+    "turn": 25,
+    "total_planets": 288,
+    "explored_count": 6,
+    "explored_percent": 2.1,
+    "new_colonies": 0,
+    "owned_planets": 3,
+    "discoveries_last_5_turns": 6,
+    "scan_orders_total": 0,
+    "unique_scan_targets_total": 0,
+    "milestone": {
+      "mode": "hard_numbers",
+      "deadline_turn": 25,
+      "explored_min": 35,
+      "explored_optimal": 50,
+      "new_colonies_min": 13,
+      "new_colonies_optimal": 20
+    },
+    "exploration_pressure": 2.0,
+    "colonization_pressure": 2.0,
+    "exploration_below_minimum": true,
+    "colonization_below_minimum": true,
+    "scan_target_reuse_ratio": 0.0,
+    "notes": [
+      "Opening hard goal by T25: explore >= 35 (optimal 50), create >= 13 new colonies (optimal 20).",
+      "Actual: explored 6/288 (2.1%), new colonies=0, owned=3, new discoveries last 5 turns=6."
+    ]
+  },
+  "probe_route_diagnostics": [],
+  "movement_progress_diagnostics": [
+    {
+      "fleet_id": 0,
+      "destination_planet_id": 84,
+      "year": 2425,
+      "current_range": 107.935,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 4,
+      "destination_planet_id": 32,
+      "year": 2425,
+      "current_range": 27.659,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 5,
+      "destination_planet_id": 113,
+      "year": 2425,
+      "current_range": 29.614,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 6,
+      "destination_planet_id": 7,
+      "year": 2425,
+      "current_range": 48.27,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 7,
+      "destination_planet_id": 40,
+      "year": 2425,
+      "current_range": 34.059,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 8,
+      "destination_planet_id": 90,
+      "year": 2425,
+      "current_range": 54.562,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    }
+  ],
+  "command_outcomes": [],
+  "pending_command_expectations": {
+    "2425:set_planet_research_mode:37:0": {
+      "id": "2425:set_planet_research_mode:37:0",
+      "group": "planet_research_mode:37",
+      "kind": "planet_research_mode",
+      "command_kind": "set_planet_research_mode",
+      "planet_id": 37,
+      "planet_name": "Narnia",
+      "leftover_only": true,
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Narnia leftover-only research mode"
+    },
+    "2425:set_planet_research_mode:71:1": {
+      "id": "2425:set_planet_research_mode:71:1",
+      "group": "planet_research_mode:71",
+      "kind": "planet_research_mode",
+      "command_kind": "set_planet_research_mode",
+      "planet_id": 71,
+      "planet_name": "Pansy",
+      "leftover_only": true,
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Pansy leftover-only research mode"
+    },
+    "2425:set_planet_queue:37:2": {
+      "id": "2425:set_planet_queue:37:2",
+      "group": "production:37",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 37,
+      "planet_name": "Narnia",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "starbase_design",
+          "design_slot": 0,
+          "design_name": "Starbase",
+          "hull_name": "Space Station",
+          "quantity": 1,
+          "role": "fuel_hub",
+          "complete_percent": 47
+        },
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 50,
+          "target_habitability": 73,
+          "terraform_steps": 17,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 313
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 4,
+        "mine": 10,
+        "defense": 0,
+        "ship_slots": {
+          "0": 6,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 1,
+        "habitability": 50,
+        "environment": [
+          60,
+          65,
+          72
+        ]
+      },
+      "description": "Narnia production queue"
+    },
+    "2425:set_planet_queue:71:3": {
+      "id": "2425:set_planet_queue:71:3",
+      "group": "production:71",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 71,
+      "planet_name": "Pansy",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "ship_design",
+          "design_slot": 0,
+          "design_name": "Smaugarian Peeping Tom",
+          "quantity": 3,
+          "role": "scout"
+        },
+        {
+          "item": "factory",
+          "quantity": 10,
+          "germanium_cost_each": 3,
+          "germanium_available": 147
+        },
+        {
+          "item": "mine",
+          "quantity": 8
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 94,
+        "mine": 74,
+        "defense": 10,
+        "ship_slots": {
+          "0": 6,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 0,
+        "habitability": 100,
+        "environment": [
+          50,
+          50,
+          50
+        ]
+      },
+      "description": "Pansy production queue"
+    },
+    "2425:set_research:4": {
+      "id": "2425:set_research:4",
+      "group": "research:empire",
+      "kind": "research",
+      "command_kind": "set_research",
+      "field": "energy",
+      "next_field": "energy",
+      "allocation_percent": 25,
+      "capability_id": "terraform:temperature:7",
+      "baseline_tech": {
+        "energy": 4,
+        "weapons": 5,
+        "propulsion": 6,
+        "construction": 5,
+        "electronics": 0,
+        "biotechnology": 3
+      },
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Empire research switch to energy"
+    },
+    "2425:set_planet_queue:102:5": {
+      "id": "2425:set_planet_queue:102:5",
+      "group": "production:102",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 102,
+      "planet_name": "Gargantua",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 82,
+          "target_habitability": 92,
+          "terraform_steps": 11,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 24
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 0,
+        "mine": 0,
+        "defense": 0,
+        "ship_slots": {
+          "0": 6,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": null,
+        "habitability": 82,
+        "environment": [
+          51,
+          58,
+          61
+        ]
+      },
+      "description": "Gargantua production queue"
+    }
+  },
+  "waypoint_diagnostics": [],
+  "persistent_scout_routes": {
+    "0": {
+      "fleet_id": 0,
+      "planet_ids": [
+        84
+      ],
+      "waypoints": [
+        {
+          "planet_id": 84,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "4": {
+      "fleet_id": 4,
+      "planet_ids": [
+        32,
+        65,
+        62,
+        59,
+        82,
+        93,
+        135
+      ],
+      "waypoints": [
+        {
+          "planet_id": 32,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 65,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 62,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 59,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 82,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 93,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 135,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "5": {
+      "fleet_id": 5,
+      "planet_ids": [
+        113,
+        128,
+        129
+      ],
+      "waypoints": [
+        {
+          "planet_id": 113,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 128,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 129,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "6": {
+      "fleet_id": 6,
+      "planet_ids": [
+        7,
+        2,
+        13,
+        3,
+        41
+      ],
+      "waypoints": [
+        {
+          "planet_id": 7,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 2,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 13,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 3,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 41,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "7": {
+      "fleet_id": 7,
+      "planet_ids": [
+        40
+      ],
+      "waypoints": [
+        {
+          "planet_id": 40,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    },
+    "8": {
+      "fleet_id": 8,
+      "planet_ids": [
+        90,
+        77
+      ],
+      "waypoints": [
+        {
+          "planet_id": 90,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 77,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true
+    }
+  },
+  "memory_path": null,
+  "memory_output_path": "C:\\Dev\\repos\\stars-ai\\.v81-latestdemo-probe\\player-01-memory.pending.json",
+  "native_result": {
+    "player_id": 1,
+    "year": 2425,
+    "emitted": [
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 37,
+          "leftover_only": true,
+          "capability_id": "terraform:temperature:7"
+        },
+        "reason": "Protect Narnia production during the Temperature Terraforming 7% sprint; contribute leftover resources only."
+      },
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 71,
+          "leftover_only": true,
+          "capability_id": "terraform:temperature:7"
+        },
+        "reason": "Protect Pansy production during the Temperature Terraforming 7% sprint; contribute leftover resources only."
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 37,
+          "queue": [
+            {
+              "item": "starbase_design",
+              "design_slot": 0,
+              "design_name": "Starbase",
+              "hull_name": "Space Station",
+              "quantity": 1,
+              "role": "fuel_hub",
+              "complete_percent": 47
+            },
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 50,
+              "target_habitability": 73,
+              "terraform_steps": 17,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 313
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 26700,
+            "factory_cap": 26,
+            "mine_cap": 29,
+            "factories": 4,
+            "mines": 10,
+            "factory_headroom": 22,
+            "mine_headroom": 19,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 31,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 313,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 69,
+            "population_raw_hundreds": 267,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 3.0,
+            "projected_growth": 1300,
+            "projected_next_population": 28000
+          }
+        },
+        "reason": "Balanced: objective production first: continue the in-progress Starbase fuel-hub project at Narnia; native completion is 47%. | terraform Narnia from 50% toward 73% (17 available steps)"
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 71,
+          "queue": [
+            {
+              "item": "ship_design",
+              "design_slot": 0,
+              "design_name": "Smaugarian Peeping Tom",
+              "quantity": 3,
+              "role": "scout"
+            },
+            {
+              "item": "factory",
+              "quantity": 10,
+              "germanium_cost_each": 3,
+              "germanium_available": 147
+            },
+            {
+              "item": "mine",
+              "quantity": 8
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 216300,
+            "factory_cap": 216,
+            "mine_cap": 237,
+            "factories": 94,
+            "mines": 74,
+            "factory_headroom": 122,
+            "mine_headroom": 163,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 347,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 147,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 30,
+            "population_raw_hundreds": 2163,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 22.0,
+            "projected_growth": 21600,
+            "projected_next_population": 237900
+          }
+        },
+        "reason": "Balanced: objective production first: 282 worlds remain unknown; exploration milestone needs 44 more known worlds by T25 (~44.00/turn); measured scout productivity ~0.55 discoveries/scout-turn; target scout force=12; available/queued=6. Existing scout choice favors free cruise then efficient Warp-7 range."
+      },
+      {
+        "kind": "set_research",
+        "payload": {
+          "capability_id": "terraform:temperature:7",
+          "capability_name": "Temperature Terraforming 7%",
+          "category": "terraforming",
+          "posture": "SPRINT",
+          "current_field": "energy",
+          "next_field": "energy",
+          "allocation_percent": 25,
+          "score": 119.07,
+          "estimated_turns": 1,
+          "estimate_confidence": "low",
+          "requirements": {
+            "energy": 5,
+            "biotechnology": 2
+          },
+          "remaining_requirements": {
+            "energy": 1
+          },
+          "contributor_planet_ids": [],
+          "protected_production_planet_ids": [
+            37,
+            71,
+            102
+          ],
+          "post_unlock_action": "Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+          "reason": "SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit.",
+          "candidate_scores": [
+            {
+              "capability_id": "terraform:temperature:7",
+              "name": "Temperature Terraforming 7%",
+              "score": 119.07,
+              "remaining": {
+                "energy": 1
+              }
+            },
+            {
+              "capability_id": "terraform:gravity:11",
+              "name": "Gravity Terraforming 11%",
+              "score": 108.136,
+              "remaining": {
+                "propulsion": 4
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:11",
+              "name": "Radiation Terraforming 11%",
+              "score": 98.319,
+              "remaining": {
+                "weapons": 5
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:11",
+              "name": "Temperature Terraforming 11%",
+              "score": 89.486,
+              "remaining": {
+                "energy": 6
+              }
+            },
+            {
+              "capability_id": "hull:2",
+              "name": "Large Freighter",
+              "score": 81.207,
+              "remaining": {
+                "construction": 3
+              }
+            },
+            {
+              "capability_id": "terraform:gravity:15",
+              "name": "Gravity Terraforming 15%",
+              "score": 68.384,
+              "remaining": {
+                "propulsion": 10,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:15",
+              "name": "Radiation Terraforming 15%",
+              "score": 61.483,
+              "remaining": {
+                "weapons": 11,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:15",
+              "name": "Temperature Terraforming 15%",
+              "score": 47.096,
+              "remaining": {
+                "energy": 12,
+                "biotechnology": 1
+              }
+            }
+          ],
+          "recently_unlocked": [],
+          "sprint_stalled": false,
+          "field": "energy",
+          "fuel_mizer_available": true,
+          "early_mizer_doctrine": true
+        },
+        "reason": "Balanced: SPRINT: pursue Temperature Terraforming 7%; score=119.1, remaining={'energy': 1}, horizon~1 turn(s), utilization=1.00. This exact breakpoint improves 4 observed world(s); aggregate habitability gain=14. Post-unlock: Queue Max Terraform on temperature-limited worlds improved by the 7% limit. Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up."
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 102,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 82,
+              "target_habitability": 92,
+              "terraform_steps": 11,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 24
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 3700,
+            "factory_cap": 3,
+            "mine_cap": 4,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 3,
+            "mine_headroom": 4,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 3,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 24,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 27,
+            "population_raw_hundreds": 37,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 300,
+            "projected_next_population": 4000
+          }
+        },
+        "reason": "Balanced: objective production first: terraform Gargantua from 82% toward 92% (11 available steps)"
+      }
+    ],
+    "skipped": [
+      {
+        "kind": "create_design",
+        "reason": "BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+        "payload": {
+          "role": "scout",
+          "name": "Long Range Scout Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 4,
+          "desired_hull_name": "Scout",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize sustainable exploration range",
+            "retain the best currently available scanner",
+            "avoid unnecessary weapon mass on pure exploration hulls",
+            "add fuel capacity when a legal slot/component permits"
+          ],
+          "reason": "282 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it.",
+          "priority": 125,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        }
+      },
+      {
+        "kind": "create_design",
+        "reason": "BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+        "payload": {
+          "role": "freighter",
+          "name": "Strategic Transport Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 11,
+          "desired_hull_name": "Privateer",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize useful cargo per fuel-safe trip",
+            "favor efficient engines over maximum nominal warp",
+            "retain adequate fuel reserve for round-trip logistics",
+            "support mineral redistribution, especially Germanium"
+          ],
+          "reason": "Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True.",
+          "priority": 118,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        }
+      },
+      {
+        "kind": "create_design",
+        "reason": "BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+        "payload": {
+          "role": "colony",
+          "name": "Colonizer Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 15,
+          "desired_hull_name": "Colony Ship",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "reach new colonies with a safe one-way fuel budget",
+            "carry the required colonization module",
+            "minimize nonessential mass"
+          ],
+          "reason": "1 viable colony targets are known and Fuel Mizer improves colonization range.",
+          "priority": 116,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        }
+      }
+    ],
+    "output_x": "C:\\Dev\\repos\\stars-ai\\.v81-latestdemo-probe\\GAME.x1",
+    "waypoint_diagnostics": []
+  }
+}

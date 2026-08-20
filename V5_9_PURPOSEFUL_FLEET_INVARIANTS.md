@@ -13,7 +13,7 @@ Every fleet needs a PURPOSE, not necessarily a MOVE.
 - Never move to an unknown or unverified planet just to stay active.
 - If no known viable colony exists: hold at an owned planet.
 - If a viable colony exists and the ship is at population: emit the complete
-  validated 25k load + WaypointAdd + Colonize task=2 sequence.
+  validated 25 kT / 2,500-colonist load + WaypointAdd + Colonize task=2 sequence.
 - If empty and away from population: return to the nearest owned planet first.
 
 ### Freighters / cargo ships

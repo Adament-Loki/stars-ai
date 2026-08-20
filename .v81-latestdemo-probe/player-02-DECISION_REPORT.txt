@@ -1,0 +1,64 @@
+STARS! AI DECISION REPORT — A Rumble in the Jungle — Year 2425 — Player 2
+
+Format: Object Name - Action - Reason/Justification
+
+COMMAND OUTCOME STATUS
+NO PRIOR EMITTED COMMANDS DUE - Nothing to verify against this M file.
+SUMMARY - completed=0; pending=0; warnings=0; unverified=0.
+
+FLEETS
+Fleet #1 - CONTINUE WAYPOINT -> Crazy Horse - Fleet already has active destination planet 185; preserve current mission.
+Fleet #3 - HOLD / DEFEND - Armed fleet has no higher-priority military mission; remain available for local defense or concentration.
+Fleet #4 - LOAD + TRANSPORT -> Staff - Expansionist: dynamic shipment Schubert->Staff: I/B/G=4/0/0kT (4/250kT conservative capacity). Ironium/Boranium 4/0kT replenish ship/defense working stock. capacity=250kT; source surplus I/B/G=4/0/0; target deficit=87/0/205. Destination Transport task unloads all cargo and loads optimal fuel.
+Fleet #5 - MOVE -> Scandahoovia - Expansionist: probe campaign -> Scandahoovia; 7 unknown worlds remain on persistent forward route. Route remains within 300 ly of owned support.
+Fleet #6 - CONTINUE WAYPOINT -> Desolate - Fleet already has active destination planet 58; preserve current mission.
+Fleet #7 - CONTINUE WAYPOINT -> Pluto - Fleet already has active destination planet 51; preserve current mission.
+Fleet #8 - CONTINUE WAYPOINT -> Catnip - Fleet already has active destination planet 68; preserve current mission.
+Fleet #9 - CONTINUE WAYPOINT -> Burrito - Fleet already has active destination planet 114; preserve current mission.
+Fleet #10 - CONTINUE WAYPOINT -> Bambi - Fleet already has active destination planet 112; preserve current mission.
+Fleet #11 - CONTINUE WAYPOINT -> Winky-Blinky - Fleet already has active destination planet 103; preserve current mission.
+Fleet #12 - CONTINUE WAYPOINT -> Winky-Blinky - Fleet already has active destination planet 103; preserve current mission.
+
+COLONIZATION PRIORITY
+Fleet #11 - NO COLONY TARGET - Fleet already has active destination planet 103; preserve current mission.
+Fleet #12 - NO COLONY TARGET - Fleet already has active destination planet 103; preserve current mission.
+
+DESIGN DEVELOPMENT
+Long Range Scout Mk II - PROPOSE SCOUT - hull=Scout; engine=Fuel Mizer - 278 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it. Objectives: maximize sustainable exploration range, retain the best currently available scanner, avoid unnecessary weapon mass on pure exploration hulls, add fuel capacity when a legal slot/component permits. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+Strategic Transport Mk II - PROPOSE FREIGHTER - hull=Privateer; engine=Fuel Mizer - Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True. Objectives: maximize useful cargo per fuel-safe trip, favor efficient engines over maximum nominal warp, retain adequate fuel reserve for round-trip logistics, support mineral redistribution, especially Germanium. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+Colonizer Mk II - PROPOSE COLONY - hull=Colony Ship; engine=Fuel Mizer - 3 viable colony targets are known and Fuel Mizer improves colonization range. Objectives: reach new colonies with a safe one-way fuel budget, carry the required colonization module, minimize nonessential mass. NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION.
+
+PLANET PRODUCTION
+Panacea - BUILD 1x max_terraform, 1x factory, 1x mine - Y2425 M-file pop raw=35x100 => 3,500; capacity 1.0% of 1,000,000; projected growth +200 -> 3,700; factories 0/3; mines 0/3; Germanium 19kT (factory cost 3kT; conc=37). Expansionist: objective production first: terraform Panacea from 76% toward 87% (12 available steps)
+Staff - BUILD 2x Mayflower, 3x Smaugarian Peeping Tom, 10x mine - Y2425 M-file pop raw=2163x100 => 216,300; capacity 22.0% of 1,000,000; projected growth +21,600 -> 237,900; factories 48/216; mines 38/237; Germanium 0kT (factory cost 3kT; conc=30); base=Space Station shipyard=Y refuel=Y. Expansionist: objective production first: 278 worlds remain unknown; exploration milestone needs 40 more known worlds by T25 (~40.00/turn); measured scout productivity ~0.55 discoveries/scout-turn; target scout force=12; available/queued=8. Existing scout choice favors free cruise then efficient Warp-7 range. | 3 phase-eligible unowned claims under opening_broadening; 76 exportable 25 kT / 2,500-colonist packets; source reserve=25,000; milestone needs 20 more colonies by T25 (~20.00/turn); 2 colony ships already loaded; target concurrent colony force=3; available/queued=3; effective distinct-claim pipeline=2; duplicate active commitments=1. Add 1 to the preserved Mayflower queue.
+Schubert - BUILD 1x max_terraform, 1x mine, 1x factory - Y2425 M-file pop raw=87x100 => 8,700; capacity 1.0% of 1,000,000; projected growth +600 -> 9,300; factories 0/8; mines 0/9; Germanium 19kT (factory cost 3kT; conc=44). Expansionist: objective production first: terraform Schubert from 69% toward 81% (13 available steps)
+Winky-Blinky - BUILD 1x max_terraform, 1x factory, 1x mine - Y2425 M-file pop raw=25x100 => 2,500; capacity 1.0% of 1,000,000; projected growth +200 -> 2,700; factories 0/2; mines 0/2; Germanium 21kT (factory cost 3kT; conc=67). Expansionist: objective production first: terraform Winky-Blinky from 83% toward 91% (9 available steps)
+Gout - BUILD 1x Starbase, 1x max_terraform, 1x factory, 1x mine - Y2425 M-file pop raw=184x100 => 18,400; capacity 2.0% of 1,000,000; projected growth +400 -> 18,800; factories 4/18; mines 10/20; Germanium 280kT (factory cost 3kT; conc=71); base=Orbital Fort shipyard=N refuel=N. Expansionist: objective production first: continue the in-progress Starbase fuel-hub project at Gout; native completion is 40%. | terraform Gout from 26% toward 43% (13 available steps)
+
+RESEARCH
+Empire Research - Gravity Terraforming 11% - SPRINT - PROPULSION -> PROPULSION at 25% - contributors=() - Expansionist: SPRINT: pursue Gravity Terraforming 11%; score=181.0, remaining={'propulsion': 4}, horizon~4 turn(s), utilization=1.00. This exact breakpoint improves 6 observed world(s); aggregate habitability gain=20. Post-unlock: Queue Max Terraform on gravity-limited worlds improved by the 11% limit. Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up.
+
+DIPLOMACY
+Diplomacy - NO RELATION CHANGE - Preserve current relations.
+
+NATIVE WAYPOINT LIFECYCLE
+Fleet 4 - ADD - normalized destination=None; native destination=None; native warp/task=None/None; requested scan -> P116 @ W7. No native destination waypoint #1 exists.
+Fleet 3 - ADD - normalized destination=None; native destination=None; native warp/task=None/None; requested transport -> P83 @ W7. No native destination waypoint #1 exists.
+
+MOVEMENT PROGRESS
+No same-destination prior-turn range is available yet.
+
+NATIVE EXECUTION DETAILS
+Fleet #5 - NATIVE ADD WAYPOINT -> Scandahoovia warp 7 - from (1669,1878); M-file waypoint_count=1. fuel=183.0/300.0mg; mass~26kt; est burn=17.62mg; engine=Daddy Long Legs 7. Expansionist: probe campaign -> Scandahoovia; 7 unknown worlds remain on persistent forward route. Route remains within 300 ly of owned support.
+Fleet #4 - NATIVE TRANSPORT ORDER -> Staff warp 7 - load={'ironium': 4, 'boranium': 0, 'germanium': 0}; unload={'ironium': 'all', 'boranium': 'all', 'germanium': 'all', 'population': 'all'}; Germanium pressure=0.
+
+NATIVE WRITER LIMITATIONS / SKIPPED ACTIONS
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+create_design - SKIPPED create_design - BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.
+
+COLONIZE NATIVE STATUS
+Native Colonize task - DEFERRED - Colony asset is intentionally holding or returning for population; no purposeless colony movement emitted.
+
+ACTIVITY CHECK
+PASS - ALL OWNED FLEETS ACCOUNTED FOR - Every fleet has movement, an existing waypoint, or a conscious armed hold.

@@ -23,7 +23,7 @@ Warp 9 is deliberately avoided until engine safe-warp capability is decoded.
 
 ## Colony-load diagnosis
 
-v5.6 only emitted the 25k population load when the colony fleet could be mapped
+v5.6 only emitted the 25 kT / 2,500-colonist population load when the colony fleet could be mapped
 to an owned source planet. v5.7 makes source detection robust:
 1. use `position_object_id` when valid;
 2. fall back to exact planet/fleet coordinates.
@@ -31,7 +31,7 @@ to an owned source planet. v5.7 makes source detection robust:
 Every decision report now states:
 - population aboard before the order;
 - source planet population;
-- whether the native 25k load block was emitted;
+- whether the native 25 kT population load block was emitted;
 - destination;
 - selected warp.
 

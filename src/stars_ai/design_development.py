@@ -7,6 +7,7 @@ from pathlib import Path
 import csv
 
 from .fuel_planner import has_ife
+from .colony_planner import colony_planet_is_eligible
 
 
 TECH_FIELDS=("energy","weapons","propulsion","construction","electronics","biotechnology")
@@ -153,11 +154,7 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
     colonies=_designs(state,"colony")
     viable=sum(
         1 for p in state.planets
-        if p.observed and p.owner is None
-        and (
-            bool((state.race.native or {}).get("universal_hab"))
-            or (p.habitability is not None and p.habitability>=25)
-        )
+        if colony_planet_is_eligible(state,p,plan)
     )
     if colonies and viable and fuel_mizer and not _has_engine(state,"colony",2):
         proposals.append(DesignProposal(

@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 import csv
 from .util import distance
+from .population_units import COLONY_LOAD_KT
 
 ENGINE=1; SCANNER=2; SHIELD=4; ARMOR=8; BEAM=16; TORPEDO=32; BOMB=64
 MINING_ROBOT=128; MINE_LAYER=256; ORBITAL=512; PLANETARY=1024; ELECTRICAL=2048; MECHANICAL=4096
@@ -250,6 +251,28 @@ def mission_reachable(fleet,target_position,mission):
         )
     return fastest_fuel_safe_warp(fp,d,m,ife=bool(flags.get('ife')),ce=bool(flags.get('ce'))) is not None
 
+
+def mission_reachable_with_planned_cargo(fleet,target_position,mission,load):
+    """Reachability after cargo that will be loaded by the same order.
+
+    Cargo values use Stars!' native kT units. In particular, a 2,500-colonist
+    colony packet is 25 kT of population cargo. Evaluating an empty colony ship
+    without this mass can approve a route that becomes unsafe as soon as the
+    load block executes.
+    """
+    native=getattr(fleet,'native',{}) or {}
+    profile=native.get('fuel_profile')
+    if not profile:
+        return True
+    flags=native.get('race_fuel_flags',{})
+    planned=profile_with_planned_cargo(profile,load)
+    d=distance(fleet.position,target_position)
+    return fastest_fuel_safe_warp(
+        planned,d,mission,
+        ife=bool(flags.get('ife')),
+        ce=bool(flags.get('ce')),
+    ) is not None
+
 def best_range_ly(dp,warp=8,ife=False):
     fp={'groups':[{'mass':int(dp.get('dry_mass',0)),'engine_id':dp.get('engine_id')}],'cargo_mass':0,'fuel_capacity':int(dp.get('fuel_capacity',0)),'fuel':int(dp.get('fuel_capacity',0)),'effective_fuel':int(dp.get('fuel_capacity',0)),'all_ram_scoop':bool(dp.get('ram_scoop'))}
     per=estimate_fuel(fp,1,warp,ife=ife)
@@ -279,7 +302,13 @@ def apply_fuel_safety(state,orders):
             kept.append(o); continue
 
         fp=f.native['fuel_profile']
-        fp=profile_with_planned_cargo(fp,o.payload.get('load')) if o.kind=='transport_minerals' else fp
+        if o.kind=='transport_minerals':
+            fp=profile_with_planned_cargo(fp,o.payload.get('load'))
+        elif o.kind=='colony_operation' and o.payload.get('load_25kt_population'):
+            fp=profile_with_planned_cargo(
+                fp,
+                {'population':int(o.payload.get('load_population_kt',COLONY_LOAD_KT))},
+            )
         flags=(f.native or {}).get('race_fuel_flags',{})
         mission=str(o.payload.get('mission',o.kind))
         ml=mission.lower()
@@ -312,6 +341,9 @@ def apply_fuel_safety(state,orders):
 
             requested=int(o.payload.get('warp',safe) or safe)
             o.payload['warp']=int(safe)
+            route_waypoints=o.payload.get('route_waypoints') or []
+            if route_waypoints:
+                route_waypoints[0]['warp']=int(safe)
             o.payload['fuel_plan']={
                 'policy':'one_way_probe',
                 'requested_warp':requested,
@@ -418,4 +450,3 @@ def apply_fuel_safety(state,orders):
         kept.append(o)
 
     orders.orders=kept+extras
-

@@ -1,0 +1,4016 @@
+{
+  "state": {
+    "game": "A Rumble in the Jungle",
+    "year": 2425,
+    "player": 2
+  },
+  "orders": {
+    "game_name": "A Rumble in the Jungle",
+    "year": 2425,
+    "player_id": 2,
+    "orders": [
+      {
+        "kind": "move_fleet",
+        "payload": {
+          "fleet_id": 4,
+          "destination_planet_id": 142,
+          "warp": 7,
+          "mission": "scan",
+          "route_managed": true,
+          "route_remaining": 5,
+          "route_planet_ids": [
+            142,
+            137,
+            89,
+            98,
+            138
+          ],
+          "route_waypoints": [
+            {
+              "planet_id": 142,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 137,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 89,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 98,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 138,
+              "warp": 7,
+              "task": 0
+            }
+          ],
+          "route_expected_discoveries": 5,
+          "route_terminal": true,
+          "free_cruise_warp": 1,
+          "exploration_pressure": 0.85,
+          "fuel_plan": {
+            "policy": "one_way_probe",
+            "requested_warp": 7,
+            "selected_warp": 7,
+            "distance": 45.28,
+            "fuel": 183.0,
+            "capacity": 300.0,
+            "mass": 26,
+            "estimated_fuel": 5.5,
+            "free_cruise_warp": 1,
+            "return_reserve": 0,
+            "engine_names": [
+              "Daddy Long Legs 7"
+            ],
+            "all_ram_scoop": false
+          }
+        },
+        "reason": "Expansionist: probe campaign -> Zhukovi; 5 unknown worlds remain on persistent forward route. Route remains within 300 ly of owned support.",
+        "priority": 193
+      },
+      {
+        "kind": "transport_minerals",
+        "payload": {
+          "fleet_id": 3,
+          "source_planet_id": 101,
+          "destination_planet_id": 83,
+          "warp": 7,
+          "load": {
+            "ironium": 4,
+            "boranium": 0,
+            "germanium": 0
+          },
+          "load_total": 4,
+          "cargo_capacity": 250,
+          "cargo_capacity_confidence": "base-hull-only",
+          "unload": {
+            "ironium": "all",
+            "boranium": "all",
+            "germanium": "all",
+            "population": "all"
+          },
+          "fuel": "load_optimal",
+          "cargo_plan": {
+            "ironium": 4,
+            "boranium": 0,
+            "germanium": 0,
+            "capacity": 250,
+            "source_surplus": {
+              "ironium": 4,
+              "boranium": 0,
+              "germanium": 0
+            },
+            "destination_deficit": {
+              "ironium": 87,
+              "boranium": 0,
+              "germanium": 205
+            },
+            "rationale": [
+              "Ironium/Boranium 4/0kT replenish ship/defense working stock.",
+              "capacity=250kT; source surplus I/B/G=4/0/0; target deficit=87/0/205."
+            ]
+          },
+          "fuel_plan": {
+            "requested_warp": 7,
+            "selected_warp": 7,
+            "distance": 228.32,
+            "fuel": 392.0,
+            "capacity": 650.0,
+            "mass": 222,
+            "estimated_fuel": 236.96,
+            "engine_names": [
+              "Daddy Long Legs 7"
+            ],
+            "all_ram_scoop": false
+          }
+        },
+        "reason": "Expansionist: dynamic shipment Schubert->Staff: I/B/G=4/0/0kT (4/250kT conservative capacity). Ironium/Boranium 4/0kT replenish ship/defense working stock. capacity=250kT; source surplus I/B/G=4/0/0; target deficit=87/0/205. Destination Transport task unloads all cargo and loads optimal fuel.",
+        "priority": 148
+      },
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 83,
+          "leftover_only": true,
+          "capability_id": "terraform:gravity:11"
+        },
+        "reason": "Protect Staff production during the Gravity Terraforming 11% sprint; contribute leftover resources only.",
+        "priority": 146
+      },
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 109,
+          "leftover_only": true,
+          "capability_id": "terraform:gravity:11"
+        },
+        "reason": "Protect Gout production during the Gravity Terraforming 11% sprint; contribute leftover resources only.",
+        "priority": 146
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 109,
+          "queue": [
+            {
+              "item": "starbase_design",
+              "design_slot": 0,
+              "design_name": "Starbase",
+              "hull_name": "Space Station",
+              "quantity": 1,
+              "role": "fuel_hub",
+              "complete_percent": 40
+            },
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 26,
+              "target_habitability": 43,
+              "terraform_steps": 13,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 280
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "economy": {
+            "population": 18400,
+            "factory_cap": 18,
+            "mine_cap": 20,
+            "factories": 4,
+            "mines": 10,
+            "factory_headroom": 14,
+            "mine_headroom": 10,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 23,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 280,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 71,
+            "population_raw_hundreds": 184,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 2.0,
+            "projected_growth": 400,
+            "projected_next_population": 18800
+          }
+        },
+        "reason": "Expansionist: objective production first: continue the in-progress Starbase fuel-hub project at Gout; native completion is 40%. | terraform Gout from 26% toward 43% (13 available steps)",
+        "priority": 146
+      },
+      {
+        "kind": "set_research",
+        "payload": {
+          "capability_id": "terraform:gravity:11",
+          "capability_name": "Gravity Terraforming 11%",
+          "category": "terraforming",
+          "posture": "SPRINT",
+          "current_field": "propulsion",
+          "next_field": "propulsion",
+          "allocation_percent": 25,
+          "score": 275.4,
+          "estimated_turns": 4,
+          "estimate_confidence": "low",
+          "requirements": {
+            "propulsion": 10,
+            "biotechnology": 3
+          },
+          "remaining_requirements": {
+            "propulsion": 4
+          },
+          "contributor_planet_ids": [],
+          "protected_production_planet_ids": [
+            44,
+            83,
+            101,
+            103,
+            109
+          ],
+          "post_unlock_action": "Queue Max Terraform on gravity-limited worlds improved by the 11% limit.",
+          "reason": "SPRINT: pursue Gravity Terraforming 11%; score=275.4, remaining={'propulsion': 4}, horizon~4 turn(s), utilization=1.00. This exact breakpoint improves 31 observed world(s); aggregate habitability gain=105. Post-unlock: Queue Max Terraform on gravity-limited worlds improved by the 11% limit.",
+          "candidate_scores": [
+            {
+              "capability_id": "terraform:gravity:11",
+              "name": "Gravity Terraforming 11%",
+              "score": 275.4,
+              "remaining": {
+                "propulsion": 4
+              }
+            },
+            {
+              "capability_id": "terraform:gravity:15",
+              "name": "Gravity Terraforming 15%",
+              "score": 228.15,
+              "remaining": {
+                "propulsion": 10,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:7",
+              "name": "Temperature Terraforming 7%",
+              "score": 153.9,
+              "remaining": {
+                "energy": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:15",
+              "name": "Temperature Terraforming 15%",
+              "score": 139.05,
+              "remaining": {
+                "energy": 12,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:15",
+              "name": "Radiation Terraforming 15%",
+              "score": 132.3,
+              "remaining": {
+                "weapons": 13,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:11",
+              "name": "Temperature Terraforming 11%",
+              "score": 120.15,
+              "remaining": {
+                "energy": 6
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:7",
+              "name": "Radiation Terraforming 7%",
+              "score": 118.8,
+              "remaining": {
+                "weapons": 2
+              }
+            },
+            {
+              "capability_id": "hull:2",
+              "name": "Large Freighter",
+              "score": 105.873,
+              "remaining": {
+                "construction": 2
+              }
+            }
+          ],
+          "recently_unlocked": [],
+          "sprint_stalled": false,
+          "field": "propulsion",
+          "fuel_mizer_available": true,
+          "early_mizer_doctrine": true
+        },
+        "reason": "Expansionist: SPRINT: pursue Gravity Terraforming 11%; score=275.4, remaining={'propulsion': 4}, horizon~4 turn(s), utilization=1.00. This exact breakpoint improves 31 observed world(s); aggregate habitability gain=105. Post-unlock: Queue Max Terraform on gravity-limited worlds improved by the 11% limit. Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up.",
+        "priority": 145
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 83,
+          "queue": [
+            {
+              "item": "ship_design",
+              "design_slot": 1,
+              "design_name": "Mayflower",
+              "quantity": 5,
+              "preserved_existing": true,
+              "role": "colony",
+              "objective_top_up": 4
+            },
+            {
+              "item": "mine",
+              "quantity": 10,
+              "reason": "germanium_constraint"
+            }
+          ],
+          "economy": {
+            "population": 216300,
+            "factory_cap": 216,
+            "mine_cap": 237,
+            "factories": 48,
+            "mines": 38,
+            "factory_headroom": 168,
+            "mine_headroom": 199,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 283,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 0,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 30,
+            "population_raw_hundreds": 2163,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 22.0,
+            "projected_growth": 21600,
+            "projected_next_population": 237900
+          }
+        },
+        "reason": "Expansionist: objective production first: 29 phase-eligible unowned claims under opening_broadening; 76 exportable 25 kT / 2,500-colonist packets; source reserve=25,000; milestone needs 17 more colonies by T25 (~17.00/turn); 2 colony ships already loaded; target concurrent colony force=12; available/queued=3; effective distinct-claim pipeline=2; duplicate active commitments=1. Add 4 to the preserved Mayflower queue.",
+        "priority": 130
+      },
+      {
+        "kind": "create_design",
+        "payload": {
+          "role": "scout",
+          "name": "Long Range Scout Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 4,
+          "desired_hull_name": "Scout",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize sustainable exploration range",
+            "retain the best currently available scanner",
+            "avoid unnecessary weapon mass on pure exploration hulls",
+            "add fuel capacity when a legal slot/component permits"
+          ],
+          "reason": "227 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it.",
+          "priority": 125,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        },
+        "reason": "227 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it.",
+        "priority": 125
+      },
+      {
+        "kind": "create_design",
+        "payload": {
+          "role": "freighter",
+          "name": "Strategic Transport Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 11,
+          "desired_hull_name": "Privateer",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize useful cargo per fuel-safe trip",
+            "favor efficient engines over maximum nominal warp",
+            "retain adequate fuel reserve for round-trip logistics",
+            "support mineral redistribution, especially Germanium"
+          ],
+          "reason": "Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True.",
+          "priority": 118,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        },
+        "reason": "Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True.",
+        "priority": 118
+      },
+      {
+        "kind": "create_design",
+        "payload": {
+          "role": "colony",
+          "name": "Colonizer Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 15,
+          "desired_hull_name": "Colony Ship",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "reach new colonies with a safe one-way fuel budget",
+            "carry the required colonization module",
+            "minimize nonessential mass"
+          ],
+          "reason": "29 viable colony targets are known and Fuel Mizer improves colonization range.",
+          "priority": 116,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        },
+        "reason": "29 viable colony targets are known and Fuel Mizer improves colonization range.",
+        "priority": 116
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 44,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 76,
+              "target_habitability": 87,
+              "terraform_steps": 12,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 19
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "economy": {
+            "population": 3500,
+            "factory_cap": 3,
+            "mine_cap": 3,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 3,
+            "mine_headroom": 3,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 3,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 19,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 37,
+            "population_raw_hundreds": 35,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 200,
+            "projected_next_population": 3700
+          }
+        },
+        "reason": "Expansionist: objective production first: terraform Panacea from 76% toward 87% (12 available steps)",
+        "priority": 110
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 101,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 69,
+              "target_habitability": 81,
+              "terraform_steps": 13,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "mine",
+              "quantity": 1,
+              "reason": "germanium_constraint"
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 19
+            }
+          ],
+          "economy": {
+            "population": 8700,
+            "factory_cap": 8,
+            "mine_cap": 9,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 8,
+            "mine_headroom": 9,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 8,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 19,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 44,
+            "population_raw_hundreds": 87,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 600,
+            "projected_next_population": 9300
+          }
+        },
+        "reason": "Expansionist: objective production first: terraform Schubert from 69% toward 81% (13 available steps)",
+        "priority": 110
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 103,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 83,
+              "target_habitability": 91,
+              "terraform_steps": 9,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 21
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "economy": {
+            "population": 2500,
+            "factory_cap": 2,
+            "mine_cap": 2,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 2,
+            "mine_headroom": 2,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 2,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 21,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 67,
+            "population_raw_hundreds": 25,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 200,
+            "projected_next_population": 2700
+          }
+        },
+        "reason": "Expansionist: objective production first: terraform Winky-Blinky from 83% toward 91% (9 available steps)",
+        "priority": 110
+      }
+    ],
+    "notes": [
+      "Persona: Expansionist",
+      "PERSISTENT INTEL: current M observed=10, ever observed=61/288, restored from memory=51.",
+      "UNVERIFIED - Empire research should be on construction, but the current M file does not expose a research-field setting and no level increase confirms it yet.",
+      "Opening hard goal by T25: explore >= 35 (optimal 50), create >= 13 new colonies (optimal 20).",
+      "Actual: explored 61/288 (21.2%), new colonies=3, owned=5, new discoveries last 5 turns=11.",
+      "SCOUT EFFICIENCY WARNING: 57% of persistent scan assignments reused a previous target.",
+      "RESEARCH PLAN: SPRINT: pursue Gravity Terraforming 11%; score=275.4, remaining={'propulsion': 4}, horizon~4 turn(s), utilization=1.00. This exact breakpoint improves 31 observed world(s); aggregate habitability gain=105. Post-unlock: Queue Max Terraform on gravity-limited worlds improved by the 11% limit.",
+      "v4 strategic lookahead: CONSOLIDATE_AND_GROW",
+      "v4 race doctrine: INTERSTELLAR TRAVELER",
+      "v4 base-network: planet 101 -> FUEL_HUB priority=0.90",
+      "v4 base-network: planet 44 -> FUEL_HUB priority=0.87",
+      "v4 base-network: planet 103 -> FUEL_HUB priority=0.87",
+      "v4 pop optimizer advisory: 83 -> 103 21630 colonists, score=1.03",
+      "v4 pop optimizer advisory: 83 -> 44 2500 colonists, score=1.01",
+      "v4 pop optimizer advisory: 83 -> 101 2500 colonists, score=0.81",
+      "native safety: population_transfer: PARTIAL \u2014 General transport remains incomplete; scoped observed forms are supported.",
+      "native safety: player_relation_change: PARTIAL \u2014 Friend relation is empirically validated; Neutral/Enemy native writes remain disabled.",
+      "native safety: set_battle_plan: BLOCKED \u2014 SetFleetBattlePlan native writer remains unvalidated.",
+      "native safety: create_design: BLOCKED \u2014 Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+      "FLEET STATE: id=0 role=scout pos=(1775,1752) dest=185 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=2 role=combat pos=(1323,1469) dest=None destination_warp=None destination_task=None speed=8",
+      "FLEET STATE: id=3 role=freighter pos=(1481,1836) dest=None destination_warp=None destination_task=None speed=8",
+      "FLEET STATE: id=4 role=scout pos=(1669,1878) dest=None destination_warp=None destination_task=None speed=8",
+      "FLEET STATE: id=5 role=scout pos=(1315,1986) dest=58 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=6 role=scout pos=(1259,1612) dest=51 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=7 role=scout pos=(1350,1745) dest=68 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=8 role=scout pos=(1496,1725) dest=114 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=9 role=scout pos=(1419,1453) dest=112 destination_warp=7 destination_task=0 speed=8",
+      "FLEET STATE: id=10 role=colony pos=(1338,1776) dest=103 destination_warp=6 destination_task=2 speed=8",
+      "FLEET STATE: id=11 role=colony pos=(1303,1767) dest=103 destination_warp=6 destination_task=2 speed=8",
+      "MOVEMENT PROGRESS: fleet=6 destination=51 range 73.246->24.207 at W7; expected~49.0 actual=49.039",
+      "MOVEMENT PROGRESS: fleet=7 destination=68 range 103.465->54.378 at W7; expected~49.0 actual=49.087",
+      "MOVEMENT PROGRESS: fleet=9 destination=112 range 203.657->155.242 at W7; expected~49.0 actual=48.415",
+      "MOVEMENT PROGRESS: fleet=10 destination=103 range 190.672->154.538 at W6; expected~36.0 actual=36.134",
+      "MOVEMENT PROGRESS: fleet=11 destination=103 range 226.808->190.672 at W6; expected~36.0 actual=36.136"
+    ]
+  },
+  "fleet_intents": [
+    {
+      "fleet_id": 0,
+      "fleet_name": "Fleet #1",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 185; preserve current mission.",
+      "destination_planet_id": 185
+    },
+    {
+      "fleet_id": 2,
+      "fleet_name": "Fleet #3",
+      "role": "combat",
+      "action": "HOLD / DEFEND",
+      "reason": "Armed fleet has no higher-priority military mission; remain available for local defense or concentration.",
+      "destination_planet_id": null
+    },
+    {
+      "fleet_id": 3,
+      "fleet_name": "Fleet #4",
+      "role": "freighter",
+      "action": "LOAD + TRANSPORT",
+      "reason": "Expansionist: dynamic shipment Schubert->Staff: I/B/G=4/0/0kT (4/250kT conservative capacity). Ironium/Boranium 4/0kT replenish ship/defense working stock. capacity=250kT; source surplus I/B/G=4/0/0; target deficit=87/0/205. Destination Transport task unloads all cargo and loads optimal fuel.",
+      "destination_planet_id": 83,
+      "colony_candidates": []
+    },
+    {
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "role": "scout",
+      "action": "MOVE",
+      "reason": "Expansionist: probe campaign -> Zhukovi; 5 unknown worlds remain on persistent forward route. Route remains within 300 ly of owned support.",
+      "destination_planet_id": 142,
+      "colony_candidates": []
+    },
+    {
+      "fleet_id": 5,
+      "fleet_name": "Fleet #6",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 58; preserve current mission.",
+      "destination_planet_id": 58
+    },
+    {
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 51; preserve current mission.",
+      "destination_planet_id": 51
+    },
+    {
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 68; preserve current mission.",
+      "destination_planet_id": 68
+    },
+    {
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 114; preserve current mission.",
+      "destination_planet_id": 114
+    },
+    {
+      "fleet_id": 9,
+      "fleet_name": "Fleet #10",
+      "role": "scout",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 112; preserve current mission.",
+      "destination_planet_id": 112
+    },
+    {
+      "fleet_id": 10,
+      "fleet_name": "Fleet #11",
+      "role": "colony",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 103; preserve current mission.",
+      "destination_planet_id": 103
+    },
+    {
+      "fleet_id": 11,
+      "fleet_name": "Fleet #12",
+      "role": "colony",
+      "action": "CONTINUE WAYPOINT",
+      "reason": "Fleet already has active destination planet 103; preserve current mission.",
+      "destination_planet_id": 103
+    }
+  ],
+  "x_lifecycle": {
+    "fresh_salt": 444,
+    "template_salt": 1916,
+    "m_salt": 901,
+    "save_submit_count": 0,
+    "filehash_order_length": 219
+  },
+  "persistent_intel": {
+    "memory_reset": false,
+    "current_m_observed": 10,
+    "ever_observed": 61,
+    "restored_from_memory": 51,
+    "total_planets": 288
+  },
+  "strategic_watchdog": {
+    "year": 2425,
+    "turn": 25,
+    "total_planets": 288,
+    "explored_count": 61,
+    "explored_percent": 21.2,
+    "new_colonies": 3,
+    "owned_planets": 5,
+    "discoveries_last_5_turns": 11,
+    "scan_orders_total": 88,
+    "unique_scan_targets_total": 38,
+    "milestone": {
+      "mode": "hard_numbers",
+      "deadline_turn": 25,
+      "explored_min": 35,
+      "explored_optimal": 50,
+      "new_colonies_min": 13,
+      "new_colonies_optimal": 20
+    },
+    "exploration_pressure": 0.85,
+    "colonization_pressure": 2.0,
+    "exploration_below_minimum": false,
+    "colonization_below_minimum": true,
+    "scan_target_reuse_ratio": 0.568,
+    "notes": [
+      "Opening hard goal by T25: explore >= 35 (optimal 50), create >= 13 new colonies (optimal 20).",
+      "Actual: explored 61/288 (21.2%), new colonies=3, owned=5, new discoveries last 5 turns=11.",
+      "SCOUT EFFICIENCY WARNING: 57% of persistent scan assignments reused a previous target."
+    ]
+  },
+  "probe_route_diagnostics": [
+    {
+      "fleet_id": 4,
+      "next": 142,
+      "remaining": 5,
+      "free_cruise_warp": 1
+    }
+  ],
+  "movement_progress_diagnostics": [
+    {
+      "fleet_id": 0,
+      "destination_planet_id": 185,
+      "year": 2425,
+      "current_range": 25.807,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 5,
+      "destination_planet_id": 58,
+      "year": 2425,
+      "current_range": 114.39,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 6,
+      "destination_planet_id": 51,
+      "year": 2425,
+      "current_range": 24.207,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": 73.246,
+      "expected_movement": 49.0,
+      "actual_progress": 49.039,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null,
+      "prior_year": 2424
+    },
+    {
+      "fleet_id": 7,
+      "destination_planet_id": 68,
+      "year": 2425,
+      "current_range": 54.378,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": 103.465,
+      "expected_movement": 49.0,
+      "actual_progress": 49.087,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null,
+      "prior_year": 2424
+    },
+    {
+      "fleet_id": 8,
+      "destination_planet_id": 114,
+      "year": 2425,
+      "current_range": 52.773,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": null,
+      "expected_movement": null,
+      "actual_progress": null,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null
+    },
+    {
+      "fleet_id": 9,
+      "destination_planet_id": 112,
+      "year": 2425,
+      "current_range": 155.242,
+      "commanded_warp": 7,
+      "native_task": 0,
+      "prior_range": 203.657,
+      "expected_movement": 49.0,
+      "actual_progress": 48.415,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null,
+      "prior_year": 2424
+    },
+    {
+      "fleet_id": 10,
+      "destination_planet_id": 103,
+      "year": 2425,
+      "current_range": 154.538,
+      "commanded_warp": 6,
+      "native_task": 2,
+      "prior_range": 190.672,
+      "expected_movement": 36.0,
+      "actual_progress": 36.134,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null,
+      "prior_year": 2424
+    },
+    {
+      "fleet_id": 11,
+      "destination_planet_id": 103,
+      "year": 2425,
+      "current_range": 190.672,
+      "commanded_warp": 6,
+      "native_task": 2,
+      "prior_range": 226.808,
+      "expected_movement": 36.0,
+      "actual_progress": 36.136,
+      "suspicious": false,
+      "suspicious_slow_turns": 0,
+      "flag": null,
+      "prior_year": 2424
+    }
+  ],
+  "command_outcomes": [
+    {
+      "id": "2413:move_fleet:0:5:183",
+      "group": "fleet:0",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 0,
+      "fleet_name": "Fleet #1",
+      "planet_id": 183,
+      "planet_name": "Saturn",
+      "mission": "scan",
+      "issued_year": 2413,
+      "due_year": 2425,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1775.0,
+      "target_y": 1752.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #1 arrive at Saturn",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Fleet #1 explored Saturn by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2420:colony_operation:12:1:103",
+      "group": "fleet:12",
+      "kind": "colonize",
+      "command_kind": "colony_operation",
+      "fleet_id": 12,
+      "fleet_name": "Fleet #13",
+      "planet_id": 103,
+      "planet_name": "Winky-Blinky",
+      "mission": "colonize",
+      "issued_year": 2420,
+      "due_year": 2425,
+      "sequence": 1,
+      "route_length": 1,
+      "warp": 7,
+      "target_x": 1487.0,
+      "target_y": 1817.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2420,
+      "description": "Fleet #13 colonize Winky-Blinky",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Fleet #13 colonized Winky-Blinky by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2411:move_fleet:4:7:151",
+      "group": "fleet:4",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "planet_id": 151,
+      "planet_name": "Phicol",
+      "mission": "scan",
+      "issued_year": 2411,
+      "due_year": 2425,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1669.0,
+      "target_y": 1878.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #5 arrive at Phicol",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Fleet #5 explored Phicol by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2416:move_fleet:5:5:73",
+      "group": "fleet:5",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 5,
+      "fleet_name": "Fleet #6",
+      "planet_id": 73,
+      "planet_name": "409",
+      "mission": "scan",
+      "issued_year": 2416,
+      "due_year": 2425,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1315.0,
+      "target_y": 1986.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #6 arrive at 409",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Fleet #6 explored 409 by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2422:move_fleet:8:1:104",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 104,
+      "planet_name": "McCartney",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2425,
+      "sequence": 1,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1496.0,
+      "target_y": 1725.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #9 arrive at McCartney",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Fleet #9 explored McCartney by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2424:set_planet_queue:101:4",
+      "group": "production:101",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 101,
+      "planet_name": "Schubert",
+      "issued_year": 2424,
+      "due_year": 2425,
+      "queue": [
+        {
+          "item": "mine",
+          "quantity": 1,
+          "reason": "germanium_constraint"
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 19
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 0,
+        "mine": 0,
+        "defense": 0,
+        "ship_slots": {
+          "0": 8,
+          "1": 3,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": null
+      },
+      "description": "Schubert production queue",
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Schubert production command was applied by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2424:set_planet_queue:109:0",
+      "group": "production:109",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 109,
+      "planet_name": "Gout",
+      "issued_year": 2424,
+      "due_year": 2425,
+      "queue": [
+        {
+          "item": "starbase_design",
+          "design_slot": 0,
+          "design_name": "Starbase",
+          "hull_name": "Space Station",
+          "quantity": 1,
+          "role": "fuel_hub",
+          "complete_percent": 38
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 278
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 4,
+        "mine": 10,
+        "defense": 0,
+        "ship_slots": {
+          "0": 8,
+          "1": 3,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 1
+      },
+      "description": "Gout production queue",
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Gout production command was applied by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2424:set_planet_queue:44:2",
+      "group": "production:44",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 44,
+      "planet_name": "Panacea",
+      "issued_year": 2424,
+      "due_year": 2425,
+      "queue": [
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 20
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 0,
+        "mine": 0,
+        "defense": 0,
+        "ship_slots": {
+          "0": 8,
+          "1": 3,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": null
+      },
+      "description": "Panacea production queue",
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Panacea production command was applied by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2424:set_planet_queue:83:3",
+      "group": "production:83",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 83,
+      "planet_name": "Staff",
+      "issued_year": 2424,
+      "due_year": 2425,
+      "queue": [
+        {
+          "item": "ship_design",
+          "design_slot": 1,
+          "design_name": "Mayflower",
+          "quantity": 1,
+          "preserved_existing": true
+        },
+        {
+          "item": "mine",
+          "quantity": 9,
+          "reason": "germanium_constraint"
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 48,
+        "mine": 38,
+        "defense": 10,
+        "ship_slots": {
+          "0": 8,
+          "1": 3,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 0
+      },
+      "description": "Staff production queue",
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Staff production command was applied by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2424:set_research:1",
+      "group": "research:empire",
+      "kind": "research",
+      "command_kind": "set_research",
+      "field": "construction",
+      "allocation_percent": 100,
+      "baseline_tech": {
+        "energy": 4,
+        "weapons": 3,
+        "propulsion": 6,
+        "construction": 6,
+        "electronics": 0,
+        "biotechnology": 3
+      },
+      "issued_year": 2424,
+      "due_year": 2425,
+      "description": "Empire research switch to construction",
+      "status": "UNVERIFIED",
+      "checked_year": 2425,
+      "message": "UNVERIFIED - Empire research should be on construction, but the current M file does not expose a research-field setting and no level increase confirms it yet."
+    },
+    {
+      "id": "2413:move_fleet:0:6:185",
+      "group": "fleet:0",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 0,
+      "fleet_name": "Fleet #1",
+      "planet_id": 185,
+      "planet_name": "Crazy Horse",
+      "mission": "scan",
+      "issued_year": 2413,
+      "due_year": 2426,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1790.0,
+      "target_y": 1731.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #1 arrive at Crazy Horse",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #1 should arrive at Crazy Horse by year 2426."
+    },
+    {
+      "id": "2420:move_fleet:6:2:51",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 51,
+      "planet_name": "Pluto",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2426,
+      "sequence": 2,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1244.0,
+      "target_y": 1631.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2412,
+      "description": "Fleet #7 arrive at Pluto",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #7 should arrive at Pluto by year 2426."
+    },
+    {
+      "id": "2420:move_fleet:6:3:49",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 49,
+      "planet_name": "Tlon",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2427,
+      "sequence": 3,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1234.0,
+      "target_y": 1623.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2415,
+      "description": "Fleet #7 arrive at Tlon",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #7 arrive at Tlon waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2423:move_fleet:7:1:68",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 68,
+      "planet_name": "Catnip",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2427,
+      "sequence": 1,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1304.0,
+      "target_y": 1774.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Catnip",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #8 should arrive at Catnip by year 2427."
+    },
+    {
+      "id": "2422:move_fleet:8:2:114",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 114,
+      "planet_name": "Burrito",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2427,
+      "sequence": 2,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1520.0,
+      "target_y": 1678.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2416,
+      "description": "Fleet #9 arrive at Burrito",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #9 should arrive at Burrito by year 2427."
+    },
+    {
+      "id": "2413:move_fleet:0:7:158",
+      "group": "fleet:0",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 0,
+      "fleet_name": "Fleet #1",
+      "planet_id": 158,
+      "planet_name": "Doris",
+      "mission": "scan",
+      "issued_year": 2413,
+      "due_year": 2428,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1702.0,
+      "target_y": 1731.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #1 arrive at Doris",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #1 arrive at Doris waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2416:move_fleet:5:6:58",
+      "group": "fleet:5",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 5,
+      "fleet_name": "Fleet #6",
+      "planet_id": 58,
+      "planet_name": "Desolate",
+      "mission": "scan",
+      "issued_year": 2416,
+      "due_year": 2428,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1272.0,
+      "target_y": 1880.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #6 arrive at Desolate",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #6 should arrive at Desolate by year 2428."
+    },
+    {
+      "id": "2420:move_fleet:6:4:53",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 53,
+      "planet_name": "Argon",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2428,
+      "sequence": 4,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1256.0,
+      "target_y": 1655.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2412,
+      "description": "Fleet #7 arrive at Argon",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #7 arrive at Argon waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2423:move_fleet:7:2:54",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 54,
+      "planet_name": "Verdi",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2428,
+      "sequence": 2,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1259.0,
+      "target_y": 1771.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2418,
+      "description": "Fleet #8 arrive at Verdi",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #8 arrive at Verdi waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2420:move_fleet:6:5:56",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 56,
+      "planet_name": "Baggy",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2429,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1269.0,
+      "target_y": 1664.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2411,
+      "description": "Fleet #7 arrive at Baggy",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #7 arrive at Baggy waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2410:move_fleet:9:6:112",
+      "group": "fleet:9",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 9,
+      "fleet_name": "Fleet #10",
+      "planet_id": 112,
+      "planet_name": "Bambi",
+      "mission": "scan",
+      "issued_year": 2410,
+      "due_year": 2429,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1515.0,
+      "target_y": 1575.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #10 arrive at Bambi",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #10 should arrive at Bambi by year 2429."
+    },
+    {
+      "id": "2421:colony_operation:10:1:103",
+      "group": "fleet:10",
+      "kind": "colonize",
+      "command_kind": "colony_operation",
+      "fleet_id": 10,
+      "fleet_name": "Fleet #11",
+      "planet_id": 103,
+      "planet_name": "Winky-Blinky",
+      "mission": "colonize",
+      "issued_year": 2421,
+      "due_year": 2430,
+      "sequence": 1,
+      "route_length": 1,
+      "warp": 6,
+      "target_x": 1487.0,
+      "target_y": 1817.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2420,
+      "description": "Fleet #11 colonize Winky-Blinky",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Fleet #11 colonized Winky-Blinky by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2416:move_fleet:5:7:45",
+      "group": "fleet:5",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 5,
+      "fleet_name": "Fleet #6",
+      "planet_id": 45,
+      "planet_name": "Sludge",
+      "mission": "scan",
+      "issued_year": 2416,
+      "due_year": 2430,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1213.0,
+      "target_y": 1907.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #6 arrive at Sludge",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #6 arrive at Sludge waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2420:move_fleet:6:6:55",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 55,
+      "planet_name": "Hermit",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2430,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1262.0,
+      "target_y": 1675.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2413,
+      "description": "Fleet #7 arrive at Hermit",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #7 arrive at Hermit waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2423:move_fleet:7:3:47",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 47,
+      "planet_name": "Silicon",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2430,
+      "sequence": 3,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1215.0,
+      "target_y": 1808.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Silicon",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #8 arrive at Silicon waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2422:colony_operation:11:1:103",
+      "group": "fleet:11",
+      "kind": "colonize",
+      "command_kind": "colony_operation",
+      "fleet_id": 11,
+      "fleet_name": "Fleet #12",
+      "planet_id": 103,
+      "planet_name": "Winky-Blinky",
+      "mission": "colonize",
+      "issued_year": 2422,
+      "due_year": 2431,
+      "sequence": 1,
+      "route_length": 1,
+      "warp": 6,
+      "target_x": 1487.0,
+      "target_y": 1817.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2420,
+      "description": "Fleet #12 colonize Winky-Blinky",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "COMPLETED",
+      "checked_year": 2425,
+      "message": "COMPLETED - Fleet #12 colonized Winky-Blinky by year 2425.",
+      "resolved_year": 2425
+    },
+    {
+      "id": "2420:move_fleet:6:7:63",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 63,
+      "planet_name": "Dipstick",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2431,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1290.0,
+      "target_y": 1675.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2410,
+      "description": "Fleet #7 arrive at Dipstick",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #7 arrive at Dipstick waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2422:move_fleet:8:3:97",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 97,
+      "planet_name": "Planet 10",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2431,
+      "sequence": 3,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1446.0,
+      "target_y": 1527.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2411,
+      "description": "Fleet #9 arrive at Planet 10",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #9 arrive at Planet 10 waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2422:move_fleet:8:4:95",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 95,
+      "planet_name": "Trismegistus",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2432,
+      "sequence": 4,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1434.0,
+      "target_y": 1517.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2412,
+      "description": "Fleet #9 arrive at Trismegistus",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #9 arrive at Trismegistus waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2410:move_fleet:9:7:131",
+      "group": "fleet:9",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 9,
+      "fleet_name": "Fleet #10",
+      "planet_id": 131,
+      "planet_name": "Dachshund",
+      "mission": "scan",
+      "issued_year": 2410,
+      "due_year": 2432,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1611.0,
+      "target_y": 1646.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #10 arrive at Dachshund",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #10 arrive at Dachshund waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2423:move_fleet:7:4:23",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 23,
+      "planet_name": "Orion",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2433,
+      "sequence": 4,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1112.0,
+      "target_y": 1867.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Orion",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #8 arrive at Orion waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2423:move_fleet:7:5:19",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 19,
+      "planet_name": "Abdera",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2435,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1100.0,
+      "target_y": 1923.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Abdera",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #8 arrive at Abdera waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2422:move_fleet:8:5:81",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 81,
+      "planet_name": "Oop Be Gone",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2435,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1329.0,
+      "target_y": 1565.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2407,
+      "description": "Fleet #9 arrive at Oop Be Gone",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #9 arrive at Oop Be Gone waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2423:move_fleet:7:6:14",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 14,
+      "planet_name": "Infinity Junction",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2436,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1080.0,
+      "target_y": 1964.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Infinity Junction",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #8 arrive at Infinity Junction waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2422:move_fleet:8:6:66",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 66,
+      "planet_name": "Uranium",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2436,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1300.0,
+      "target_y": 1602.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2407,
+      "description": "Fleet #9 arrive at Uranium",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #9 arrive at Uranium waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2423:move_fleet:7:7:34",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 34,
+      "planet_name": "Lingo",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2438,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1137.0,
+      "target_y": 1976.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Lingo",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #8 arrive at Lingo waits on an earlier route leg outcome."
+    },
+    {
+      "id": "2422:move_fleet:8:7:64",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 64,
+      "planet_name": "Oshun",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2438,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1298.0,
+      "target_y": 1509.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2409,
+      "description": "Fleet #9 arrive at Oshun",
+      "last_status": "PENDING",
+      "last_checked_year": 2424,
+      "status": "PENDING",
+      "checked_year": 2425,
+      "message": "PENDING - Fleet #9 arrive at Oshun waits on an earlier route leg outcome."
+    }
+  ],
+  "pending_command_expectations": {
+    "2410:move_fleet:9:6:112": {
+      "id": "2410:move_fleet:9:6:112",
+      "group": "fleet:9",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 9,
+      "fleet_name": "Fleet #10",
+      "planet_id": 112,
+      "planet_name": "Bambi",
+      "mission": "scan",
+      "issued_year": 2410,
+      "due_year": 2429,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1515.0,
+      "target_y": 1575.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #10 arrive at Bambi",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2410:move_fleet:9:7:131": {
+      "id": "2410:move_fleet:9:7:131",
+      "group": "fleet:9",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 9,
+      "fleet_name": "Fleet #10",
+      "planet_id": 131,
+      "planet_name": "Dachshund",
+      "mission": "scan",
+      "issued_year": 2410,
+      "due_year": 2432,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1611.0,
+      "target_y": 1646.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #10 arrive at Dachshund",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2413:move_fleet:0:6:185": {
+      "id": "2413:move_fleet:0:6:185",
+      "group": "fleet:0",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 0,
+      "fleet_name": "Fleet #1",
+      "planet_id": 185,
+      "planet_name": "Crazy Horse",
+      "mission": "scan",
+      "issued_year": 2413,
+      "due_year": 2426,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1790.0,
+      "target_y": 1731.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #1 arrive at Crazy Horse",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2413:move_fleet:0:7:158": {
+      "id": "2413:move_fleet:0:7:158",
+      "group": "fleet:0",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 0,
+      "fleet_name": "Fleet #1",
+      "planet_id": 158,
+      "planet_name": "Doris",
+      "mission": "scan",
+      "issued_year": 2413,
+      "due_year": 2428,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1702.0,
+      "target_y": 1731.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #1 arrive at Doris",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2416:move_fleet:5:6:58": {
+      "id": "2416:move_fleet:5:6:58",
+      "group": "fleet:5",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 5,
+      "fleet_name": "Fleet #6",
+      "planet_id": 58,
+      "planet_name": "Desolate",
+      "mission": "scan",
+      "issued_year": 2416,
+      "due_year": 2428,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1272.0,
+      "target_y": 1880.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #6 arrive at Desolate",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2416:move_fleet:5:7:45": {
+      "id": "2416:move_fleet:5:7:45",
+      "group": "fleet:5",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 5,
+      "fleet_name": "Fleet #6",
+      "planet_id": 45,
+      "planet_name": "Sludge",
+      "mission": "scan",
+      "issued_year": 2416,
+      "due_year": 2430,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1213.0,
+      "target_y": 1907.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #6 arrive at Sludge",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2420:move_fleet:6:2:51": {
+      "id": "2420:move_fleet:6:2:51",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 51,
+      "planet_name": "Pluto",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2426,
+      "sequence": 2,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1244.0,
+      "target_y": 1631.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2412,
+      "description": "Fleet #7 arrive at Pluto",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2420:move_fleet:6:3:49": {
+      "id": "2420:move_fleet:6:3:49",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 49,
+      "planet_name": "Tlon",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2427,
+      "sequence": 3,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1234.0,
+      "target_y": 1623.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2415,
+      "description": "Fleet #7 arrive at Tlon",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2420:move_fleet:6:4:53": {
+      "id": "2420:move_fleet:6:4:53",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 53,
+      "planet_name": "Argon",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2428,
+      "sequence": 4,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1256.0,
+      "target_y": 1655.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2412,
+      "description": "Fleet #7 arrive at Argon",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2420:move_fleet:6:5:56": {
+      "id": "2420:move_fleet:6:5:56",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 56,
+      "planet_name": "Baggy",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2429,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1269.0,
+      "target_y": 1664.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2411,
+      "description": "Fleet #7 arrive at Baggy",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2420:move_fleet:6:6:55": {
+      "id": "2420:move_fleet:6:6:55",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 55,
+      "planet_name": "Hermit",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2430,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1262.0,
+      "target_y": 1675.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2413,
+      "description": "Fleet #7 arrive at Hermit",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2420:move_fleet:6:7:63": {
+      "id": "2420:move_fleet:6:7:63",
+      "group": "fleet:6",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 6,
+      "fleet_name": "Fleet #7",
+      "planet_id": 63,
+      "planet_name": "Dipstick",
+      "mission": "scan",
+      "issued_year": 2420,
+      "due_year": 2431,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1290.0,
+      "target_y": 1675.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2410,
+      "description": "Fleet #7 arrive at Dipstick",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2422:move_fleet:8:2:114": {
+      "id": "2422:move_fleet:8:2:114",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 114,
+      "planet_name": "Burrito",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2427,
+      "sequence": 2,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1520.0,
+      "target_y": 1678.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2416,
+      "description": "Fleet #9 arrive at Burrito",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2422:move_fleet:8:3:97": {
+      "id": "2422:move_fleet:8:3:97",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 97,
+      "planet_name": "Planet 10",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2431,
+      "sequence": 3,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1446.0,
+      "target_y": 1527.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2411,
+      "description": "Fleet #9 arrive at Planet 10",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2422:move_fleet:8:4:95": {
+      "id": "2422:move_fleet:8:4:95",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 95,
+      "planet_name": "Trismegistus",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2432,
+      "sequence": 4,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1434.0,
+      "target_y": 1517.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2412,
+      "description": "Fleet #9 arrive at Trismegistus",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2422:move_fleet:8:5:81": {
+      "id": "2422:move_fleet:8:5:81",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 81,
+      "planet_name": "Oop Be Gone",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2435,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1329.0,
+      "target_y": 1565.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2407,
+      "description": "Fleet #9 arrive at Oop Be Gone",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2422:move_fleet:8:6:66": {
+      "id": "2422:move_fleet:8:6:66",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 66,
+      "planet_name": "Uranium",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2436,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1300.0,
+      "target_y": 1602.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2407,
+      "description": "Fleet #9 arrive at Uranium",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2422:move_fleet:8:7:64": {
+      "id": "2422:move_fleet:8:7:64",
+      "group": "fleet:8",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 8,
+      "fleet_name": "Fleet #9",
+      "planet_id": 64,
+      "planet_name": "Oshun",
+      "mission": "scan",
+      "issued_year": 2422,
+      "due_year": 2438,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1298.0,
+      "target_y": 1509.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2409,
+      "description": "Fleet #9 arrive at Oshun",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2423:move_fleet:7:1:68": {
+      "id": "2423:move_fleet:7:1:68",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 68,
+      "planet_name": "Catnip",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2427,
+      "sequence": 1,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1304.0,
+      "target_y": 1774.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Catnip",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2423:move_fleet:7:2:54": {
+      "id": "2423:move_fleet:7:2:54",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 54,
+      "planet_name": "Verdi",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2428,
+      "sequence": 2,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1259.0,
+      "target_y": 1771.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": 2418,
+      "description": "Fleet #8 arrive at Verdi",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2423:move_fleet:7:3:47": {
+      "id": "2423:move_fleet:7:3:47",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 47,
+      "planet_name": "Silicon",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2430,
+      "sequence": 3,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1215.0,
+      "target_y": 1808.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Silicon",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2423:move_fleet:7:4:23": {
+      "id": "2423:move_fleet:7:4:23",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 23,
+      "planet_name": "Orion",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2433,
+      "sequence": 4,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1112.0,
+      "target_y": 1867.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Orion",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2423:move_fleet:7:5:19": {
+      "id": "2423:move_fleet:7:5:19",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 19,
+      "planet_name": "Abdera",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2435,
+      "sequence": 5,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1100.0,
+      "target_y": 1923.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Abdera",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2423:move_fleet:7:6:14": {
+      "id": "2423:move_fleet:7:6:14",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 14,
+      "planet_name": "Infinity Junction",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2436,
+      "sequence": 6,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1080.0,
+      "target_y": 1964.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Infinity Junction",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2423:move_fleet:7:7:34": {
+      "id": "2423:move_fleet:7:7:34",
+      "group": "fleet:7",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 7,
+      "fleet_name": "Fleet #8",
+      "planet_id": 34,
+      "planet_name": "Lingo",
+      "mission": "scan",
+      "issued_year": 2423,
+      "due_year": 2438,
+      "sequence": 7,
+      "route_length": 7,
+      "warp": 7,
+      "target_x": 1137.0,
+      "target_y": 1976.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #8 arrive at Lingo",
+      "last_status": "PENDING",
+      "last_checked_year": 2425
+    },
+    "2425:move_fleet:4:1:142": {
+      "id": "2425:move_fleet:4:1:142",
+      "group": "fleet:4",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "planet_id": 142,
+      "planet_name": "Zhukovi",
+      "mission": "scan",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "sequence": 1,
+      "route_length": 5,
+      "warp": 7,
+      "target_x": 1646.0,
+      "target_y": 1839.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #5 arrive at Zhukovi"
+    },
+    "2425:move_fleet:4:2:137": {
+      "id": "2425:move_fleet:4:2:137",
+      "group": "fleet:4",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "planet_id": 137,
+      "planet_name": "Frost",
+      "mission": "scan",
+      "issued_year": 2425,
+      "due_year": 2429,
+      "sequence": 2,
+      "route_length": 5,
+      "warp": 7,
+      "target_x": 1636.0,
+      "target_y": 1725.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #5 arrive at Frost"
+    },
+    "2425:move_fleet:4:3:89": {
+      "id": "2425:move_fleet:4:3:89",
+      "group": "fleet:4",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "planet_id": 89,
+      "planet_name": "Ball Bearing",
+      "mission": "scan",
+      "issued_year": 2425,
+      "due_year": 2435,
+      "sequence": 3,
+      "route_length": 5,
+      "warp": 7,
+      "target_x": 1382.0,
+      "target_y": 1839.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #5 arrive at Ball Bearing"
+    },
+    "2425:move_fleet:4:4:98": {
+      "id": "2425:move_fleet:4:4:98",
+      "group": "fleet:4",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "planet_id": 98,
+      "planet_name": "Corner",
+      "mission": "scan",
+      "issued_year": 2425,
+      "due_year": 2438,
+      "sequence": 4,
+      "route_length": 5,
+      "warp": 7,
+      "target_x": 1454.0,
+      "target_y": 1949.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #5 arrive at Corner"
+    },
+    "2425:move_fleet:4:5:138": {
+      "id": "2425:move_fleet:4:5:138",
+      "group": "fleet:4",
+      "kind": "scan_arrival",
+      "command_kind": "move_fleet",
+      "fleet_id": 4,
+      "fleet_name": "Fleet #5",
+      "planet_id": 138,
+      "planet_name": "Erasmus",
+      "mission": "scan",
+      "issued_year": 2425,
+      "due_year": 2443,
+      "sequence": 5,
+      "route_length": 5,
+      "warp": 7,
+      "target_x": 1637.0,
+      "target_y": 2033.0,
+      "baseline_owner": null,
+      "baseline_last_seen_year": null,
+      "description": "Fleet #5 arrive at Erasmus"
+    },
+    "2425:transport_minerals:3:1:83": {
+      "id": "2425:transport_minerals:3:1:83",
+      "group": "fleet:3",
+      "kind": "transport",
+      "command_kind": "transport_minerals",
+      "fleet_id": 3,
+      "fleet_name": "Fleet #4",
+      "planet_id": 83,
+      "planet_name": "Staff",
+      "mission": "move",
+      "issued_year": 2425,
+      "due_year": 2430,
+      "sequence": 1,
+      "route_length": 1,
+      "warp": 7,
+      "target_x": 1350.0,
+      "target_y": 1649.0,
+      "baseline_owner": 2,
+      "baseline_last_seen_year": 2425,
+      "description": "Fleet #4 arrive at Staff",
+      "unload": {
+        "ironium": "all",
+        "boranium": "all",
+        "germanium": "all",
+        "population": "all"
+      }
+    },
+    "2425:set_planet_research_mode:83:2": {
+      "id": "2425:set_planet_research_mode:83:2",
+      "group": "planet_research_mode:83",
+      "kind": "planet_research_mode",
+      "command_kind": "set_planet_research_mode",
+      "planet_id": 83,
+      "planet_name": "Staff",
+      "leftover_only": true,
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Staff leftover-only research mode"
+    },
+    "2425:set_planet_research_mode:109:3": {
+      "id": "2425:set_planet_research_mode:109:3",
+      "group": "planet_research_mode:109",
+      "kind": "planet_research_mode",
+      "command_kind": "set_planet_research_mode",
+      "planet_id": 109,
+      "planet_name": "Gout",
+      "leftover_only": true,
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Gout leftover-only research mode"
+    },
+    "2425:set_planet_queue:109:4": {
+      "id": "2425:set_planet_queue:109:4",
+      "group": "production:109",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 109,
+      "planet_name": "Gout",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "starbase_design",
+          "design_slot": 0,
+          "design_name": "Starbase",
+          "hull_name": "Space Station",
+          "quantity": 1,
+          "role": "fuel_hub",
+          "complete_percent": 40
+        },
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 26,
+          "target_habitability": 43,
+          "terraform_steps": 13,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 280
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 4,
+        "mine": 10,
+        "defense": 0,
+        "ship_slots": {
+          "0": 8,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 1,
+        "habitability": 26,
+        "environment": [
+          76,
+          44,
+          20
+        ]
+      },
+      "description": "Gout production queue"
+    },
+    "2425:set_research:5": {
+      "id": "2425:set_research:5",
+      "group": "research:empire",
+      "kind": "research",
+      "command_kind": "set_research",
+      "field": "propulsion",
+      "next_field": "propulsion",
+      "allocation_percent": 25,
+      "capability_id": "terraform:gravity:11",
+      "baseline_tech": {
+        "energy": 4,
+        "weapons": 3,
+        "propulsion": 6,
+        "construction": 6,
+        "electronics": 0,
+        "biotechnology": 3
+      },
+      "issued_year": 2425,
+      "due_year": 2426,
+      "description": "Empire research switch to propulsion"
+    },
+    "2425:set_planet_queue:83:6": {
+      "id": "2425:set_planet_queue:83:6",
+      "group": "production:83",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 83,
+      "planet_name": "Staff",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "ship_design",
+          "design_slot": 1,
+          "design_name": "Mayflower",
+          "quantity": 5,
+          "preserved_existing": true,
+          "role": "colony",
+          "objective_top_up": 4
+        },
+        {
+          "item": "mine",
+          "quantity": 10,
+          "reason": "germanium_constraint"
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 48,
+        "mine": 38,
+        "defense": 10,
+        "ship_slots": {
+          "0": 8,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": 0,
+        "habitability": 100,
+        "environment": [
+          50,
+          50,
+          50
+        ]
+      },
+      "description": "Staff production queue"
+    },
+    "2425:set_planet_queue:44:7": {
+      "id": "2425:set_planet_queue:44:7",
+      "group": "production:44",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 44,
+      "planet_name": "Panacea",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 76,
+          "target_habitability": 87,
+          "terraform_steps": 12,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 19
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 0,
+        "mine": 0,
+        "defense": 0,
+        "ship_slots": {
+          "0": 8,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": null,
+        "habitability": 76,
+        "environment": [
+          56,
+          44,
+          65
+        ]
+      },
+      "description": "Panacea production queue"
+    },
+    "2425:set_planet_queue:101:8": {
+      "id": "2425:set_planet_queue:101:8",
+      "group": "production:101",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 101,
+      "planet_name": "Schubert",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 69,
+          "target_habitability": 81,
+          "terraform_steps": 13,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "mine",
+          "quantity": 1,
+          "reason": "germanium_constraint"
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 19
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 0,
+        "mine": 0,
+        "defense": 0,
+        "ship_slots": {
+          "0": 8,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": null,
+        "habitability": 69,
+        "environment": [
+          40,
+          65,
+          41
+        ]
+      },
+      "description": "Schubert production queue"
+    },
+    "2425:set_planet_queue:103:9": {
+      "id": "2425:set_planet_queue:103:9",
+      "group": "production:103",
+      "kind": "production_queue",
+      "command_kind": "set_planet_queue",
+      "planet_id": 103,
+      "planet_name": "Winky-Blinky",
+      "issued_year": 2425,
+      "due_year": 2426,
+      "queue": [
+        {
+          "item": "max_terraform",
+          "quantity": 1,
+          "current_habitability": 83,
+          "target_habitability": 91,
+          "terraform_steps": 9,
+          "resource_cost_per_step": 100
+        },
+        {
+          "item": "factory",
+          "quantity": 1,
+          "germanium_cost_each": 3,
+          "germanium_available": 21
+        },
+        {
+          "item": "mine",
+          "quantity": 1
+        }
+      ],
+      "clear_queue": false,
+      "baseline": {
+        "factory": 0,
+        "mine": 0,
+        "defense": 0,
+        "ship_slots": {
+          "0": 8,
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0
+        },
+        "starbase_design": null,
+        "habitability": 83,
+        "environment": [
+          53,
+          58,
+          58
+        ]
+      },
+      "description": "Winky-Blinky production queue"
+    }
+  },
+  "waypoint_diagnostics": [
+    {
+      "fleet_id": 4,
+      "normalized_destination": null,
+      "native_waypoint_destination": null,
+      "native_waypoint_warp": null,
+      "native_waypoint_task": null,
+      "native_waypoint_object_type": null,
+      "has_waypoint_slot": false,
+      "requested_destination": 142,
+      "requested_warp": 7,
+      "requested_mission": "scan",
+      "requested_task": 0,
+      "result": "ADD",
+      "reason": "No native destination waypoint #1 exists."
+    },
+    {
+      "fleet_id": 3,
+      "normalized_destination": null,
+      "native_waypoint_destination": null,
+      "native_waypoint_warp": null,
+      "native_waypoint_task": null,
+      "native_waypoint_object_type": null,
+      "has_waypoint_slot": false,
+      "requested_destination": 83,
+      "requested_warp": 7,
+      "requested_mission": "transport",
+      "requested_task": 1,
+      "result": "ADD",
+      "reason": "No native destination waypoint #1 exists."
+    }
+  ],
+  "persistent_scout_routes": {
+    "0": {
+      "fleet_id": 0,
+      "planet_ids": [
+        185,
+        158
+      ],
+      "created_year": 2400,
+      "updated_year": 2425,
+      "expected_discoveries": 12,
+      "total_distance": 931.32,
+      "sector_index": 0,
+      "sector_count": 2,
+      "terminal": true,
+      "awaiting_refuel": false,
+      "waypoints": [
+        {
+          "planet_id": 185,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 158,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "native_queued": true
+    },
+    "4": {
+      "fleet_id": 4,
+      "planet_ids": [
+        142,
+        137,
+        89,
+        98,
+        138
+      ],
+      "created_year": 2400,
+      "updated_year": 2425,
+      "expected_discoveries": 12,
+      "total_distance": 869.74,
+      "sector_index": 1,
+      "sector_count": 2,
+      "terminal": true,
+      "awaiting_refuel": false,
+      "waypoints": [
+        {
+          "planet_id": 142,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 137,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 89,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 98,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 138,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "native_queued": true
+    },
+    "5": {
+      "planet_ids": [
+        58,
+        45
+      ],
+      "waypoints": [
+        {
+          "planet_id": 58,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 45,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true,
+      "awaiting_refuel": false,
+      "fleet_id": 5
+    },
+    "6": {
+      "planet_ids": [
+        51,
+        49,
+        53,
+        56,
+        55,
+        63
+      ],
+      "waypoints": [
+        {
+          "planet_id": 51,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 49,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 53,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 56,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 55,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 63,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true,
+      "awaiting_refuel": false,
+      "fleet_id": 6
+    },
+    "7": {
+      "planet_ids": [
+        68,
+        54,
+        47,
+        23,
+        19,
+        14,
+        34
+      ],
+      "waypoints": [
+        {
+          "planet_id": 68,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 54,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 47,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 23,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 19,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 14,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 34,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true,
+      "awaiting_refuel": false,
+      "fleet_id": 7
+    },
+    "8": {
+      "planet_ids": [
+        114,
+        97,
+        95,
+        81,
+        66,
+        64
+      ],
+      "waypoints": [
+        {
+          "planet_id": 114,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 97,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 95,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 81,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 66,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 64,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true,
+      "awaiting_refuel": false,
+      "fleet_id": 8
+    },
+    "9": {
+      "planet_ids": [
+        112,
+        131
+      ],
+      "waypoints": [
+        {
+          "planet_id": 112,
+          "warp": 7,
+          "task": 0
+        },
+        {
+          "planet_id": 131,
+          "warp": 7,
+          "task": 0
+        }
+      ],
+      "updated_year": 2425,
+      "native_queued": true,
+      "awaiting_refuel": false,
+      "fleet_id": 9
+    }
+  },
+  "memory_path": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\TwoAIOneComp-stars-ai-state\\player-02-memory.json",
+  "memory_output_path": "C:\\Dev\\repos\\stars-ai\\.v81-latestdemo-probe\\memory-player-02-memory.pending.json",
+  "native_result": {
+    "player_id": 2,
+    "year": 2425,
+    "emitted": [
+      {
+        "kind": "move_fleet",
+        "payload": {
+          "fleet_id": 4,
+          "destination_planet_id": 142,
+          "warp": 7,
+          "mission": "scan",
+          "route_managed": true,
+          "route_remaining": 5,
+          "route_planet_ids": [
+            142,
+            137,
+            89,
+            98,
+            138
+          ],
+          "route_waypoints": [
+            {
+              "planet_id": 142,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 137,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 89,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 98,
+              "warp": 7,
+              "task": 0
+            },
+            {
+              "planet_id": 138,
+              "warp": 7,
+              "task": 0
+            }
+          ],
+          "route_expected_discoveries": 5,
+          "route_terminal": true,
+          "free_cruise_warp": 1,
+          "exploration_pressure": 0.85,
+          "fuel_plan": {
+            "policy": "one_way_probe",
+            "requested_warp": 7,
+            "selected_warp": 7,
+            "distance": 45.28,
+            "fuel": 183.0,
+            "capacity": 300.0,
+            "mass": 26,
+            "estimated_fuel": 5.5,
+            "free_cruise_warp": 1,
+            "return_reserve": 0,
+            "engine_names": [
+              "Daddy Long Legs 7"
+            ],
+            "all_ram_scoop": false
+          },
+          "native_waypoint_action": "ADD",
+          "native_waypoints_added": 5
+        },
+        "reason": "Expansionist: probe campaign -> Zhukovi; 5 unknown worlds remain on persistent forward route. Route remains within 300 ly of owned support."
+      },
+      {
+        "kind": "transport_minerals",
+        "payload": {
+          "fleet_id": 3,
+          "source_planet_id": 101,
+          "destination_planet_id": 83,
+          "warp": 7,
+          "load": {
+            "ironium": 4,
+            "boranium": 0,
+            "germanium": 0
+          },
+          "load_total": 4,
+          "cargo_capacity": 250,
+          "cargo_capacity_confidence": "base-hull-only",
+          "unload": {
+            "ironium": "all",
+            "boranium": "all",
+            "germanium": "all",
+            "population": "all"
+          },
+          "fuel": "load_optimal",
+          "cargo_plan": {
+            "ironium": 4,
+            "boranium": 0,
+            "germanium": 0,
+            "capacity": 250,
+            "source_surplus": {
+              "ironium": 4,
+              "boranium": 0,
+              "germanium": 0
+            },
+            "destination_deficit": {
+              "ironium": 87,
+              "boranium": 0,
+              "germanium": 205
+            },
+            "rationale": [
+              "Ironium/Boranium 4/0kT replenish ship/defense working stock.",
+              "capacity=250kT; source surplus I/B/G=4/0/0; target deficit=87/0/205."
+            ]
+          },
+          "fuel_plan": {
+            "requested_warp": 7,
+            "selected_warp": 7,
+            "distance": 228.32,
+            "fuel": 392.0,
+            "capacity": 650.0,
+            "mass": 222,
+            "estimated_fuel": 236.96,
+            "engine_names": [
+              "Daddy Long Legs 7"
+            ],
+            "all_ram_scoop": false
+          },
+          "native_waypoint_action": "ADD"
+        },
+        "reason": "Expansionist: dynamic shipment Schubert->Staff: I/B/G=4/0/0kT (4/250kT conservative capacity). Ironium/Boranium 4/0kT replenish ship/defense working stock. capacity=250kT; source surplus I/B/G=4/0/0; target deficit=87/0/205. Destination Transport task unloads all cargo and loads optimal fuel."
+      },
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 83,
+          "leftover_only": true,
+          "capability_id": "terraform:gravity:11"
+        },
+        "reason": "Protect Staff production during the Gravity Terraforming 11% sprint; contribute leftover resources only."
+      },
+      {
+        "kind": "set_planet_research_mode",
+        "payload": {
+          "planet_id": 109,
+          "leftover_only": true,
+          "capability_id": "terraform:gravity:11"
+        },
+        "reason": "Protect Gout production during the Gravity Terraforming 11% sprint; contribute leftover resources only."
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 109,
+          "queue": [
+            {
+              "item": "starbase_design",
+              "design_slot": 0,
+              "design_name": "Starbase",
+              "hull_name": "Space Station",
+              "quantity": 1,
+              "role": "fuel_hub",
+              "complete_percent": 40
+            },
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 26,
+              "target_habitability": 43,
+              "terraform_steps": 13,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 280
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 18400,
+            "factory_cap": 18,
+            "mine_cap": 20,
+            "factories": 4,
+            "mines": 10,
+            "factory_headroom": 14,
+            "mine_headroom": 10,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 23,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 280,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 71,
+            "population_raw_hundreds": 184,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 2.0,
+            "projected_growth": 400,
+            "projected_next_population": 18800
+          }
+        },
+        "reason": "Expansionist: objective production first: continue the in-progress Starbase fuel-hub project at Gout; native completion is 40%. | terraform Gout from 26% toward 43% (13 available steps)"
+      },
+      {
+        "kind": "set_research",
+        "payload": {
+          "capability_id": "terraform:gravity:11",
+          "capability_name": "Gravity Terraforming 11%",
+          "category": "terraforming",
+          "posture": "SPRINT",
+          "current_field": "propulsion",
+          "next_field": "propulsion",
+          "allocation_percent": 25,
+          "score": 275.4,
+          "estimated_turns": 4,
+          "estimate_confidence": "low",
+          "requirements": {
+            "propulsion": 10,
+            "biotechnology": 3
+          },
+          "remaining_requirements": {
+            "propulsion": 4
+          },
+          "contributor_planet_ids": [],
+          "protected_production_planet_ids": [
+            44,
+            83,
+            101,
+            103,
+            109
+          ],
+          "post_unlock_action": "Queue Max Terraform on gravity-limited worlds improved by the 11% limit.",
+          "reason": "SPRINT: pursue Gravity Terraforming 11%; score=275.4, remaining={'propulsion': 4}, horizon~4 turn(s), utilization=1.00. This exact breakpoint improves 31 observed world(s); aggregate habitability gain=105. Post-unlock: Queue Max Terraform on gravity-limited worlds improved by the 11% limit.",
+          "candidate_scores": [
+            {
+              "capability_id": "terraform:gravity:11",
+              "name": "Gravity Terraforming 11%",
+              "score": 275.4,
+              "remaining": {
+                "propulsion": 4
+              }
+            },
+            {
+              "capability_id": "terraform:gravity:15",
+              "name": "Gravity Terraforming 15%",
+              "score": 228.15,
+              "remaining": {
+                "propulsion": 10,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:7",
+              "name": "Temperature Terraforming 7%",
+              "score": 153.9,
+              "remaining": {
+                "energy": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:15",
+              "name": "Temperature Terraforming 15%",
+              "score": 139.05,
+              "remaining": {
+                "energy": 12,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:15",
+              "name": "Radiation Terraforming 15%",
+              "score": 132.3,
+              "remaining": {
+                "weapons": 13,
+                "biotechnology": 1
+              }
+            },
+            {
+              "capability_id": "terraform:temperature:11",
+              "name": "Temperature Terraforming 11%",
+              "score": 120.15,
+              "remaining": {
+                "energy": 6
+              }
+            },
+            {
+              "capability_id": "terraform:radiation:7",
+              "name": "Radiation Terraforming 7%",
+              "score": 118.8,
+              "remaining": {
+                "weapons": 2
+              }
+            },
+            {
+              "capability_id": "hull:2",
+              "name": "Large Freighter",
+              "score": 105.873,
+              "remaining": {
+                "construction": 2
+              }
+            }
+          ],
+          "recently_unlocked": [],
+          "sprint_stalled": false,
+          "field": "propulsion",
+          "fuel_mizer_available": true,
+          "early_mizer_doctrine": true
+        },
+        "reason": "Expansionist: SPRINT: pursue Gravity Terraforming 11%; score=275.4, remaining={'propulsion': 4}, horizon~4 turn(s), utilization=1.00. This exact breakpoint improves 31 observed world(s); aggregate habitability gain=105. Post-unlock: Queue Max Terraform on gravity-limited worlds improved by the 11% limit. Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up."
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 83,
+          "queue": [
+            {
+              "item": "ship_design",
+              "design_slot": 1,
+              "design_name": "Mayflower",
+              "quantity": 5,
+              "preserved_existing": true,
+              "role": "colony",
+              "objective_top_up": 4
+            },
+            {
+              "item": "mine",
+              "quantity": 10,
+              "reason": "germanium_constraint"
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 216300,
+            "factory_cap": 216,
+            "mine_cap": 237,
+            "factories": 48,
+            "mines": 38,
+            "factory_headroom": 168,
+            "mine_headroom": 199,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 283,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 0,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 30,
+            "population_raw_hundreds": 2163,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 22.0,
+            "projected_growth": 21600,
+            "projected_next_population": 237900
+          }
+        },
+        "reason": "Expansionist: objective production first: 29 phase-eligible unowned claims under opening_broadening; 76 exportable 25 kT / 2,500-colonist packets; source reserve=25,000; milestone needs 17 more colonies by T25 (~17.00/turn); 2 colony ships already loaded; target concurrent colony force=12; available/queued=3; effective distinct-claim pipeline=2; duplicate active commitments=1. Add 4 to the preserved Mayflower queue."
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 44,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 76,
+              "target_habitability": 87,
+              "terraform_steps": 12,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 19
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 3500,
+            "factory_cap": 3,
+            "mine_cap": 3,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 3,
+            "mine_headroom": 3,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 3,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 19,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 37,
+            "population_raw_hundreds": 35,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 200,
+            "projected_next_population": 3700
+          }
+        },
+        "reason": "Expansionist: objective production first: terraform Panacea from 76% toward 87% (12 available steps)"
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 101,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 69,
+              "target_habitability": 81,
+              "terraform_steps": 13,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "mine",
+              "quantity": 1,
+              "reason": "germanium_constraint"
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 19
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 8700,
+            "factory_cap": 8,
+            "mine_cap": 9,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 8,
+            "mine_headroom": 9,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 8,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 19,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 44,
+            "population_raw_hundreds": 87,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 600,
+            "projected_next_population": 9300
+          }
+        },
+        "reason": "Expansionist: objective production first: terraform Schubert from 69% toward 81% (13 available steps)"
+      },
+      {
+        "kind": "set_planet_queue",
+        "payload": {
+          "planet_id": 103,
+          "queue": [
+            {
+              "item": "max_terraform",
+              "quantity": 1,
+              "current_habitability": 83,
+              "target_habitability": 91,
+              "terraform_steps": 9,
+              "resource_cost_per_step": 100
+            },
+            {
+              "item": "factory",
+              "quantity": 1,
+              "germanium_cost_each": 3,
+              "germanium_available": 21
+            },
+            {
+              "item": "mine",
+              "quantity": 1
+            }
+          ],
+          "clear_queue": false,
+          "research_when_idle": false,
+          "economy": {
+            "population": 2500,
+            "factory_cap": 2,
+            "mine_cap": 2,
+            "factories": 0,
+            "mines": 0,
+            "factory_headroom": 2,
+            "mine_headroom": 2,
+            "factory_overbuilt": 0,
+            "mine_overbuilt": 0,
+            "factories_fully_utilized": false,
+            "mines_fully_utilized": false,
+            "estimated_resources": 2,
+            "operable_factories_per_10k": 10,
+            "operable_mines_per_10k": 11,
+            "factory_output_per_10": 14,
+            "mine_output_per_10": 10,
+            "germanium_surface": 21,
+            "germanium_per_factory": 3,
+            "germanium_concentration": 67,
+            "population_raw_hundreds": 25,
+            "population_source_year": 2425,
+            "theoretical_race_max_population": 1000000,
+            "planet_population_capacity": 1000000,
+            "population_capacity_percent": 1.0,
+            "projected_growth": 200,
+            "projected_next_population": 2700
+          }
+        },
+        "reason": "Expansionist: objective production first: terraform Winky-Blinky from 83% toward 91% (9 available steps)"
+      }
+    ],
+    "skipped": [
+      {
+        "kind": "create_design",
+        "reason": "BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+        "payload": {
+          "role": "scout",
+          "name": "Long Range Scout Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 4,
+          "desired_hull_name": "Scout",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize sustainable exploration range",
+            "retain the best currently available scanner",
+            "avoid unnecessary weapon mass on pure exploration hulls",
+            "add fuel capacity when a legal slot/component permits"
+          ],
+          "reason": "227 worlds remain unexplored and Fuel Mizer is available, but no current scout design uses it.",
+          "priority": 125,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        }
+      },
+      {
+        "kind": "create_design",
+        "reason": "BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+        "payload": {
+          "role": "freighter",
+          "name": "Strategic Transport Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 11,
+          "desired_hull_name": "Privateer",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "maximize useful cargo per fuel-safe trip",
+            "favor efficient engines over maximum nominal warp",
+            "retain adequate fuel reserve for round-trip logistics",
+            "support mineral redistribution, especially Germanium"
+          ],
+          "reason": "Unlocked transport hull Privateer offers 250kT base cargo versus current 250kT; Fuel Mizer available=True.",
+          "priority": 118,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        }
+      },
+      {
+        "kind": "create_design",
+        "reason": "BLOCKED: Brand-new design creation has produced corrupt files; modify existing editable slot only.",
+        "payload": {
+          "role": "colony",
+          "name": "Colonizer Mk II",
+          "is_starbase": false,
+          "desired_hull_id": 15,
+          "desired_hull_name": "Colony Ship",
+          "desired_engine": "Fuel Mizer",
+          "objectives": [
+            "reach new colonies with a safe one-way fuel budget",
+            "carry the required colonization module",
+            "minimize nonessential mass"
+          ],
+          "reason": "29 viable colony targets are known and Fuel Mizer improves colonization range.",
+          "priority": 116,
+          "native_status": "PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
+        }
+      }
+    ],
+    "output_x": "C:\\Dev\\repos\\stars-ai\\.v81-latestdemo-probe\\MEMORY-GAME.x2",
+    "waypoint_diagnostics": [
+      {
+        "fleet_id": 4,
+        "normalized_destination": null,
+        "native_waypoint_destination": null,
+        "native_waypoint_warp": null,
+        "native_waypoint_task": null,
+        "native_waypoint_object_type": null,
+        "has_waypoint_slot": false,
+        "requested_destination": 142,
+        "requested_warp": 7,
+        "requested_mission": "scan",
+        "requested_task": 0,
+        "result": "ADD",
+        "reason": "No native destination waypoint #1 exists."
+      },
+      {
+        "fleet_id": 3,
+        "normalized_destination": null,
+        "native_waypoint_destination": null,
+        "native_waypoint_warp": null,
+        "native_waypoint_task": null,
+        "native_waypoint_object_type": null,
+        "has_waypoint_slot": false,
+        "requested_destination": 83,
+        "requested_warp": 7,
+        "requested_mission": "transport",
+        "requested_task": 1,
+        "result": "ADD",
+        "reason": "No native destination waypoint #1 exists."
+      }
+    ]
+  }
+}

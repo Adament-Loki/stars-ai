@@ -10,8 +10,25 @@ from ..fuel_planner import mission_reachable, highest_zero_fuel_warp
 from ..exploration_router import (
     build_probe_route,
     evaluate_recon_refuel,
+    route_waypoint_specs,
     scout_sector,
 )
+
+
+MAX_SCOUT_SUPPORT_DISTANCE=300.0
+MAX_QUEUED_SCOUT_WAYPOINTS=7
+
+
+def _needs_recon(planet) -> bool:
+    return not planet.observed
+
+
+def _distance_from_owned(state, planet) -> float:
+    owned=[p for p in state.planets if p.owner==state.player_id]
+    return min(
+        (distance(planet.position,p.position) for p in owned),
+        default=0.0,
+    )
 
 
 def _probe_fleets(state):
@@ -32,9 +49,9 @@ def add_exploration_orders(
     memory=None,
 ) -> None:
     """
-    v7.1 exploration is a persistent ROUTE campaign, not a yearly nearest-target
-    choice. Each probe receives up to 12 forward unknown worlds and normally
-    ends its useful life on the frontier rather than returning home.
+    Exploration is a native queued-route campaign, not a yearly nearest-target
+    choice. Each probe receives up to seven fuel-safe waypoints inside the
+    empire-supported frontier.
     """
     probes=_probe_fleets(state)
     state.native["recon_route_managed_fleets"]=[int(f.id) for f in probes]
@@ -57,10 +74,41 @@ def add_exploration_orders(
     if memory is not None:
         memory.prune_scout_routes(state)
 
-    # Every genuine current/persistent observation is excluded. Recent unresolved
-    # targets are also excluded from NEW routes, though a fleet may continue its
-    # own already-persisted route.
-    unknown_all=[p for p in state.planets if not p.observed]
+    owned=[p for p in state.planets if p.owner==state.player_id]
+    overextended=set()
+    for probe in probes:
+        if probe.destination_planet_id is not None or not owned:
+            continue
+        nearest=min(owned,key=lambda p:distance(probe.position,p.position))
+        separation=distance(probe.position,nearest.position)
+        if separation<=MAX_SCOUT_SUPPORT_DISTANCE:
+            continue
+        overextended.add(int(probe.id))
+        if memory is not None:
+            memory.clear_scout_route(int(probe.id))
+        orders.add(
+            "move_fleet",
+            {
+                "fleet_id":int(probe.id),
+                "destination_planet_id":int(nearest.id),
+                "warp":mission_warp(probe,nearest.position,"refuel"),
+                "mission":"return_from_exploration",
+                "support_distance":round(separation,2),
+            },
+            (
+                f"Probe is {separation:.1f} ly beyond the supported frontier; "
+                f"return to {nearest.name} before accepting another survey route."
+            ),
+            priority=max(95,int(105*scout_weight)),
+        )
+
+    # A world leaves the reconnaissance pool permanently after its first valid
+    # observation. New native routes remain inside current owned-world support.
+    unknown_all=[
+        p for p in state.planets
+        if _needs_recon(p)
+        and _distance_from_owned(state,p)<=MAX_SCOUT_SUPPORT_DISTANCE
+    ]
     if not unknown_all:
         return
 
@@ -78,7 +126,7 @@ def add_exploration_orders(
     ]
     exploration_assets=max(1,len(probes)+len(eligible_aux))
     route_limit=min(
-        12,
+        MAX_QUEUED_SCOUT_WAYPOINTS,
         max(1,math.ceil(len(unknown_all)/exploration_assets)),
     )
 
@@ -123,7 +171,7 @@ def add_exploration_orders(
 
     for probe in probes:
         fid=int(probe.id)
-        if fid in already_moving or probe.destination_planet_id is not None:
+        if fid in overextended or fid in already_moving or probe.destination_planet_id is not None:
             continue
 
         # Remove this probe's own route from the global reservation while we
@@ -138,16 +186,26 @@ def add_exploration_orders(
         route_info=memory.scout_route(fid) if memory is not None else None
         route_ids=[
             int(x) for x in (route_info or {}).get("planet_ids",[])
-            if any(int(p.id)==int(x) and not p.observed for p in state.planets)
+            if any(
+                int(p.id)==int(x)
+                and _needs_recon(p)
+                and _distance_from_owned(state,p)<=MAX_SCOUT_SUPPORT_DISTANCE
+                for p in state.planets
+            )
         ][:route_limit]
+        route_specs=route_waypoint_specs(
+            state,probe,route_ids,pressure=pressure
+        )
+        route_ids=[int(x["planet_id"]) for x in route_specs]
         if memory is not None and route_info is not None:
             route_info["planet_ids"]=list(route_ids)
+            route_info["waypoints"]=list(route_specs)
             memory.scout_routes[str(fid)]=dict(route_info)
 
         target=None
         if route_ids:
             candidate=next(
-                (p for p in state.planets if p.id==route_ids[0] and not p.observed),
+                (p for p in state.planets if p.id==route_ids[0] and _needs_recon(p)),
                 None,
             )
             if (
@@ -170,9 +228,11 @@ def add_exploration_orders(
                 pressure=pressure,
                 max_stops=route_limit,
                 sector=scout_sector(state,probe),
+                max_support_distance=MAX_SCOUT_SUPPORT_DISTANCE,
             )
             if route is not None:
                 route_ids=list(route.planet_ids)
+                route_specs=list(route.waypoints or [])
                 target=next(p for p in state.planets if p.id==route_ids[0])
                 if memory is not None:
                     memory.set_scout_route(
@@ -182,15 +242,14 @@ def add_exploration_orders(
                         sector_index=route.sector_index,
                         sector_count=route.sector_count,
                         terminal=True,
+                        waypoints=route_specs,
                     )
                 route_info=route.to_dict()
 
         if target is not None and route_ids:
             fp=(probe.native or {}).get("fuel_profile") or {}
             free_warp=highest_zero_fuel_warp(fp) if fp else 0
-            warp=mission_warp(
-                probe,target.position,"scan",pressure=pressure
-            )
+            warp=int(route_specs[0]["warp"])
             route_remaining=len(route_ids)
             orders.add(
                 "move_fleet",
@@ -202,6 +261,7 @@ def add_exploration_orders(
                     "route_managed":True,
                     "route_remaining":route_remaining,
                     "route_planet_ids":list(route_ids),
+                    "route_waypoints":list(route_specs),
                     "route_expected_discoveries":int(
                         (route_info or {}).get("expected_discoveries",route_remaining)
                     ),
@@ -217,7 +277,7 @@ def add_exploration_orders(
                         f"; free cruise Warp {free_warp}"
                         if free_warp>=2 else ""
                     )
-                    +". No automatic return-to-base reserve."
+                    +f". Route remains within {MAX_SCOUT_SUPPORT_DISTANCE:.0f} ly of owned support."
                 ),
                 priority=max(70,int(92*scout_weight)),
             )
@@ -256,6 +316,7 @@ def add_exploration_orders(
                     sector_count=route.sector_count,
                     terminal=True,
                     awaiting_refuel=True,
+                    waypoints=list(route.waypoints or []),
                 )
             orders.add(
                 "move_fleet",
@@ -266,6 +327,7 @@ def add_exploration_orders(
                     "mission":"refuel_for_scan",
                     "route_managed":True,
                     "planned_route_after_refuel":list(route.planet_ids),
+                    "planned_route_waypoints":list(route.waypoints or []),
                     "planned_discoveries_after_refuel":route.expected_discoveries,
                     "refuel_distance":refuel["refuel_distance"],
                     "discoveries_per_turn_after_refuel":refuel["discoveries_per_turn"],
@@ -356,8 +418,9 @@ def deconflict_recon_orders(state: GameState, orders: OrderSet) -> None:
         if f.destination_planet_id is not None:
             reserved.add(int(f.destination_planet_id))
         wps=(f.native or {}).get("waypoints") or []
-        if len(wps)>=2 and wps[1].get("position_object") is not None:
-            reserved.add(int(wps[1]["position_object"]))
+        for wp in wps[1:]:
+            if wp.get("position_object") is not None:
+                reserved.add(int(wp["position_object"]))
 
     scan_orders=[o for o in orders.orders if o.kind=="move_fleet" and str(o.payload.get("mission","")) in ("scan","recon")]
     scan_orders.sort(key=lambda o:o.priority,reverse=True)
@@ -366,23 +429,49 @@ def deconflict_recon_orders(state: GameState, orders: OrderSet) -> None:
         fid=int(o.payload.get("fleet_id",-1)); f=fleet_by_id.get(fid)
         target_id=int(o.payload.get("destination_planet_id",-1))
         if target_id not in used:
-            used.add(target_id); continue
+            used.update(
+                int(x) for x in o.payload.get("route_planet_ids",[target_id])
+            )
+            continue
         if f is None:
             continue
         alternatives=[
             p for p in state.planets
-            if not p.observed and p.id not in used and mission_reachable(f,p.position,"scan")
+            if _needs_recon(p)
+            and _distance_from_owned(state,p)<=MAX_SCOUT_SUPPORT_DISTANCE
+            and p.id not in used
+            and mission_reachable(f,p.position,"scan")
         ]
         if not alternatives:
             o.payload["deconflicted_hold"]=True
             o.payload["warp"]=1
             o.reason += " Recon deconfliction found no unique fuel-safe unknown target; native writer should skip this duplicate move."
             continue
-        target=min(alternatives,key=lambda p:distance(f.position,p.position))
+        pressure=float(
+            ((state.native or {}).get("strategic_watchdog") or {}).get(
+                "exploration_pressure",1.0
+            )
+        )
+        route=build_probe_route(
+            state,f,alternatives,
+            reserved=used,
+            pressure=pressure,
+            max_stops=MAX_QUEUED_SCOUT_WAYPOINTS,
+            sector=scout_sector(state,f),
+            max_support_distance=MAX_SCOUT_SUPPORT_DISTANCE,
+        )
+        if route is None:
+            o.payload["deconflicted_hold"]=True
+            o.payload["warp"]=1
+            o.reason += " Recon deconfliction could not build a unique supported route."
+            continue
+        target=planet_by_id[int(route.planet_ids[0])]
         old=planet_by_id.get(target_id)
         o.payload["destination_planet_id"]=target.id
-        o.payload["warp"]=mission_warp(f,target.position,"scan",pressure=float(((state.native or {}).get("strategic_watchdog") or {}).get("exploration_pressure",1.0)))
+        o.payload["warp"]=int(route.waypoints[0]["warp"])
+        o.payload["route_planet_ids"]=list(route.planet_ids)
+        o.payload["route_waypoints"]=list(route.waypoints or [])
+        o.payload["route_remaining"]=len(route.planet_ids)
         o.payload["deconflicted_from_planet_id"]=target_id
         o.reason += f" Recon deconfliction retargeted from {old.name if old else target_id} to {target.name}."
-        used.add(target.id)
-
+        used.update(int(x) for x in route.planet_ids)

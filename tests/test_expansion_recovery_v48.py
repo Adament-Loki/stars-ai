@@ -22,7 +22,7 @@ def test_colonize_waypoint_is_not_encoded_as_experimental_task():
 def test_early_colony_plan_generated():
     s=GameState("g",2400,1,RaceProfile(),Tech(),
       [Planet(0,"Home",Position(0,0),owner=1,habitability=100,population=500000),
-       Planet(1,"Green",Position(50,0),owner=None,habitability=30,observed=True)],
+       Planet(1,"Green",Position(50,0),owner=None,habitability=70,observed=True)],
       [Fleet(2,"Colony",1,Position(0,0),role="colony",speed=7)])
     o=OrderSet("g",2400,1)
     add_economic_orders(s,o,None)

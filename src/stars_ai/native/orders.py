@@ -13,7 +13,11 @@ class PlanetChange:
 
 @dataclass
 class ResearchChange:
-    percent:int|None; packed_field_flags:int|None; raw_hex:str
+    percent:int|None
+    packed_field_flags:int|None
+    current_field_code:int|None
+    next_field_code:int|None
+    raw_hex:str
 
 
 def parse_production_change(data:bytes)->ProductionQueueChange:
@@ -25,4 +29,11 @@ def parse_planet_change(data:bytes)->PlanetChange:
 
 
 def parse_research_change(data:bytes)->ResearchChange:
-    return ResearchChange(data[0] if data else None, data[1] if len(data)>1 else None, data.hex(' '))
+    packed=data[1] if len(data)>1 else None
+    return ResearchChange(
+        data[0] if data else None,
+        packed,
+        (packed & 0x0F) if packed is not None else None,
+        ((packed >> 4) & 0x0F) if packed is not None else None,
+        data.hex(' '),
+    )

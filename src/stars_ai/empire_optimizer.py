@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 from .util import distance
+from .population_units import COLONISTS_PER_CARGO_KT, COLONY_LOAD_COLONISTS
 
 @dataclass
 class PlanetEconomicRole:
@@ -67,7 +68,10 @@ def optimize_population_transfers(state: Any, max_transfers: int = 8) -> list[Po
         if len(plans)>=max_transfers: break
         if dst.id in used_dst: continue
         fleet = min(freighters, key=lambda f: distance(f.position,src.position), default=None)
-        cap = fleet.cargo_capacity if fleet else 25000
+        cap = (
+            int(fleet.cargo_capacity) * COLONISTS_PER_CARGO_KT
+            if fleet else COLONY_LOAD_COLONISTS
+        )
         amount = min(cap, max(10000, int(src.population*0.10)))
         plans.append(PopulationTransferPlan(src.id,dst.id,amount,getattr(fleet,"id",None),score,
             f"Move population from {src.name} to higher-growth/developing {dst.name}; balances breeder growth, travel, and strategic value."))

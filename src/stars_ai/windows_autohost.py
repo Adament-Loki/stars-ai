@@ -10,9 +10,14 @@ import subprocess
 import time
 import os
 import hashlib
+import re
 
 from .native.player_state import PlayerState
-from .native.x_writer import write_ai_turn
+from .native.x_writer import ORDER_BLOCK_TYPES, write_ai_turn
+from .native.history_merge import (
+    inspect_history_coverage,
+    merge_history_file,
+)
 from .native_observer import read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn, build_human_report
 
 @dataclass
@@ -20,18 +25,31 @@ class WindowsAutoHostConfig:
     stars_exe: str
     seed_dir: str
     output_dir: str
-    game_name: str
+    # Retained for configuration compatibility only. The authoritative game
+    # basename is discovered from seed_dir during fail-closed validation.
+    game_name: str | None = None
     player_ids: list[int] = field(default_factory=lambda: [1,2,3,4])
     turns: int = 50
+    # False/default: restore the immutable seed before playing. True: validate
+    # and continue the current game beside stars_exe for `turns` more turns.
+    play_on: bool = False
     checkpoints: list[int] = field(default_factory=lambda: [10,25,50])
     host_password: str | None = None
     keep_every_turn: bool = True
+    # Merge each current M file into its cumulative H file in native Python.
+    # This replaces the Stars! client-open step required by headless hosting.
+    auto_merge_history: bool = True
+    # Fail closed if post-merge semantic coverage cannot be proven. Retained as
+    # a compatibility/safety switch; it no longer requests a manual client step.
+    require_history_sync: bool = True
     stop_on_missing_x: bool = True
-    host_timeout_seconds: int = 60
+    host_timeout_seconds: int = 180
     host_poll_seconds: float = 0.5
     host_settle_seconds: float = 1.5
     prevent_parallel_stars: bool = True
-    use_seed_as_live: bool = True
+    # Deprecated compatibility field. Native operations always run beside the
+    # configured Stars! executable; seed_dir is immutable.
+    use_seed_as_live: bool = False
     pre_host_audit: bool = True
     print_observer_each_turn: bool = True
     cleanup_output_on_start: bool = True
@@ -60,6 +78,44 @@ class TurnExecution:
     checkpoint_written: bool
     success: bool
     message: str
+
+
+class SeedValidationError(RuntimeError):
+    """The immutable starting game is unsafe or incomplete."""
+
+
+@dataclass(frozen=True)
+class ValidatedSeedGame:
+    seed_dir: Path
+    basename: str
+    game_id: int
+    turn: int
+    files: tuple[Path, ...]
+    hst: Path
+    xy: Path
+    m_files: dict[int, Path]
+    x_files: dict[int, Path]
+    x_sha256: dict[int, str]
+
+
+@dataclass(frozen=True)
+class ValidatedLiveGame:
+    game_dir: Path
+    basename: str
+    game_id: int
+    turn: int
+    files: tuple[Path, ...]
+    hst: Path
+    xy: Path
+    m_files: dict[int, Path]
+
+
+class LiveGameValidationError(RuntimeError):
+    """The requested play-on game is incomplete, mismatched, or unsafe."""
+
+
+class HistorySyncError(RuntimeError):
+    """Automatic history merge or its semantic coverage check failed."""
 
 class NativeOrderBridge:
     """
@@ -101,6 +157,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         self.console_player_logs=None if console_player_logs is None else {int(x) for x in console_player_logs}
         self.allied_pairs=[list(map(int,pair)) for pair in (allied_pairs or [])]
         self.memory_root=Path(memory_root).resolve() if memory_root else None
+        self._pending_memories:dict[int,tuple[Path,Path]]={}
 
     def _friend_ids_for(self, player_id:int) -> list[int]:
         out=set()
@@ -119,6 +176,14 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             raise RuntimeError(
                 f"Integrated writer needs a persistent known-good .x{player_id} template."
             )
+        memory_path=(
+            self.memory_root/f"player-{int(player_id):02d}-memory.json"
+            if self.memory_root is not None else None
+        )
+        pending_memory_path=(
+            self.memory_root/f"player-{int(player_id):02d}-memory.pending.json"
+            if self.memory_root is not None else None
+        )
         result=write_ai_turn(
             player_id=player_id,
             m_path=m_path,
@@ -128,11 +193,11 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             persona_name=self.personas.get(str(player_id),"Balanced"),
             trace_path=turn_dir/f"{getattr(self,'turn_tag','current')}-player-{player_id:02d}-decision-native.json",
             friend_player_ids=self._friend_ids_for(int(player_id)),
-            memory_path=(
-                self.memory_root/f"player-{int(player_id):02d}-memory.json"
-                if self.memory_root is not None else None
-            ),
+            memory_path=memory_path,
+            memory_output_path=pending_memory_path,
         )
+        if memory_path is not None and pending_memory_path is not None:
+            self._pending_memories[int(player_id)]=(memory_path,pending_memory_path)
         moves=[
             e for e in result.emitted
             if e.get("kind")=="move_fleet"
@@ -159,6 +224,20 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         if show_console and report_path.exists():
             print(report_path.read_text(encoding="utf-8"), flush=True)
         return output_x_path
+
+    def commit_pending_memory(self) -> None:
+        for player_id,(committed,pending) in sorted(self._pending_memories.items()):
+            if not pending.exists():
+                raise RuntimeError(
+                    f"Pending AI memory is missing for player {player_id}: {pending}"
+                )
+            pending.replace(committed)
+        self._pending_memories.clear()
+
+    def discard_pending_memory(self) -> None:
+        for _,pending in self._pending_memories.values():
+            pending.unlink(missing_ok=True)
+        self._pending_memories.clear()
 
 class ExternalCommandOrderBridge(NativeOrderBridge):
     """
@@ -229,7 +308,6 @@ def _persistent_ai_state_root(cfg: WindowsAutoHostConfig, seed: Path) -> Path:
         root=Path(cfg.ai_state_dir).expanduser().resolve()
     else:
         root=seed.parent / f"{seed.name}-stars-ai-state"
-    root.mkdir(parents=True,exist_ok=True)
     return root
 
 
@@ -248,12 +326,14 @@ def _bootstrap_persistent_x_templates(
     *,
     seed: Path,
     game: Path,
+    source_x_files: dict[int,Path] | None = None,
+    preserve_matching: bool = False,
 ) -> Path:
     """
-    Capture initial known-good X files ONCE and then never depend on live X files.
+    Capture initial known-good X files from the validated staged game.
 
-    This is restart-safe: Stars! may consume/delete GAME.x# after hosting, and
-    cleanup_output_on_start may delete logs. Persistent templates live elsewhere.
+    During the turn loop Stars! may consume/delete GAME.x# after hosting, so the
+    refreshed templates live outside both the execution and output directories.
     """
     root=_persistent_x_template_root(cfg,seed)
     output_root=Path(cfg.output_dir).resolve()
@@ -272,43 +352,54 @@ def _bootstrap_persistent_x_templates(
         )
     except ValueError:
         pass
+    try:
+        root_resolved.relative_to(seed.resolve())
+        raise RuntimeError(
+            "x_template_dir must not be inside immutable seed_dir. Use a separate sibling directory."
+        )
+    except ValueError:
+        pass
 
     root.mkdir(parents=True,exist_ok=True)
 
+    template_sources={}
     for player_id in cfg.player_ids:
-        current_m_hits=list(game.glob(f"*.m{player_id}"))
-        if len(current_m_hits)!=1:
-            raise FileNotFoundError(
-                f"Expected one current .m{player_id} while validating X template; found {len(current_m_hits)}."
-            )
-        current_m=current_m_hits[0]
+        current_m=_live_game_file(game,str(cfg.game_name),f".m{player_id}")
         dest=root/f"template.x{player_id}"
 
-        if dest.exists() and _template_matches_game(dest,current_m,player_id):
+        if preserve_matching and dest.exists() and _template_matches_game(
+            dest,current_m,player_id
+        ):
+            template_sources[str(player_id)]={
+                "path":str(dest),
+                "source":"existing persistent template",
+            }
             continue
 
-        # First-run bootstrap. Search live game first, then original seed for
-        # copied-live mode. A subsequent restart does not need either because
-        # the persistent dest above survives.
-        candidates=[]
-        for folder in (game,seed):
-            for cand in folder.glob(f"*.x{player_id}"):
-                if cand.resolve() not in {x.resolve() for x in candidates}:
-                    candidates.append(cand)
+        # Seed-reset mode refreshes from the fully validated staged X. Play-on
+        # mode may have no live X because the prior host consumed it, so it
+        # bootstraps a missing/stale persistent template from the validated seed.
+        if source_x_files is not None:
+            source=source_x_files.get(int(player_id))
+            candidates=[source] if source is not None else []
+            source_label="validated seed X"
+        else:
+            try:
+                candidates=[_live_game_file(game,str(cfg.game_name),f".x{player_id}")]
+            except FileNotFoundError:
+                candidates=[]
+            source_label="validated staged X"
         valid=[c for c in candidates if _template_matches_game(c,current_m,player_id)]
         if len(valid)!=1:
-            reason=(
-                "No persistent template exists yet and no matching live initial X file was found. "
-                f"Create/save one valid .x{player_id} for this game once, then rerun. "
-                f"Persistent location: {dest}"
+            raise FileNotFoundError(
+                f"Validated template source .x{player_id} is missing or no longer matches "
+                f"the live M file; refusing template bootstrap at {dest}."
             )
-            if dest.exists():
-                reason=(
-                    f"Existing persistent template {dest} belongs to a different game/player and "
-                    f"no unique matching live .x{player_id} was found to refresh it."
-                )
-            raise FileNotFoundError(reason)
         shutil.copy2(valid[0],dest)
+        template_sources[str(player_id)]={
+            "path":str(valid[0]),
+            "source":source_label,
+        }
 
     manifest={
         "game_name":cfg.game_name,
@@ -316,36 +407,465 @@ def _bootstrap_persistent_x_templates(
         "templates":{
             str(pid):str(root/f"template.x{pid}") for pid in cfg.player_ids
         },
+        "template_sources":template_sources,
+        "play_on":bool(cfg.play_on),
         "note":"Immutable bootstrap templates. Live GAME.x# files are regenerated each turn.",
     }
     (root/'templates.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     return root
 
-def _copy_seed(seed: Path, game: Path) -> None:
-    if game.exists():
-        shutil.rmtree(game)
-    shutil.copytree(seed, game)
+_NATIVE_GAME_SUFFIX = re.compile(r"\.(?:hst|xy|[hmx](?:[1-9]|1[0-6]))\Z", re.IGNORECASE)
 
 
-def _safe_cleanup_output(root: Path, seed: Path) -> None:
+def _native_game_basename(path: Path) -> str | None:
+    match=_NATIVE_GAME_SUFFIX.search(path.name)
+    if match is None:
+        return None
+    return path.name[:match.start()]
+
+
+def _live_game_file(game: Path, basename: str, suffix: str) -> Path:
+    expected=f"{basename}{suffix}".casefold()
+    hits=[p for p in game.iterdir() if p.is_file() and p.name.casefold()==expected]
+    if len(hits)!=1:
+        raise FileNotFoundError(
+            f"Expected exactly one live {basename}{suffix} in {game}; found {len(hits)}"
+        )
+    return hits[0]
+
+
+def _path_is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _paths_overlap(a: Path, b: Path) -> bool:
+    return _path_is_within(a,b) or _path_is_within(b,a)
+
+
+def _stars_execution_dir(cfg: WindowsAutoHostConfig) -> Path:
+    return Path(cfg.stars_exe).expanduser().resolve().parent
+
+
+def _seed_failure(errors: list[str]) -> SeedValidationError:
+    detail="\n".join(f"  - {e}" for e in errors)
+    return SeedValidationError(f"Seed validation failed:\n{detail}")
+
+
+def _validate_seed_game(cfg: WindowsAutoHostConfig) -> ValidatedSeedGame:
+    """Parse and validate the complete seed without changing any directory."""
+    from .adapters.stars_native import read_blocks
+
+    seed=Path(cfg.seed_dir).expanduser().resolve()
+    errors=[]
+    if not seed.is_dir():
+        raise _seed_failure([f"seed_dir does not exist or is not a directory: {seed}"])
+
+    player_ids=[int(x) for x in cfg.player_ids]
+    if not player_ids:
+        errors.append("player_ids must contain at least one human-controlled AI seat")
+    if len(set(player_ids)) != len(player_ids):
+        errors.append(f"player_ids contains duplicate seats: {player_ids}")
+    invalid_players=[x for x in player_ids if not 1 <= x <= 16]
+    if invalid_players:
+        errors.append(f"Stars! player seats must be in 1..16; got {invalid_players}")
+
+    native_files=[]
+    basenames={}
+    for path in seed.iterdir():
+        if not path.is_file():
+            continue
+        basename=_native_game_basename(path)
+        if basename is None:
+            continue
+        native_files.append(path)
+        basenames.setdefault(basename.casefold(),set()).add(basename)
+    if len(basenames) != 1:
+        names=sorted({name for variants in basenames.values() for name in variants})
+        errors.append(
+            "expected exactly one Stars! game basename in seed_dir; "
+            f"found {len(basenames)} ({', '.join(names) if names else 'none'})"
+        )
+        raise _seed_failure(errors)
+
+    basename=next(iter(next(iter(basenames.values()))))
+    game_files=[p for p in native_files if (_native_game_basename(p) or "").casefold()==basename.casefold()]
+    by_suffix={}
+    for path in game_files:
+        by_suffix.setdefault(path.suffix.casefold(),[]).append(path)
+
+    def require_one(suffix: str) -> Path | None:
+        hits=by_suffix.get(suffix.casefold(),[])
+        if len(hits) != 1:
+            errors.append(f"{basename}{suffix}: expected exactly one file; found {len(hits)}")
+            return None
+        return hits[0]
+
+    hst=require_one(".hst")
+    xy=require_one(".xy")
+    m_files={pid:path for pid in player_ids if (path:=require_one(f".m{pid}")) is not None}
+    h_files={
+        pid:path for pid in player_ids
+        if (cfg.auto_merge_history or cfg.require_history_sync)
+        and (path:=require_one(f".h{pid}")) is not None
+    }
+    x_files={pid:path for pid in player_ids if (path:=require_one(f".x{pid}")) is not None}
+    if errors:
+        raise _seed_failure(errors)
+
+    parsed_headers={}
+    parsed_blocks={}
+    for label,path in [("HST",hst),("XY",xy)]+[
+        (f"M{pid}",m_files[pid]) for pid in player_ids
+    ]+[
+        (f"H{pid}",h_files[pid]) for pid in player_ids if pid in h_files
+    ]+[
+        (f"X{pid}",x_files[pid]) for pid in player_ids
+    ]:
+        try:
+            header,blocks,_=read_blocks(path)
+            parsed_headers[label]=header
+            parsed_blocks[label]=blocks
+        except Exception as exc:
+            errors.append(f"{path.name} is not structurally parseable: {type(exc).__name__}: {exc}")
+    if errors:
+        raise _seed_failure(errors)
+
+    game_id=int(parsed_headers["HST"].game_id)
+    for label,header in parsed_headers.items():
+        if int(header.game_id) != game_id:
+            errors.append(f"{label} game id {header.game_id} != HST game id {game_id}")
+
+    starting_turn=None
+    for pid in player_ids:
+        mh=parsed_headers[f"M{pid}"]
+        xh=parsed_headers[f"X{pid}"]
+        xb=parsed_blocks[f"X{pid}"]
+        if int(xh.player_index) != pid-1:
+            errors.append(
+                f"{x_files[pid].name} declares player {xh.player_index+1}, expected configured seat {pid}"
+            )
+        if int(mh.player_index) != pid-1:
+            errors.append(
+                f"{m_files[pid].name} declares player {mh.player_index+1}, expected configured seat {pid}"
+            )
+        if int(mh.file_type) != 3:
+            errors.append(
+                f"{m_files[pid].name} file type {mh.file_type} is not M type 3"
+            )
+        if pid in h_files:
+            hh=parsed_headers[f"H{pid}"]
+            if int(hh.player_index) != pid-1:
+                errors.append(
+                    f"{h_files[pid].name} declares player {hh.player_index+1}, expected configured seat {pid}"
+                )
+            if int(hh.file_type) != 4:
+                errors.append(
+                    f"{h_files[pid].name} file type {hh.file_type} is not H type 4"
+                )
+        if int(xh.game_id) != int(mh.game_id):
+            errors.append(
+                f"{x_files[pid].name} game id {xh.game_id} != {m_files[pid].name} game id {mh.game_id}"
+            )
+        if int(xh.turn) != int(mh.turn):
+            errors.append(
+                f"{x_files[pid].name} turn {xh.turn} != {m_files[pid].name} turn {mh.turn}"
+            )
+        if starting_turn is None:
+            starting_turn=int(mh.turn)
+        elif int(mh.turn) != starting_turn:
+            errors.append(
+                f"{m_files[pid].name} turn {mh.turn} != starting turn {starting_turn}"
+            )
+
+        checks=[
+            (int(xh.file_type)==1,f"{x_files[pid].name} file type {xh.file_type} is not X type 1"),
+            (bool(xh.turn_submitted),f"{x_files[pid].name} is not marked turnSubmitted"),
+            (len(xb)>0 and xb[0].type_id==8 and xb[0].size==16,
+             f"{x_files[pid].name} lacks the canonical leading 16-byte FileHeader"),
+            (len(xb)>0 and xb[0].data[:4]==b"J3J3",
+             f"{x_files[pid].name} FileHeader lacks the Stars! J3J3 signature"),
+            (sum(1 for b in xb if b.type_id==8)==1,
+             f"{x_files[pid].name} must contain exactly one FileHeader"),
+            (len(xb)>0 and xb[-1].type_id==0 and xb[-1].size==0,
+             f"{x_files[pid].name} lacks the required terminal FileFooter"),
+        ]
+        errors.extend(message for ok,message in checks if not ok)
+
+        hashes=[b for b in xb if b.type_id==9]
+        if len(hashes)!=1 or len(hashes[0].data)!=17:
+            errors.append(
+                f"{x_files[pid].name} must contain exactly one canonical 17-byte FileHash"
+            )
+        else:
+            stored=int.from_bytes(hashes[0].data[:2],"little")
+            actual=sum(2+len(b.data) for b in xb if b.type_id in ORDER_BLOCK_TYPES)
+            if stored != actual:
+                errors.append(
+                    f"{x_files[pid].name} FileHash order length {stored} != actual {actual}"
+                )
+
+    if errors:
+        raise _seed_failure(errors)
+
+    return ValidatedSeedGame(
+        seed_dir=seed,
+        basename=basename,
+        game_id=game_id,
+        turn=int(starting_turn or 0),
+        files=tuple(sorted(game_files,key=lambda p:p.name.casefold())),
+        hst=hst,
+        xy=xy,
+        m_files=m_files,
+        x_files=x_files,
+        x_sha256={pid:_sha256(path) for pid,path in x_files.items()},
+    )
+
+
+def _live_failure(errors: list[str]) -> LiveGameValidationError:
+    detail="\n".join(f"  - {e}" for e in errors)
+    return LiveGameValidationError(f"Play-on live game validation failed:\n{detail}")
+
+
+def _validate_live_game(
+    cfg: WindowsAutoHostConfig,
+    expected: ValidatedSeedGame,
+) -> ValidatedLiveGame:
+    """Validate the current executable-directory game without changing it."""
+    from .adapters.stars_native import read_blocks
+
+    game=_stars_execution_dir(cfg)
+    errors=[]
+    if not game.is_dir():
+        raise _live_failure([f"Stars! execution directory does not exist: {game}"])
+
+    game_files=tuple(sorted(
+        (
+            path for path in game.iterdir()
+            if path.is_file()
+            and (_native_game_basename(path) or "").casefold()==expected.basename.casefold()
+        ),
+        key=lambda path:path.name.casefold(),
+    ))
+    by_suffix={}
+    for path in game_files:
+        by_suffix.setdefault(path.suffix.casefold(),[]).append(path)
+
+    def require_one(suffix: str) -> Path | None:
+        hits=by_suffix.get(suffix.casefold(),[])
+        if len(hits)!=1:
+            errors.append(
+                f"{expected.basename}{suffix}: expected exactly one live file; found {len(hits)}"
+            )
+            return None
+        return hits[0]
+
+    hst=require_one(".hst")
+    xy=require_one(".xy")
+    player_ids=[int(x) for x in cfg.player_ids]
+    m_files={
+        pid:path for pid in player_ids
+        if (path:=require_one(f".m{pid}")) is not None
+    }
+    h_files={
+        pid:path for pid in player_ids
+        if (cfg.auto_merge_history or cfg.require_history_sync)
+        and (path:=require_one(f".h{pid}")) is not None
+    }
+    if errors:
+        raise _live_failure(errors)
+
+    parsed={}
+    for label,path in [("HST",hst),("XY",xy)]+[
+        (f"M{pid}",m_files[pid]) for pid in player_ids
+    ]+[
+        (f"H{pid}",h_files[pid]) for pid in player_ids if pid in h_files
+    ]:
+        try:
+            header,_,_=read_blocks(path)
+            parsed[label]=header
+        except Exception as exc:
+            errors.append(
+                f"{path.name} is not structurally parseable: {type(exc).__name__}: {exc}"
+            )
+    if errors:
+        raise _live_failure(errors)
+
+    game_id=int(parsed["HST"].game_id)
+    if game_id!=int(expected.game_id):
+        errors.append(
+            f"live HST game id {game_id} != validated seed game id {expected.game_id}"
+        )
+    if int(parsed["HST"].file_type)!=2:
+        errors.append(
+            f"{hst.name} file type {parsed['HST'].file_type} is not HST type 2"
+        )
+    if int(parsed["XY"].file_type)!=0:
+        errors.append(
+            f"{xy.name} file type {parsed['XY'].file_type} is not XY type 0"
+        )
+    for label,header in parsed.items():
+        if int(header.game_id)!=game_id:
+            errors.append(f"{label} game id {header.game_id} != live HST game id {game_id}")
+
+    live_turn=int(parsed["HST"].turn)
+    for pid in player_ids:
+        header=parsed[f"M{pid}"]
+        if int(header.file_type)!=3:
+            errors.append(
+                f"{m_files[pid].name} file type {header.file_type} is not M type 3"
+            )
+        if int(header.player_index)!=pid-1:
+            errors.append(
+                f"{m_files[pid].name} declares player {header.player_index+1}, "
+                f"expected configured seat {pid}"
+            )
+        if int(header.turn)!=live_turn:
+            errors.append(
+                f"{m_files[pid].name} turn {header.turn} != live HST turn {live_turn}"
+            )
+        if pid in h_files:
+            history_header=parsed[f"H{pid}"]
+            if int(history_header.file_type)!=4:
+                errors.append(
+                    f"{h_files[pid].name} file type {history_header.file_type} is not H type 4"
+                )
+            if int(history_header.player_index)!=pid-1:
+                errors.append(
+                    f"{h_files[pid].name} declares player {history_header.player_index+1}, "
+                    f"expected configured seat {pid}"
+                )
+    if errors:
+        raise _live_failure(errors)
+
+    return ValidatedLiveGame(
+        game_dir=game,
+        basename=expected.basename,
+        game_id=game_id,
+        turn=live_turn,
+        files=game_files,
+        hst=hst,
+        xy=xy,
+        m_files=m_files,
+    )
+
+
+def _remove_stale_game_files(game: Path, basename: str) -> list[Path]:
+    removed=[]
+    for path in game.iterdir():
+        if not path.is_file():
+            continue
+        found=_native_game_basename(path)
+        if found is None or found.casefold()!=basename.casefold():
+            continue
+        path.unlink()
+        removed.append(path)
+    return removed
+
+
+def _stage_seed_game(validated: ValidatedSeedGame, game: Path) -> list[Path]:
+    game=game.resolve()
+    if _paths_overlap(validated.seed_dir,game):
+        raise RuntimeError(
+            "seed_dir and the Stars! execution directory must be separate, non-nested locations"
+        )
+    game.mkdir(parents=True,exist_ok=True)
+    _remove_stale_game_files(game,validated.basename)
+    staged=[]
+    for source in validated.files:
+        destination=game/source.name
+        shutil.copy2(source,destination)
+        staged.append(destination)
+    return staged
+
+
+def _write_bootstrap_snapshot(
+    validated: ValidatedSeedGame,
+    game: Path,
+    output_root: Path,
+    *,
+    starting_turn: int | None = None,
+    mode: str = "seed_reset",
+) -> Path:
+    dest=output_root/"bootstrap"
+    dest.mkdir(parents=True,exist_ok=True)
+    snapshot_files=[]
+    live_files=sorted(
+        (
+            path for path in game.iterdir()
+            if path.is_file()
+            and (_native_game_basename(path) or "").casefold()==validated.basename.casefold()
+        ),
+        key=lambda path:path.name.casefold(),
+    )
+    for live in live_files:
+        shutil.copy2(live,dest/live.name)
+        snapshot_files.append(live.name)
+    manifest={
+        "game_basename":validated.basename,
+        "game_id":validated.game_id,
+        "starting_turn":int(validated.turn if starting_turn is None else starting_turn),
+        "mode":str(mode),
+        "play_on":bool(mode=="play_on"),
+        "configured_players":sorted(validated.x_files),
+        "seed_directory":str(validated.seed_dir),
+        "execution_directory":str(game),
+        "snapshot_files":snapshot_files,
+        # Compatibility key retained for existing snapshot consumers. In
+        # play-on mode these files were copied for evidence, not staged live.
+        "staged_files":snapshot_files,
+        "initial_x_sha256":{
+            str(pid):digest for pid,digest in sorted(validated.x_sha256.items())
+        },
+    }
+    (dest/"manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
+    return dest
+
+
+def _safe_cleanup_output(root: Path, seed: Path, *protected: Path) -> None:
     """
     Clear diagnostics/playtest output from a previous run without ever deleting
     the direct Stars! game directory.
     """
     root=root.resolve()
     seed=seed.resolve()
-    if root == seed:
-        raise RuntimeError("output_dir cannot equal seed_dir when cleanup_output_on_start is enabled")
-    try:
-        seed.relative_to(root)
-        raise RuntimeError(
-            "Refusing cleanup because seed_dir is inside output_dir. "
-            "Move the live Stars! game outside the playtest/output directory."
-        )
-    except ValueError:
-        pass
+    for path,label in [(seed,"seed_dir")]+[(Path(p).resolve(),"protected directory") for p in protected]:
+        if _paths_overlap(root,path):
+            raise RuntimeError(
+                f"Refusing output cleanup because output_dir overlaps {label}: {path}"
+            )
     if root.exists():
         shutil.rmtree(root)
+
+
+def _validate_workspace_layout(
+    *,
+    seed: Path,
+    game: Path,
+    output: Path,
+    ai_state: Path,
+    x_templates: Path,
+) -> None:
+    named={
+        "seed_dir":seed.resolve(),
+        "Stars! execution directory":game.resolve(),
+        "output_dir":output.resolve(),
+        "ai_state_dir":ai_state.resolve(),
+        "x_template_dir":x_templates.resolve(),
+    }
+    items=list(named.items())
+    conflicts=[]
+    for i,(left_name,left) in enumerate(items):
+        for right_name,right in items[i+1:]:
+            if _paths_overlap(left,right):
+                conflicts.append(f"{left_name} ({left}) overlaps {right_name} ({right})")
+    if conflicts:
+        raise RuntimeError(
+            "Autoplay locations must be logically separate:\n  - " + "\n  - ".join(conflicts)
+        )
 
 def _find_one(game: Path, pattern: str) -> Path:
     hits = list(game.glob(pattern))
@@ -359,11 +879,277 @@ def _read_year(m_path: Path, xy_path: Path) -> int | None:
     except Exception:
         return None
 
-def _snapshot(game: Path, dest: Path) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
-    for p in game.iterdir():
-        if p.is_file() and p.suffix.lower() in {".hst",".xy",".m1",".m2",".m3",".m4",".x1",".x2",".x3",".x4"}:
-            shutil.copy2(p, dest / p.name)
+def _snapshot(
+    game: Path,
+    dest: Path,
+    *,
+    basename: str,
+    metadata: dict[str, Any] | None = None,
+) -> Path:
+    """Freeze one complete native game state and write its manifest last."""
+    from .adapters.stars_native import read_blocks
+
+    if dest.exists():
+        raise FileExistsError(f"Refusing to overwrite immutable native snapshot: {dest}")
+    dest.mkdir(parents=True)
+    sources=sorted(
+        (
+            path for path in game.iterdir()
+            if path.is_file()
+            and (_native_game_basename(path) or "").casefold()==basename.casefold()
+        ),
+        key=lambda path:path.name.casefold(),
+    )
+    if not sources:
+        raise FileNotFoundError(f"No native {basename} game files found to snapshot in {game}")
+
+    inventory={}
+    for source in sources:
+        frozen=dest/source.name
+        shutil.copy2(source,frozen)
+        row={
+            "size":frozen.stat().st_size,
+            "mtime_ns":frozen.stat().st_mtime_ns,
+            "sha256":_sha256(frozen),
+        }
+        try:
+            header,_,_=read_blocks(frozen)
+            row["header"]={
+                "game_id":int(header.game_id),
+                "turn":int(header.turn),
+                "year":int(header.year),
+                "player_index":int(header.player_index),
+                "file_type":int(header.file_type),
+                "turn_submitted":bool(header.turn_submitted),
+            }
+        except Exception as exc:
+            row["parse_error"]=f"{type(exc).__name__}: {exc}"
+        inventory[source.name]=row
+
+    manifest={
+        "schema_version":1,
+        "captured_at_ns":time.time_ns(),
+        "source_directory":str(game),
+        "game_basename":basename,
+        "snapshot_files":list(inventory),
+        "files":inventory,
+        **dict(metadata or {}),
+    }
+    (dest/"manifest.json").write_text(
+        json.dumps(manifest,indent=2),encoding="utf-8"
+    )
+    return dest
+
+
+def _history_sync_report(
+    game: Path,
+    basename: str,
+    player_ids: list[int],
+) -> dict[str, Any]:
+    """Prove that each H file covers every current M planet observation."""
+    from .adapters.stars_native import read_blocks
+
+    rows=[]
+    for player_id in [int(value) for value in player_ids]:
+        row={"player_id":player_id,"ready":False,"errors":[]}
+        try:
+            m_path=_live_game_file(game,basename,f".m{player_id}")
+            row["m_path"]=str(m_path)
+            row["m_mtime_ns"]=m_path.stat().st_mtime_ns
+            mh,_,_=read_blocks(m_path)
+            row["m_turn"]=int(mh.turn)
+            row["m_year"]=int(mh.year)
+            row["m_sha256"]=_sha256(m_path)
+        except Exception as exc:
+            row["errors"].append(
+                f"current M file is unavailable or invalid: {type(exc).__name__}: {exc}"
+            )
+            rows.append(row)
+            continue
+
+        try:
+            h_path=_live_game_file(game,basename,f".h{player_id}")
+            row["h_path"]=str(h_path)
+            row["h_mtime_ns"]=h_path.stat().st_mtime_ns
+            hh,_,_=read_blocks(h_path)
+            row["h_header_turn"]=int(hh.turn)
+            row["h_sha256"]=_sha256(h_path)
+            if int(hh.file_type)!=4:
+                row["errors"].append(
+                    f"{h_path.name} file type {hh.file_type} is not H type 4"
+                )
+            if int(hh.game_id)!=int(mh.game_id):
+                row["errors"].append(
+                    f"{h_path.name} game id {hh.game_id} != {m_path.name} game id {mh.game_id}"
+                )
+            if int(hh.player_index)!=player_id-1:
+                row["errors"].append(
+                    f"{h_path.name} declares player {hh.player_index+1}, expected player {player_id}"
+                )
+            coverage=inspect_history_coverage(h_path,m_path)
+            row["coverage"]=coverage
+            if coverage["missing_planet_ids"]:
+                row["errors"].append(
+                    f"{h_path.name} is missing current-M planet IDs "
+                    f"{coverage['missing_planet_ids']}"
+                )
+            if coverage["stale_planets"]:
+                stale=", ".join(
+                    f"P{item['planet_id']} H{item['history_turn']}<M{item['m_turn']}"
+                    for item in coverage["stale_planets"]
+                )
+                row["errors"].append(
+                    f"{h_path.name} contains stale planet observations ({stale})"
+                )
+        except Exception as exc:
+            row["errors"].append(
+                f"history file is unavailable or invalid: {type(exc).__name__}: {exc}"
+            )
+        row["ready"]=not row["errors"]
+        rows.append(row)
+
+    return {
+        "game_directory":str(game),
+        "game_basename":basename,
+        "ready":bool(rows) and all(row["ready"] for row in rows),
+        "players":rows,
+    }
+
+
+def _auto_merge_histories(
+    cfg: WindowsAutoHostConfig,
+    game: Path,
+    basename: str,
+    logs_root: Path,
+    *,
+    phase_tag: str,
+    execution_turn: int,
+) -> dict[str, Any]:
+    """Merge every configured player's current M into H and write an audit."""
+    audit_root=logs_root/"history"
+    audit_root.mkdir(parents=True,exist_ok=True)
+    rows=[]
+    for player_id in [int(value) for value in cfg.player_ids]:
+        h_path=_live_game_file(game,basename,f".h{player_id}")
+        m_path=_live_game_file(game,basename,f".m{player_id}")
+        try:
+            row=merge_history_file(
+                h_path,m_path,
+                backup_path=(
+                    audit_root/f"{phase_tag}-player-{player_id:02d}-premerge.h{player_id}"
+                ),
+                merged_copy_path=(
+                    audit_root/f"{phase_tag}-player-{player_id:02d}-merged.h{player_id}"
+                ),
+            )
+            row["ready"]=True
+        except Exception as exc:
+            row={
+                "player_id":player_id,
+                "h_path":str(h_path),
+                "m_path":str(m_path),
+                "ready":False,
+                "status":"FAILED",
+                "error":f"{type(exc).__name__}: {exc}",
+            }
+        rows.append(row)
+
+    ready=bool(rows) and all(bool(row.get("ready")) for row in rows)
+    report={
+        "schema_version":1,
+        "status":"MERGED_AND_VALIDATED" if ready else "AUTOMATIC_MERGE_FAILED",
+        "ready":ready,
+        "execution_turn":int(execution_turn),
+        "phase_tag":phase_tag,
+        "game_directory":str(game),
+        "game_basename":basename,
+        "players":rows,
+    }
+    json_path=logs_root/f"{phase_tag}-HISTORY_MERGE.json"
+    text_path=logs_root/f"{phase_tag}-HISTORY_MERGE.txt"
+    json_path.write_text(json.dumps(report,indent=2),encoding="utf-8")
+    lines=[f"{report['status']} - native Python M-to-H history merge"]
+    for row in rows:
+        if row.get("ready"):
+            lines.append(
+                f"READY - Player {row['player_id']}: {row['status']}; "
+                f"{row['h_planets_before']} -> {row['h_planets_after']} history planets; "
+                f"new={row['new_planet_ids']}; current M unchanged={row['m_unchanged']}."
+            )
+        else:
+            lines.append(
+                f"WARNING - Player {row['player_id']} automatic history merge failed: "
+                f"{row.get('error','unknown error')}."
+            )
+    if not ready:
+        lines.append(
+            "No new turn will be submitted. The pre-merge H and current M remain "
+            "available in the native/audit logs for diagnosis."
+        )
+    text_path.write_text("\n".join(lines)+"\n",encoding="utf-8")
+    if not ready:
+        print(f"[AUTOMATIC HISTORY MERGE FAILED] See {text_path}",flush=True)
+        raise HistorySyncError(
+            f"Automatic native M-to-H merge failed. See {text_path}"
+        )
+    print(
+        f"[HISTORY MERGED] {len(rows)} player H file(s) updated and validated "
+        f"for {phase_tag}.",
+        flush=True,
+    )
+    return report
+
+
+def _history_sync_barrier(
+    cfg: WindowsAutoHostConfig,
+    game: Path,
+    basename: str,
+    logs_root: Path,
+    turn: int,
+) -> dict[str, Any]:
+    """Write semantic history status and fail before creating any X file."""
+    turn_tag=f"turn-{turn:03d}"
+    report=_history_sync_report(game,basename,cfg.player_ids)
+    report["execution_turn"]=turn
+    report["required"]=bool(cfg.require_history_sync)
+    report["status"]=(
+        "READY" if report["ready"] else
+        "AUTOMATIC_HISTORY_MERGE_REQUIRED" if cfg.require_history_sync else
+        "WARNING_BYPASSED"
+    )
+    json_path=logs_root/f"{turn_tag}-HISTORY_SYNC.json"
+    text_path=logs_root/f"{turn_tag}-HISTORY_SYNC.txt"
+    json_path.write_text(json.dumps(report,indent=2),encoding="utf-8")
+
+    lines=[f"{report['status']} - pre-submit player history check"]
+    for row in report["players"]:
+        if row["ready"]:
+            lines.append(
+                f"READY - Player {row['player_id']} history semantically covers "
+                f"current M turn {row.get('m_turn')}."
+            )
+            continue
+        for error in row["errors"]:
+            lines.append(f"WARNING - Player {row['player_id']}: {error}.")
+    if not report["ready"]:
+        lines.append(
+            "The automatic native history merge did not establish current-M coverage. "
+            "No X file has been generated for this execution turn."
+        )
+    text_path.write_text("\n".join(lines)+"\n",encoding="utf-8")
+
+    if not report["ready"]:
+        prefix=(
+            "[AUTOMATIC HISTORY MERGE REQUIRED]" if cfg.require_history_sync
+            else "[WARNING - HISTORY SYNC BYPASSED]"
+        )
+        print(f"{prefix} See {text_path}",flush=True)
+    if not report["ready"] and cfg.require_history_sync:
+        raise HistorySyncError(
+            f"AUTOMATIC HISTORY MERGE REQUIRED before submitting {basename} turn files. "
+            f"See {text_path} and the corresponding HISTORY_MERGE audit."
+        )
+    return report
 
 
 def _stars_processes_running(exe_path: str) -> list[int]:
@@ -477,24 +1263,80 @@ def _run_host_serialized(cfg: WindowsAutoHostConfig, hst: Path, tracked_outputs:
     if os.name=="nt":
         creationflags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)
 
-    cp=subprocess.run(
-        cmd,
-        cwd=str(hst.parent),
-        capture_output=True,
-        text=True,
-        timeout=cfg.host_timeout_seconds,
-        creationflags=creationflags,
-    )
+    started=time.time()
+    try:
+        cp=subprocess.run(
+            cmd,
+            cwd=str(hst.parent),
+            capture_output=True,
+            text=True,
+            timeout=cfg.host_timeout_seconds,
+            creationflags=creationflags,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout=exc.stdout or ""
+        stderr=exc.stderr or ""
+        if isinstance(stdout,bytes):
+            stdout=stdout.decode(errors="replace")
+        if isinstance(stderr,bytes):
+            stderr=stderr.decode(errors="replace")
+        (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(stdout,encoding="utf-8")
+        (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(stderr,encoding="utf-8")
+        after=_file_signature(tracked_outputs)
+        pids=_stars_processes_running(cfg.stars_exe)
+        files_changed=after!=before
+        if pids and not files_changed:
+            condition="likely modal/error condition: Stars! is still present and tracked game files did not change"
+        elif pids:
+            condition="slow hosting or a child process still running: Stars! remains present after file activity"
+        elif files_changed:
+            condition="slow hosting/launcher return: tracked files changed but the launch exceeded its deadline"
+        else:
+            condition="host launch exceeded its deadline without observable output or a detectable Stars! process"
+        diagnostic={
+            "timeout_seconds":cfg.host_timeout_seconds,
+            "elapsed_seconds":round(time.time()-started,3),
+            "command":cmd,
+            "working_directory":str(hst.parent),
+            "stars_process_ids":pids,
+            "tracked_files_changed":files_changed,
+            "tracked_before":before,
+            "tracked_after":after,
+            "assessment":condition,
+        }
+        diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+        diagnostic_path.write_text(json.dumps(diagnostic,indent=2),encoding="utf-8")
+        raise RuntimeError(
+            f"Stars! host timed out after {cfg.host_timeout_seconds}s; {condition}. "
+            f"See {diagnostic_path}"
+        ) from exc
     (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(cp.stdout or "",encoding="utf-8")
     (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(cp.stderr or "",encoding="utf-8")
 
     if cfg.prevent_parallel_stars:
         # Some legacy launchers return before the actual GUI/host child exits.
-        _wait_until_no_stars_process(
+        process_exited=_wait_until_no_stars_process(
             cfg.stars_exe,
             timeout_seconds=cfg.host_timeout_seconds,
             poll_seconds=cfg.host_poll_seconds,
         )
+        if not process_exited:
+            pids=_stars_processes_running(cfg.stars_exe)
+            diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+            diagnostic_path.write_text(json.dumps({
+                "timeout_seconds":cfg.host_timeout_seconds,
+                "phase":"waiting_for_Stars_process_exit",
+                "command":cmd,
+                "working_directory":str(hst.parent),
+                "stars_process_ids":pids,
+                "tracked_before":before,
+                "tracked_current":_file_signature(tracked_outputs),
+                "assessment":"slow hosting or likely modal/error condition; Stars! remained running",
+            },indent=2),encoding="utf-8")
+            raise RuntimeError(
+                f"Stars! remained running for {cfg.host_timeout_seconds}s after launch return; "
+                f"possible modal/error condition. See {diagnostic_path}"
+            )
 
     settled=_wait_for_files_to_change_and_settle(
         tracked_outputs,before,
@@ -502,6 +1344,24 @@ def _run_host_serialized(cfg: WindowsAutoHostConfig, hst: Path, tracked_outputs:
         poll_seconds=cfg.host_poll_seconds,
         settle_seconds=cfg.host_settle_seconds,
     )
+    if not settled:
+        after=_file_signature(tracked_outputs)
+        diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+        diagnostic_path.write_text(json.dumps({
+            "timeout_seconds":cfg.host_timeout_seconds,
+            "phase":"waiting_for_generated_files_to_change_and_settle",
+            "command":cmd,
+            "working_directory":str(hst.parent),
+            "stars_process_ids":_stars_processes_running(cfg.stars_exe),
+            "tracked_files_changed":after!=before,
+            "tracked_before":before,
+            "tracked_current":after,
+            "assessment":(
+                "tracked files changed but did not settle; hosting may still be slow"
+                if after!=before else
+                "tracked files never changed; likely modal/error condition or rejected order files"
+            ),
+        },indent=2),encoding="utf-8")
     return cp, settled
 
 
@@ -527,15 +1387,16 @@ def _pre_host_audit(cfg: WindowsAutoHostConfig, game: Path, hst: Path, xy: Path,
             report["players"].append(row)
             continue
 
-        m_hits=list(game.glob(f"*.m{pid}"))
-        if len(m_hits)!=1:
-            row["error"]=f"expected one .m{pid}; found {len(m_hits)}"
+        try:
+            current_m=_live_game_file(game,hst.stem,f".m{pid}")
+        except FileNotFoundError as exc:
+            row["error"]=str(exc)
             report["ready"]=False
             report["players"].append(row)
             continue
 
         try:
-            mh,_,_=read_blocks(m_hits[0])
+            mh,_,_=read_blocks(current_m)
             xh,blocks,_=read_blocks(exact)
             fh=next((b for b in blocks if b.type_id==9),None)
             stored=int.from_bytes(fh.data[:2],"little") if fh and len(fh.data)>=2 else None
@@ -654,17 +1515,60 @@ def _host_command(cfg: WindowsAutoHostConfig, hst: Path) -> list[str]:
     return cmd
 
 def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge) -> list[TurnExecution]:
-    seed = Path(cfg.seed_dir).resolve()
-    root = Path(cfg.output_dir).resolve()
+    seed = Path(cfg.seed_dir).expanduser().resolve()
+    root = Path(cfg.output_dir).expanduser().resolve()
+    try:
+        validated=_validate_seed_game(cfg)
+    except SeedValidationError as exc:
+        print(f"[SEED VALIDATION FAILED] {exc}",flush=True)
+        raise
+
+    stars_exe=Path(cfg.stars_exe).expanduser().resolve()
+    if not stars_exe.is_file():
+        raise FileNotFoundError(f"Configured Stars! executable does not exist: {stars_exe}")
+    cfg.stars_exe=str(stars_exe)
+    cfg.game_name=validated.basename
+    game=_stars_execution_dir(cfg)
+    ai_state_root=_persistent_ai_state_root(cfg,seed)
+    templates_root=_persistent_x_template_root(cfg,seed)
+    _validate_workspace_layout(
+        seed=seed,
+        game=game,
+        output=root,
+        ai_state=ai_state_root,
+        x_templates=templates_root,
+    )
+
+    live_validation=(
+        _validate_live_game(cfg,validated)
+        if cfg.play_on else None
+    )
+
     if cfg.cleanup_output_on_start:
-        _safe_cleanup_output(root, seed)
+        _safe_cleanup_output(root,seed,game,ai_state_root,templates_root)
     root.mkdir(parents=True, exist_ok=True)
 
-    # Direct-seed mode: Stars! operates on the actual configured game
-    # directory. We do not copy/rename the game into turn-specific folders.
-    game = seed if cfg.use_seed_as_live else (root / "live")
-    if not cfg.use_seed_as_live:
-        _copy_seed(seed, game)
+    if live_validation is None:
+        # Default reset behavior: the immutable seed has passed every native
+        # safety check, so replace only this game's live files.
+        _stage_seed_game(validated,game)
+        starting_turn=validated.turn
+        bootstrap_mode="seed_reset"
+    else:
+        # PLAY ON: validation above was read-only. Do not stage, remove, or
+        # replace any live game file before the bootstrap evidence snapshot.
+        starting_turn=live_validation.turn
+        bootstrap_mode="play_on"
+        print(
+            f"[PLAY ON] Continuing {validated.basename} from year "
+            f"{2400+starting_turn} for {cfg.turns} additional turn(s).",
+            flush=True,
+        )
+    _write_bootstrap_snapshot(
+        validated,game,root,
+        starting_turn=starting_turn,
+        mode=bootstrap_mode,
+    )
 
     logs_root = root / "logs"
     logs_root.mkdir(exist_ok=True)
@@ -672,17 +1576,31 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
     checkpoints_root.mkdir(exist_ok=True)
     observer_root = logs_root / "observer"
     observer_root.mkdir(exist_ok=True)
-    hst = _find_one(game, "*.hst")
-    xy = _find_one(game, "*.xy")
+    hst = _live_game_file(game,validated.basename,".hst")
+    xy = _live_game_file(game,validated.basename,".xy")
 
-    # Bootstrap once from manually-created Turn-0 X files. Thereafter the
-    # persistent sibling store is the source template even when Stars! has
-    # consumed every live .x# and this process has been restarted.
-    templates_root = _bootstrap_persistent_x_templates(cfg,seed=seed,game=game)
+    # Recover a play-on game whose latest M files have not yet reached H, and
+    # normalize a reset seed through the same tested path. The bootstrap
+    # snapshot above preserves the exact pre-merge native state.
+    if cfg.auto_merge_history and cfg.turns > 0:
+        _auto_merge_histories(
+            cfg,game,validated.basename,logs_root,
+            phase_tag="bootstrap",
+            execution_turn=0,
+        )
+
+    # Reset mode refreshes from staged Turn-0 X files. Play-on mode preserves a
+    # matching persistent template or safely rebuilds it from the validated
+    # seed because the current host normally consumed every live X file.
+    templates_root = _bootstrap_persistent_x_templates(
+        cfg,seed=seed,game=game,
+        source_x_files=(validated.x_files if cfg.play_on else None),
+        preserve_matching=bool(cfg.play_on),
+    )
 
     # v7.0: strategic memory is intentionally outside output_dir so a diagnostics
     # cleanup or process restart does not erase the empire's learned galaxy.
-    ai_state_root=_persistent_ai_state_root(cfg,seed)
+    ai_state_root.mkdir(parents=True,exist_ok=True)
     if isinstance(order_bridge, IntegratedNativeOrderBridge):
         order_bridge.memory_root=ai_state_root
 
@@ -715,17 +1633,22 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             if isinstance(order_bridge, IntegratedNativeOrderBridge):
                 order_bridge.turn_tag = turn_tag
 
+            first_pre_m=_live_game_file(
+                game,validated.basename,f".m{cfg.player_ids[0]}"
+            )
+            year_before=_read_year(first_pre_m,xy)
+            # This is deliberately before deleting or generating any X file.
+            # A current M that has not been consumed by the Stars! client must
+            # not be superseded by another submitted turn.
+            _history_sync_barrier(
+                cfg,game,validated.basename,logs_root,turn
+            )
+            if isinstance(order_bridge, IntegratedNativeOrderBridge):
+                order_bridge.discard_pending_memory()
+
             # Each player completes synchronously before the next begins.
             for player_id in cfg.player_ids:
-                m_hits = list(game.glob(f"*.m{player_id}"))
-                if len(m_hits) != 1:
-                    raise FileNotFoundError(
-                        f"Expected exactly one .m{player_id} in direct game directory {game}; found {len(m_hits)}"
-                    )
-                m_path = m_hits[0]
-
-                if year_before is None:
-                    year_before = _read_year(m_path, xy)
+                m_path=_live_game_file(game,validated.basename,f".m{player_id}")
 
                 # Never depend on a live/pre-existing GAME.x# here. Always
                 # synthesize the new live order file from the immutable template.
@@ -755,7 +1678,13 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     logs_root/f"{turn_tag}-player-{player_id:02d}-GENERATED.x{player_id}"
                 )
 
-            missing = [pid for pid in cfg.player_ids if not list(game.glob(f"*.x{pid}"))]
+            missing = [
+                pid for pid in cfg.player_ids
+                if not any(
+                    p.is_file() and p.name.casefold()==f"{validated.basename}.x{pid}".casefold()
+                    for p in game.iterdir()
+                )
+            ]
             if missing and cfg.stop_on_missing_x:
                 raise RuntimeError(f"Missing native order files for players: {missing}")
 
@@ -771,13 +1700,15 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 )
 
             tracked_outputs = [hst, xy] + [
-                next(iter(game.glob(f"*.m{pid}")))
+                _live_game_file(game,validated.basename,f".m{pid}")
                 for pid in cfg.player_ids
             ]
 
             cp, settled = _run_host_serialized(cfg, hst, tracked_outputs, turn_dir)
 
-            first_m = _find_one(game, "*.m1")
+            first_m = _live_game_file(
+                game,validated.basename,f".m{cfg.player_ids[0]}"
+            )
             year_after = _read_year(first_m, xy)
             post_audit=_post_host_audit(
                 cfg, game, hst, pre_audit, logs_root, turn, year_before, year_after
@@ -785,12 +1716,56 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
 
             year_advanced=(year_before is None or year_after is None or year_after>year_before)
             x_consumed=bool(post_audit.get("all_consumed",False))
-            success=cp.returncode==0 and settled and year_advanced and x_consumed
+            host_success=cp.returncode==0 and settled and year_advanced and x_consumed
+            if cfg.keep_every_turn:
+                _snapshot(
+                    game,
+                    logs_root/"native"/f"{turn_tag}-post-host",
+                    basename=validated.basename,
+                    metadata={
+                        "phase":"post_host",
+                        "execution_turn":turn,
+                        "native_year_before":year_before,
+                        "native_year_after":year_after,
+                        "native_turn_before":(
+                            None if year_before is None else int(year_before)-2400
+                        ),
+                        "native_turn_after":(
+                            None if year_after is None else int(year_after)-2400
+                        ),
+                        "host_returncode":cp.returncode,
+                        "host_settled":bool(settled),
+                        "all_x_consumed":x_consumed,
+                        "host_success":host_success,
+                    },
+                )
+            history_ready=True
+            if host_success and cfg.auto_merge_history:
+                history_report=_auto_merge_histories(
+                    cfg,game,validated.basename,logs_root,
+                    phase_tag=turn_tag,
+                    execution_turn=turn,
+                )
+                history_ready=bool(history_report.get("ready",False))
+            elif host_success:
+                history_ready=bool(
+                    _history_sync_report(
+                        game,validated.basename,cfg.player_ids
+                    ).get("ready",False)
+                )
+            success=host_success and history_ready
+            if isinstance(order_bridge, IntegratedNativeOrderBridge):
+                if success:
+                    order_bridge.commit_pending_memory()
+                else:
+                    order_bridge.discard_pending_memory()
             msg=(
-                "Host generated next turn and consumed all generated X order files."
+                "Host generated next turn, consumed all generated X order files, "
+                "and cumulative player histories were merged and validated."
                 if success else
                 f"Host/order registration failure: rc={cp.returncode}, settled={settled}, "
-                f"year {year_before}->{year_after}, all_x_consumed={x_consumed}"
+                f"year {year_before}->{year_after}, all_x_consumed={x_consumed}, "
+                f"history_ready={history_ready}"
             )
 
             # Omniscient observer reads the same direct Stars! game directory.
@@ -850,6 +1825,8 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 break
 
         except Exception as exc:
+            if isinstance(order_bridge, IntegratedNativeOrderBridge):
+                order_bridge.discard_pending_memory()
             e = TurnExecution(
                 turn, order_files, None, year_before, None, False, False,
                 f"{type(exc).__name__}: {exc}"
@@ -858,6 +1835,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             (logs_root / f"{turn_tag}-execution.json").write_text(
                 json.dumps(asdict(e), indent=2), encoding="utf-8"
             )
+            print(f"[AUTOPLAY FAILED] {e.message}",flush=True)
             break
 
     (root / "autoplay-result.json").write_text(

@@ -1,6 +1,10 @@
 
 # v4.9 Native Research Selection
 
+> Historical note: v8.1 corrected the interpretation below. Type 34 byte 0 is
+> the actual 15/25 percentage and byte 1 packs next/current field nibbles. See
+> `V8_1_CAPABILITY_DRIVEN_RESEARCH.md` for the current implementation.
+
 v4.9 adds native `ResearchChange` serialization to autoplay.
 
 Controlled empirical samples established:
