@@ -10,18 +10,21 @@ Initial native scope is intentionally narrow:
 """
 from __future__ import annotations
 
-import csv
 from dataclasses import asdict, dataclass
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 from .design_legality import ComponentCategory, ComponentRef, HULL_RULES, validate_design
 from .expansion_network import evaluate_expansion_network
 from .fuel_planner import ENGINE_DATA, best_range_ly, design_fuel_profile
+from .starsapi_items import (
+    stock_hulls as canonical_stock_hulls, hull_unlocked as canonical_hull_unlocked,
+    proven_available_components, ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO,
+    BOMB, MINING_ROBOT, MINE_LAYER, ORBITAL, ELECTRICAL, MECHANICAL,
+)
 from .logistics_capacity import evaluate_logistics_capacity, POPULATION_PULSE_KT
-from .native.design_change import EncodedShipDesign
-from .standard_mod import TechLevels, parse_mod_file
+from .native.design_change import EncodedShipDesign, starbase_design_slot_safety
+from .standard_mod import TechLevels
 
 UNIVERSAL_FREIGHTER_HULLS = (0, 1, 2)  # Small, Medium, Large. Super Freighter is IS-specific.
 MEDIUM_FREIGHTER_HULL_ID = 1
@@ -58,6 +61,7 @@ class NativeShipDesignPlan:
         return {
             "target_slot": int(self.encoded.slot),
             "replace_existing": bool(self.encoded.replace_existing),
+            "is_starbase": bool(self.encoded.is_starbase),
             "hull_id": int(self.encoded.hull_id),
             "pic": int(self.encoded.pic),
             "armor": int(self.encoded.armor),
@@ -73,25 +77,28 @@ class NativeShipDesignPlan:
 
 @lru_cache(maxsize=1)
 def stock_native_hulls() -> dict[int, HullNativeSpec]:
-    path = Path(__file__).with_name("data_hulls.mod")
-    out = {}
-    for parts in csv.reader(path.read_text(encoding="latin-1").splitlines()):
-        if len(parts) < 4 or int(parts[0]) != 15:
-            continue
-        nums = [int(x) if x else 0 for x in parts[3:]]
-        hid = int(nums[0])
-        out[hid] = HullNativeSpec(
-            hull_id=hid,
-            name=str(parts[2]),
-            requirements=tuple(int(x) for x in nums[1:7]),
-            pic=int(nums[12]),
-            armor=int(nums[15]),
-            cargo=int(nums[13]),
-            fuel=int(nums[14]),
-            engine_count=int(HULL_RULES[hid].slots[0].max_count),
-            slot_count=len(HULL_RULES[hid].slots),
+    return {
+        hid: HullNativeSpec(
+            hull_id=h.hull_id,name=h.name,requirements=h.tech_required,pic=h.pic,
+            armor=h.armor,cargo=h.cargo,fuel=h.fuel,engine_count=h.engine_count,
+            slot_count=h.slot_count,
         )
-    return out
+        for hid,h in canonical_stock_hulls().items() if not h.is_starbase
+    }
+
+
+@lru_cache(maxsize=1)
+def stock_native_starbases() -> dict[int, HullNativeSpec]:
+    """Return the stock starbase hulls in the same synthesis shape as ships."""
+    return {
+        hull_id: HullNativeSpec(
+            hull_id=hull.hull_id, name=hull.name, requirements=hull.tech_required,
+            pic=hull.pic, armor=hull.armor, cargo=hull.cargo, fuel=hull.fuel,
+            engine_count=0, slot_count=hull.slot_count,
+        )
+        for hull_id, hull in canonical_stock_hulls().items()
+        if hull.is_starbase
+    }
 
 
 def _tech(state) -> TechLevels:
@@ -106,14 +113,22 @@ def _tech(state) -> TechLevels:
 
 
 def _hull_unlocked(state, hull: HullNativeSpec) -> bool:
-    have = tuple(getattr(_tech(state), f) for f in (
-        "energy", "weapons", "propulsion", "construction", "electronics", "biotechnology"
-    ))
-    return all(int(have[i]) >= int(hull.requirements[i]) for i in range(6))
+    canonical=canonical_stock_hulls().get(int(hull.hull_id))
+    return bool(canonical is not None and canonical_hull_unlocked(canonical,state))
 
 
 def _lrts(state) -> set[str]:
     return {str(x).upper() for x in ((state.race.native or {}).get("lrts", []) or [])}
+
+
+def _staging_shipclass_name(state, hull_name: str) -> str:
+    """Return the client-style temporary name for a new design.
+
+    The final Type-27 record keeps its strategic/custom name.  The preceding
+    empty staging record uses the stock ship class, e.g. ``Privateer``.  This
+    matches the captured client-created `TestP` Privateer transaction.
+    """
+    return " ".join(str(hull_name or "Ship").split())
 
 
 def _design_dicts(state) -> list[dict]:
@@ -230,14 +245,12 @@ def _engine_choice(state, role: str) -> int | None:
 
 
 def _validate_candidate(state, hull: HullNativeSpec, slots: tuple[ComponentRef, ...]) -> bool:
-    db = parse_mod_file(Path(__file__).with_name("data_hulls.mod"))
-    # The bundled data_hulls.mod is authoritative for hull geometry but may not
-    # contain component rows. Slot legality is still exact. Component
-    # availability is separately constrained by this synthesizer: Fuel Mizer
-    # requires IFE+P2; other engines are reused from an existing own design.
-    available = db.available_components(_tech(state)) if db.components else None
-    rules = db.hulls or HULL_RULES
-    result = validate_design(hull.hull_id, list(slots), hull_rules=rules, available_components=available)
+    # Physical legality comes from the one canonical hull model. Component
+    # availability comes from the current research levels plus PRT/LRT gates.
+    available=set(proven_available_components(state))
+    result=validate_design(
+        hull.hull_id,list(slots),hull_rules=HULL_RULES,available_components=available
+    )
     return bool(result.ok)
 
 
@@ -308,7 +321,7 @@ def synthesize_onion_privateer(state) -> NativeShipDesignPlan | None:
     design=EncodedShipDesign(
         slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
         turn_designed=max(0,int(state.year)-2400),slots=slots,
-        name="Onion Privateer",staging_name=hull.name,replace_existing=replace,
+        name="Onion Privateer",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
     )
     return NativeShipDesignPlan(
         design,"freighter",145,
@@ -344,7 +357,7 @@ def synthesize_medium_population_transport(state) -> NativeShipDesignPlan | None
     design=EncodedShipDesign(
         slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
         turn_designed=max(0,int(state.year)-2400),slots=slots,
-        name="Population Shuttle",staging_name=hull.name,replace_existing=replace,
+        name="Population Shuttle",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
     )
     return NativeShipDesignPlan(
         design,"freighter",133,
@@ -380,7 +393,7 @@ def synthesize_freighter_upgrade(state) -> NativeShipDesignPlan | None:
     design=EncodedShipDesign(
         slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
         turn_designed=max(0,int(state.year)-2400),slots=slots,
-        name="Bulk Freighter AI",staging_name=hull.name,replace_existing=replace,
+        name="Bulk Freighter AI",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
     )
     return NativeShipDesignPlan(
         design,"freighter",140,
@@ -461,7 +474,7 @@ def synthesize_scout_upgrade(state) -> NativeShipDesignPlan | None:
     design = EncodedShipDesign(
         slot=slot, hull_id=hull.hull_id, pic=hull.pic, armor=hull.armor,
         turn_designed=max(0, int(state.year) - 2400), slots=slots_t,
-        name="Long Range Scout II", staging_name=hull.name, replace_existing=replace,
+        name="Long Range Scout II", staging_name=_staging_shipclass_name(state,hull.name), replace_existing=replace,
     )
     return NativeShipDesignPlan(
         design, "scout", 128,
@@ -475,12 +488,409 @@ def synthesize_scout_upgrade(state) -> NativeShipDesignPlan | None:
     )
 
 
+
+ROLE_CATEGORY_WEIGHTS={
+    "combat":{BEAM:9.0,TORPEDO:9.0,SHIELD:6.0,ARMOR:5.0,ELECTRICAL:4.0,MECHANICAL:1.0,SCANNER:.5},
+    "bomber":{BOMB:12.0,SHIELD:4.0,ARMOR:3.0,ELECTRICAL:2.0,MECHANICAL:1.0},
+    "miner":{MINING_ROBOT:12.0,SHIELD:3.0,ARMOR:2.0,ELECTRICAL:2.0,MECHANICAL:1.0},
+    "minelayer":{MINE_LAYER:12.0,SHIELD:3.0,ARMOR:2.0,ELECTRICAL:2.0,MECHANICAL:1.0},
+}
+
+ROLE_HULL_PREFERENCE={
+    "combat":(10,9,8,7,6,5),
+    "bomber":(19,18,17,16),
+    "miner":(24,23,22,21,20),
+    # Space Demolition receives the dedicated hulls first. Every other race
+    # can fit standard Mine Dispensers into a compatible general-purpose hull;
+    # the Frigate is the economical first option and later hulls scale field
+    # capacity as construction improves.
+    "minelayer":(28,27,5,6,7,8,10,11,13,12,29),
+}
+
+
+def _component_pool_for_role(state,role:str):
+    proven=proven_available_components(state)
+    weights=ROLE_CATEGORY_WEIGHTS.get(role,{})
+    return [spec for spec in proven.values() if spec.category in weights]
+
+
+def _best_engine_for_role(state,role:str)->int|None:
+    proven=proven_available_components(state)
+    # IFE's Fuel Mizer is a deliberate early strategic choice, not merely a
+    # component the optimizer happens to know.  In particular this keeps the
+    # Colonizer Mk II proposal from silently recreating its existing DLL7
+    # architecture instead of applying the requested IFE range upgrade.
+    preferred=_engine_choice(state,role)
+    if preferred is not None and (ENGINE,int(preferred)) in proven:
+        return int(preferred)
+    ids=[item for (cat,item) in proven if cat==ENGINE and item in ENGINE_DATA]
+    if not ids: return _engine_choice(state,role)
+    # Strategic design creation values usable W7 efficiency first, then mass.
+    return min(ids,key=lambda eid:(int(ENGINE_DATA[eid][2][7]),int(ENGINE_DATA[eid][1]),-eid))
+
+
+def synthesize_role_design(state,role:str,*,desired_hull_id:int|None=None,name:str|None=None,priority:int=105,engine_id:int|None=None)->NativeShipDesignPlan|None:
+    """Build a legal design for a strategic role using race-legal components.
+
+    This is the v8.8 general ship-builder.  It deliberately does not infer that
+    an unseen component is researched.  It instead queries the current M-file
+    tech levels plus the official PRT/LRT gates before fitting any component.
+    """
+    role=str(role).lower()
+    preferences=((desired_hull_id,) if desired_hull_id is not None else ROLE_HULL_PREFERENCE.get(role,()))
+    hull=None
+    for hid in preferences:
+        candidate=stock_native_hulls().get(int(hid))
+        if candidate is not None and _hull_unlocked(state,candidate):
+            hull=candidate; break
+    if hull is None: return None
+    engine_id=_best_engine_for_role(state,role) if engine_id is None else int(engine_id)
+    if engine_id is None: return None
+    if (ENGINE,int(engine_id)) not in proven_available_components(state):
+        return None
+    canonical=canonical_stock_hulls()[hull.hull_id]
+    slots=[ComponentRef(0,0,0) for _ in range(hull.slot_count)]
+    slots[0]=ComponentRef(ENGINE,int(engine_id),int(hull.engine_count))
+    pool=_component_pool_for_role(state,role)
+    weights=ROLE_CATEGORY_WEIGHTS.get(role,{})
+    for ss in canonical.slots[1:]:
+        legal=[spec for spec in pool if ss.allows(spec.category)]
+        if not legal: continue
+        # Category mission value dominates. Within a category later observed
+        # item IDs are a weak proxy for a later component; lower mass breaks ties.
+        best=max(legal,key=lambda spec:(weights.get(spec.category,0.0),spec.item_id,-spec.mass))
+        slots[ss.index]=ComponentRef(best.category,best.item_id,max(1,int(ss.capacity)))
+    slots_t=tuple(slots)
+    if not _validate_candidate(state,hull,slots_t): return None
+    # Mission-specific designs must actually contain their defining equipment.
+    defining={"combat":(BEAM,TORPEDO),"bomber":(BOMB,),"miner":(MINING_ROBOT,),"minelayer":(MINE_LAYER,)}.get(role,())
+    if defining and not any(x.count>0 and x.category in defining for x in slots_t): return None
+    # A role is an architecture, not a new slot every turn.  In particular the
+    # same armed hull serves both escort and combat duty; exact architecture
+    # reuse leaves scarce slots for genuinely distinct logistics/mining ships.
+    if _architecture_already_exists(state,hull.hull_id,slots_t): return None
+    target=safe_recyclable_ship_slot(state,preferred_role=role)
+    if target is None: return None
+    slot,replace=target
+    design_name=name or {"combat":"Fleet Combat AI","bomber":"Strike Bomber AI","miner":"Remote Miner AI","minelayer":"Mine Layer AI"}.get(role,f"{role.title()} AI")
+    design=EncodedShipDesign(slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,turn_designed=max(0,int(state.year)-2400),slots=slots_t,name=design_name,staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace)
+    return NativeShipDesignPlan(design,role,priority,(
+        f"Canonical ship builder selected {hull.name} for {role}; every fitted component is available from the current tech levels and PRT/LRT gates, and every slot is checked against the StarsAPI-compatible hull mask. Slot {slot} is {'dead/recyclable' if replace else 'free'}."
+    ))
+
+
+
+def synthesize_colony_upgrade(
+    state, *, desired_hull_id:int|None=None, name:str="Colonizer AI",
+    priority:int=122, engine_id:int|None=None,
+)->NativeShipDesignPlan|None:
+    """Create an improved colonizer from the current race-legal inventory."""
+    designs=_design_dicts(state)
+    profiles=[d for d in ((state.native or {}).get("design_profiles",[]) or []) if d.get("role")=="colony"]
+    if not profiles: return None
+    # Colonization Module is Mechanical item 0 in stock Stars!.
+    available=proven_available_components(state)
+    if (MECHANICAL,0) not in available: return None
+    hull=None
+    hull_ids=((int(desired_hull_id),) if desired_hull_id is not None else (15,14))
+    for hid in hull_ids:
+        candidate=stock_native_hulls().get(hid)
+        if candidate is not None and _hull_unlocked(state,candidate): hull=candidate; break
+    if hull is None: return None
+    engine_id=_best_engine_for_role(state,"colony") if engine_id is None else int(engine_id)
+    if engine_id is None: return None
+    if (ENGINE,int(engine_id)) not in available: return None
+    slots=[ComponentRef(0,0,0) for _ in range(hull.slot_count)]
+    slots[0]=ComponentRef(ENGINE,engine_id,hull.engine_count)
+    canonical=canonical_stock_hulls()[hull.hull_id]
+    target_slot_idx=next((ss.index for ss in canonical.slots[1:] if ss.allows(MECHANICAL)),None)
+    if target_slot_idx is None: return None
+    slots[target_slot_idx]=ComponentRef(MECHANICAL,0,1)
+    slots_t=tuple(slots)
+    if not _validate_candidate(state,hull,slots_t): return None
+    # Avoid duplicate architecture.
+    for d in designs:
+        if int(d.get("hull_id",-1))!=hull.hull_id: continue
+        raw=d.get("slots",[]) or []
+        if len(raw)!=len(slots_t): continue
+        same=True
+        for a,b in zip(raw,slots_t):
+            if (int(a.get("category",0)),int(a.get("item_id",0)),int(a.get("count",0)))!=(b.category,b.item_id,b.count): same=False; break
+        if same: return None
+    target=safe_recyclable_ship_slot(state,preferred_role="colony")
+    if target is None: return None
+    slot,replace=target
+    design=EncodedShipDesign(slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,turn_designed=max(0,int(state.year)-2400),slots=slots_t,name=name,staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace)
+    return NativeShipDesignPlan(design,"colony",priority,(
+        f"Colonizer synthesis fits the race-legal Colonization Module on {hull.name} with engine item {engine_id}; research and PRT/LRT component gates passed, slot geometry is canonical, and production waits for next-M design read-back."
+    ))
+
+
+def _engine_id_for_requested_name(state, requested:str|None)->int|None:
+    """Resolve a generic proposal's engine only when the race may fit it."""
+    if requested is None:
+        return _best_engine_for_role(state,"generic")
+    wanted="".join(ch for ch in str(requested).casefold() if ch.isalnum())
+    for (category,item),spec in proven_available_components(state).items():
+        if category!=ENGINE:
+            continue
+        candidate="".join(ch for ch in spec.name.casefold() if ch.isalnum())
+        if candidate==wanted:
+            return int(item)
+    return None
+
+
+def _architecture_already_exists(state, hull_id:int, slots:tuple[ComponentRef,...])->bool:
+    expected=[(int(s.category),int(s.item_id),int(s.count)) for s in slots]
+    for design in _design_dicts(state):
+        if int(design.get("hull_id",-1))!=int(hull_id):
+            continue
+        actual=[(
+            int(raw.get("category",0)),int(raw.get("item_id",0)),int(raw.get("count",0))
+        ) for raw in (design.get("slots",[]) or [])]
+        if actual==expected:
+            return True
+    return False
+
+
+def _starbase_architecture_already_exists(
+    state, hull_id: int, slots: tuple[ComponentRef, ...]
+) -> bool:
+    """Avoid spending one of ten base slots on an existing exact architecture."""
+    expected = [(int(s.category), int(s.item_id), int(s.count)) for s in slots]
+    records = [
+        record for record in ((state.native or {}).get("designs", []) or [])
+        if bool(record.get("is_starbase"))
+    ]
+    # Some old/synthetic snapshots expose only the profile list.  It is still
+    # enough to recognize a duplicate when those profiles preserve slots.
+    records.extend((state.native or {}).get("starbase_profiles", []) or [])
+    for design in records:
+        if int(design.get("hull_id", -1) or -1) != int(hull_id):
+            continue
+        actual = [
+            (int(raw.get("category", 0)), int(raw.get("item_id", 0)), int(raw.get("count", 0)))
+            for raw in (design.get("slots", []) or [])
+        ]
+        if actual and actual == expected:
+            return True
+    return False
+
+
+STARBASE_SUPPORT_CATEGORY_WEIGHTS = {
+    # The hull supplies the actual shipyard/refuel capability.  These fittings
+    # give a new hub local awareness and a modest defensive screen without
+    # turning the first expansion base into an unaffordable late-game fortress.
+    ORBITAL: 9.0,
+    SHIELD: 7.0,
+    ARMOR: 6.0,
+    BEAM: 5.0,
+    TORPEDO: 5.0,
+    ELECTRICAL: 3.0,
+}
+
+
+def _choose_starbase_component(state, slot) -> ComponentRef | None:
+    """Pick one economical, researched fitting legal for a base slot.
+
+    Component availability is already constrained by the official stock MOD
+    research requirements and Stars! PRT/LRT gates.  One unit per slot is
+    intentional for the first network design: it creates a usable base that
+    can actually clear the material gate, while future threat/tech proposals
+    may select a stronger custom architecture instead of silently overwriting
+    it.
+    """
+    candidates = [
+        component for component in proven_available_components(state).values()
+        if slot.allows(component.category)
+        and component.category in STARBASE_SUPPORT_CATEGORY_WEIGHTS
+    ]
+    if not candidates:
+        return None
+    best = max(candidates, key=lambda component: (
+        STARBASE_SUPPORT_CATEGORY_WEIGHTS[component.category],
+        int(component.item_id),
+        -int(component.mass),
+    ))
+    return ComponentRef(int(best.category), int(best.item_id), 1)
+
+
+def synthesize_starbase_design_proposal(
+    state, payload: dict[str, Any]
+) -> NativeShipDesignPlan | None:
+    """Compile a generic starbase proposal into a legal free-slot Type-27 design.
+
+    Starbases use their own ten-slot namespace and have no engine requirement.
+    We retain the same canonical slot validation and researched-component gates
+    as the ship compiler, then emit a StarsAPI body with ``isStarbase`` set.
+    """
+    hull_id = payload.get("desired_hull_id")
+    if hull_id is None:
+        return None
+    hull = stock_native_starbases().get(int(hull_id))
+    canonical = canonical_stock_hulls().get(int(hull_id))
+    if hull is None or canonical is None or not canonical.is_starbase or not canonical_hull_unlocked(canonical, state):
+        return None
+
+    slots = [ComponentRef(0, 0, 0) for _ in range(hull.slot_count)]
+    for slot in canonical.slots:
+        fitting = _choose_starbase_component(state, slot)
+        if fitting is not None:
+            slots[int(slot.index)] = fitting
+    slots_t = tuple(slots)
+    if not _validate_candidate(state, hull, slots_t):
+        return None
+    if _starbase_architecture_already_exists(state, hull.hull_id, slots_t):
+        return None
+
+    slot = None
+    for candidate in range(10):
+        safety = starbase_design_slot_safety(state, candidate)
+        if not (
+            safety.design_exists
+            or safety.installed_starbase_count
+            or safety.queued_starbase_count
+        ):
+            slot = candidate
+            break
+    if slot is None:
+        return None
+    name = str(payload.get("name") or f"{hull.name} Support Base")
+    priority = int(payload.get("priority", 100) or 100)
+    design = EncodedShipDesign(
+        slot=int(slot), hull_id=hull.hull_id, pic=hull.pic, armor=hull.armor,
+        turn_designed=max(0, int(state.year) - 2400), slots=slots_t, name=name,
+        staging_name=_staging_shipclass_name(state, hull.name), is_starbase=True,
+    )
+    component_count = sum(1 for fitted in slots_t if fitted.count > 0)
+    return NativeShipDesignPlan(
+        design, "starbase", priority,
+        (
+            f"Custom {hull.name} support-base design uses {component_count}/{hull.slot_count} "
+            "economical researched fittings. The hull grants ship construction and refueling; "
+            "each fitting passed current StarsAPI stock-MOD research, PRT/LRT, and canonical slot checks. "
+            f"Starbase design slot {slot} is free and awaits next-M read-back before construction is queued."
+        ),
+        confidence="EXPERIMENTAL_STARBASE_TYPE27",
+    )
+
+
+def synthesize_generic_design_proposal(state,payload:dict[str,Any])->NativeShipDesignPlan|None:
+    """Compile a generic ``create_design`` proposal into a safe Type-27 ship.
+
+    Generic proposals retain their strategic intent in the order stream.  This
+    compiler is the sole bridge to native creation: it accepts only a
+    researched, PRT/LRT-legal ship or starbase design and emits the same exact
+    StarsAPI ``DesignBlock`` structure used by the dedicated design planners.
+    """
+    if bool(payload.get("is_starbase",False)):
+        return synthesize_starbase_design_proposal(state, payload)
+    role=str(payload.get("role","")).casefold()
+    hull_id=payload.get("desired_hull_id")
+    if hull_id is None:
+        return None
+    hull=stock_native_hulls().get(int(hull_id))
+    if hull is None or not _hull_unlocked(state,hull):
+        return None
+    engine_id=_engine_id_for_requested_name(state,payload.get("desired_engine"))
+    if engine_id is None:
+        return None
+    name=str(payload.get("name") or f"{role.title()} AI")
+    priority=int(payload.get("priority",100) or 100)
+
+    if role=="colony":
+        return synthesize_colony_upgrade(
+            state,desired_hull_id=hull.hull_id,name=name,priority=priority,
+            engine_id=engine_id,
+        )
+
+    if role=="freighter":
+        slots=_empty_slot_array(hull,engine_id)
+        if hull.hull_id==PRIVATEER_HULL_ID and (MECHANICAL,FUEL_TANK_ITEM_ID) in proven_available_components(state):
+            slots=_privateer_onion_slots(hull,engine_id)
+        if not _validate_candidate(state,hull,slots) or _architecture_already_exists(state,hull.hull_id,slots):
+            return None
+        target=safe_recyclable_ship_slot(state,preferred_role="freighter")
+        if target is None:
+            return None
+        slot,replace=target
+        design=EncodedShipDesign(
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            turn_designed=max(0,int(state.year)-2400),slots=slots,name=name,
+            staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
+        )
+        return NativeShipDesignPlan(design,role,priority,(
+            f"Generic freighter proposal compiled as {hull.name}; its requested engine and every fitted component passed current research and race-trait availability checks."
+        ))
+
+    # Scout and combat proposals use the same race-aware component pool as the
+    # regular tactical synthesizer.  Other free-form roles are deliberately not
+    # guessed into a Type-27 body.
+    if role not in {"scout","combat","bomber","miner","minelayer"}:
+        return None
+    return synthesize_role_design(
+        state,role,desired_hull_id=hull.hull_id,name=name,priority=priority,
+        engine_id=engine_id,
+    )
+
+
+def synthesize_combat_upgrade(state)->NativeShipDesignPlan|None:
+    profiles=[d for d in ((state.native or {}).get("design_profiles",[]) or []) if d.get("role")=="combat"]
+    hostile=any(f.owner not in (None,state.player_id) for f in getattr(state,"fleets",[]) or [])
+    if not profiles and not hostile: return None
+    if max(int(state.tech.weapons or 0),int(state.tech.energy or 0))<4: return None
+    # The combat and escort jobs share one family.  Once it is fielded, revisit
+    # that family only on a deliberate cadence; `synthesize_role_design` then
+    # refuses an identical architecture.  A researched hull/component upgrade
+    # is therefore native-executable, while cosmetic duplicates never consume
+    # a design slot.
+    newest=max((int(d.get("turn_designed",0) or 0) for d in profiles),default=0)
+    current_turn=max(0,int(state.year)-2400)
+    if profiles and current_turn-newest<5:
+        return None
+    proposal=synthesize_role_design(state,"combat",priority=190 if hostile else 168)
+    if proposal is None: return None
+    return proposal
+
+
+def _remote_mining_targets(state) -> list:
+    """Observed unowned mineral worlds worth a dedicated remote miner."""
+    targets=[]
+    for planet in state.planets:
+        concentrations=(planet.native or {}).get("mineral_concentrations") or []
+        if (
+            planet.owner is None and planet.observed and len(concentrations) >= 3
+            and all(value is not None for value in concentrations[:3])
+            and sum(max(0,int(value)) for value in concentrations[:3]) >= 150
+        ):
+            targets.append(planet)
+    return targets
+
+
+def synthesize_remote_miner(state) -> NativeShipDesignPlan | None:
+    """Create one legal miner design when observed remote work exists."""
+    targets=_remote_mining_targets(state)
+    profiles=[d for d in ((state.native or {}).get("design_profiles",[]) or []) if d.get("role")=="miner"]
+    if not targets or profiles:
+        return None
+    proposal=synthesize_role_design(state,"miner",name="Remote Miner AI",priority=136)
+    if proposal is None:
+        return None
+    return NativeShipDesignPlan(
+        proposal.encoded,proposal.role,proposal.priority,
+        proposal.reason + f" It addresses {len(targets)} observed high-concentration unowned mineral world(s).",
+    )
+
+
 def plan_native_ship_design(state, plan=None) -> NativeShipDesignPlan | None:
     """At most one experimental native utility design per turn."""
     candidates = [x for x in (
         synthesize_onion_privateer(state),
         synthesize_freighter_upgrade(state),
+        synthesize_remote_miner(state),
         synthesize_medium_population_transport(state),
         synthesize_scout_upgrade(state),
+        synthesize_colony_upgrade(state),
+        synthesize_combat_upgrade(state),
     ) if x is not None]
     return max(candidates, key=lambda x: x.priority, default=None)

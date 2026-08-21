@@ -5,6 +5,9 @@ from dataclasses import dataclass, asdict
 import math
 
 
+MINERAL_TYPES = ("ironium", "boranium", "germanium")
+
+
 @dataclass(frozen=True)
 class RaceEconomy:
     colonists_per_resource:int
@@ -111,6 +114,143 @@ def estimated_operating_resources(planet,economy:RaceEconomy) -> dict:
         "factory_resources":factory_resources,
         "estimated_resources":pop_resources+factory_resources,
     }
+
+
+def mineral_surface_stock(planet) -> dict[str,int]:
+    """Return the observed I/B/G stock on a planet in kT."""
+    return {
+        mineral:max(0,int(getattr(planet,mineral,0) or 0))
+        for mineral in MINERAL_TYPES
+    }
+
+
+def mineral_concentrations(planet) -> dict[str,int|None]:
+    """Return observed I/B/G concentrations without inventing missing intel."""
+    raw=list((getattr(planet,"native",{}) or {}).get("mineral_concentrations",[]) or [])
+    values=[]
+    for index in range(3):
+        value=raw[index] if index<len(raw) else None
+        try:
+            values.append(max(0,int(value)) if value is not None else None)
+        except (TypeError,ValueError):
+            values.append(None)
+    return dict(zip(MINERAL_TYPES,values,strict=True))
+
+
+def estimated_mineral_output(planet,economy:RaceEconomy) -> dict:
+    """
+    Estimate this year's extractable kT for each mineral.
+
+    This deliberately follows the StarsAPI/Nova implementation: only complete
+    groups of ten operable mines count, then each group produces the race's
+    ``mine_output_per_10`` scaled by the observed concentration.  The result
+    is planning/reporting data; it never changes native mineral accounting.
+    """
+    status=installation_status(planet,economy)
+    operated_mines=min(int(status["mines"]),int(status["mine_cap"]))
+    mine_groups=max(0,operated_mines//10)
+    concentrations=mineral_concentrations(planet)
+    output={
+        mineral:(
+            (mine_groups*int(economy.mine_output_per_10)*int(concentration))//100
+            if concentration is not None else None
+        )
+        for mineral,concentration in concentrations.items()
+    }
+    return {
+        **status,
+        "operated_mines":operated_mines,
+        "mine_groups_of_ten":mine_groups,
+        "concentrations":concentrations,
+        "estimated_mineral_output":output,
+    }
+
+
+def is_economic_core(planet) -> bool:
+    """True for a homeworld or an operational refuel/shipbuilding hub."""
+    native=getattr(planet,"native",{}) or {}
+    base=native.get("starbase_capabilities") or {}
+    return bool(
+        native.get("is_homeworld")
+        or base.get("can_build_ships")
+        or base.get("can_refuel")
+    )
+
+
+def working_mineral_reserve(
+    planet,
+    economy:RaceEconomy,
+    queue=(),
+    *,
+    is_core:bool|None=None,
+) -> dict:
+    """
+    Mineral stock that should remain available for normal planetary work.
+
+    This is a conservative planning reserve, not a guessed design bill.  It
+    protects core worlds and active shipyards from being drained by transports,
+    reserves Germanium for queued factories exactly, and gives every colony a
+    modest working stock.  Core classification is derived from native world
+    state, never from a persona or playstyle.
+    """
+    queue=list(queue or [])
+    core=is_economic_core(planet) if is_core is None else bool(is_core)
+    status=installation_status(planet,economy)
+    factories_queued=sum(
+        max(0,int(item.get("quantity",0) or 0))
+        for item in queue if item.get("item")=="factory"
+    )
+    defenses_queued=sum(
+        max(0,int(item.get("quantity",0) or 0))
+        for item in queue if item.get("item")=="defense"
+    )
+    ships_queued=sum(
+        max(0,int(item.get("quantity",0) or 0))
+        for item in queue if item.get("item")=="ship_design"
+    )
+    bases_queued=sum(
+        max(0,int(item.get("quantity",0) or 0))
+        for item in queue if item.get("item")=="starbase_design"
+    )
+
+    # Keep the historic small-colony baseline, but retain a genuine working
+    # reserve at cores so a freighter cannot strip an active production hub.
+    pop_band=max(1,int(getattr(planet,"population",0) or 0)//100000)
+    baseline=min(60,15+5*pop_band)
+    if core:
+        base={"ironium":300,"boranium":220,"germanium":220}
+    else:
+        base={mineral:baseline for mineral in MINERAL_TYPES}
+
+    g_per_factory=3 if economy.factory_germanium_discount else 4
+    factory_germanium=factories_queued*g_per_factory
+    defense_minerals=defenses_queued*5
+
+    # Exact ship/starbase mineral bills are not present in all normalized game
+    # states.  These are intentionally labelled reserve allowances rather than
+    # claims about a particular design's actual cost.
+    ship_reserve=ships_queued*(90 if core else 30)
+    starbase_reserve=bases_queued*(180 if core else 80)
+    return {
+        "ironium":base["ironium"]+defense_minerals+ship_reserve+starbase_reserve,
+        "boranium":base["boranium"]+defense_minerals+ship_reserve+starbase_reserve,
+        "germanium":base["germanium"]+factory_germanium+defense_minerals+ship_reserve+starbase_reserve,
+        "factory_germanium":factory_germanium,
+        "queued_factories":factories_queued,
+        "queued_ships":ships_queued,
+        "queued_starbases":bases_queued,
+        "core":core,
+        "factory_headroom":int(status["factory_headroom"]),
+        "mine_headroom":int(status["mine_headroom"]),
+    }
+
+
+def factory_germanium_floor(planet, economy:RaceEconomy, *, is_core:bool|None=None) -> int:
+    """Surface Germanium the factory planner must not spend this turn."""
+    core=is_economic_core(planet) if is_core is None else bool(is_core)
+    # Small colonies retain the historical eight-kT floor.  A core protects a
+    # useful Germanium reserve before converting minerals into factories.
+    return 220 if core else max(8,2*(3 if economy.factory_germanium_discount else 4))
 
 
 # --- Population carrying capacity / growth ---

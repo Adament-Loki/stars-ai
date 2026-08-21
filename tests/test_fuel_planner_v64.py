@@ -1,7 +1,7 @@
 
 from types import SimpleNamespace
 import pytest
-from stars_ai.fuel_planner import design_fuel_profile,estimate_fuel,fastest_fuel_safe_warp,best_range_ly
+from stars_ai.fuel_planner import design_fuel_profile,estimate_fuel,fastest_fuel_safe_warp,best_range_ly,reconnaissance_warp
 
 def design(num,name,hull,slots): return SimpleNamespace(design_number=num,name=name,hull_id=hull,slots=[SimpleNamespace(category=c,item_id=i,count=n) for c,i,n in slots])
 
@@ -17,6 +17,10 @@ def test_armed_probe_drops_from_w8():
     p=design_fuel_profile(design(0,'Armed Probe',4,[(1,3,1),(2,1,1),(16,1,1)]),'scout').to_dict()
     fp={'groups':[{'mass':p['dry_mass'],'engine_id':p['engine_id']}],'cargo_mass':0,'fuel':50,'effective_fuel':50,'fuel_capacity':50,'all_ram_scoop':False}
     assert fastest_fuel_safe_warp(fp,60,'scan')==7
+
+def test_fuel_mizer_scout_uses_fastest_fuel_safe_arrival_warp():
+    fp={'groups':[{'mass':6,'engine_id':2}],'cargo_mass':0,'fuel':100,'effective_fuel':100,'fuel_capacity':100,'all_ram_scoop':False}
+    assert reconnaissance_warp(fp,60,ife=True)==9
 
 def test_heavy_miner_speed_is_distance_sensitive():
     p=design_fuel_profile(design(5,'Cotton Picker',21,[(1,3,1),(2,1,1),(128,1,1),(128,1,1)]),'miner').to_dict()

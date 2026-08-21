@@ -4,7 +4,7 @@ from stars_ai.ship_design_synth import synthesize_onion_privateer
 
 
 def _state():
-    race=RaceProfile(growth_rate=.15,native={"lrts":["IFE"]})
+    race=RaceProfile(name="Smaugarian",growth_rate=.15,native={"lrts":["IFE"]})
     home=Planet(0,"Home",Position(0,0),owner=1,habitability=100,population=120_000,native={"is_homeworld":True,"starbase_capabilities":{"can_build_ships":True,"can_refuel":True}})
     child=Planet(1,"Child",Position(120,0),owner=1,habitability=80,population=40_000,native={})
     frontier=[Planet(10+i,f"F{i}",Position(150+i*5,20),owner=None,habitability=70,observed=True) for i in range(5)]
@@ -19,6 +19,8 @@ def test_onion_privateer_is_fuel_mizer_plus_three_basic_fuel_tanks():
     plan=synthesize_onion_privateer(_state())
     assert plan is not None
     assert plan.encoded.hull_id==11
+    assert plan.encoded.staging_name=="Privateer"
+    assert plan.encoded.name=="Onion Privateer"
     assert plan.encoded.slots[0]==ComponentRef(int(ComponentCategory.ENGINE),2,1)
     for idx in (2,3,4):
         assert plan.encoded.slots[idx]==ComponentRef(int(ComponentCategory.MECHANICAL),5,1)

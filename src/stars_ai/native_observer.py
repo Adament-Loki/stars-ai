@@ -140,6 +140,107 @@ def _pmap(obs: ObserverTurn) -> dict[int,ObserverPlayer]:
     return {p.player_id:p for p in obs.players}
 
 
+def _fleet_loss_evidence(
+    previous: ObserverTurn,
+    current: ObserverTurn,
+    player_id: int,
+) -> list[dict[str, int | str]]:
+    """Describe individual fleet changes behind a player-level loss total.
+
+    A native observer snapshot is omniscient but does not yet decode the
+    battle report.  This evidence is deliberately factual: a fleet either
+    disappeared between snapshots or its visible ship count decreased.  It
+    does not guess whether the cause was battle, scrapping, or another action.
+    """
+    old_fleets={
+        key:value
+        for key,value in previous.fleet_signature.items()
+        if int(value.get("owner",-1))==player_id
+    }
+    new_fleets={
+        key:value
+        for key,value in current.fleet_signature.items()
+        if int(value.get("owner",-1))==player_id
+    }
+    evidence=[]
+    for key,old_fleet in old_fleets.items():
+        old_ships=int(old_fleet.get("ships",0) or 0)
+        old_mass=int(old_fleet.get("mass",0) or 0)
+        new_fleet=new_fleets.get(key)
+        if new_fleet is None:
+            evidence.append({
+                "fleet_id":int(old_fleet.get("fleet_id",-1)),
+                "status":"disappeared",
+                "ships_before":old_ships,
+                "ships_lost":old_ships,
+                "mass_before":old_mass,
+                "mass_lost":old_mass,
+                "last_x":int(old_fleet.get("x",0) or 0),
+                "last_y":int(old_fleet.get("y",0) or 0),
+            })
+            continue
+
+        new_ships=int(new_fleet.get("ships",0) or 0)
+        new_mass=int(new_fleet.get("mass",0) or 0)
+        if new_ships < old_ships or new_mass < old_mass:
+            evidence.append({
+                "fleet_id":int(old_fleet.get("fleet_id",-1)),
+                "status":"reduced",
+                "ships_before":old_ships,
+                "ships_after":new_ships,
+                "ships_lost":max(0,old_ships-new_ships),
+                "mass_before":old_mass,
+                "mass_after":new_mass,
+                "mass_lost":max(0,old_mass-new_mass),
+                "last_x":int(old_fleet.get("x",0) or 0),
+                "last_y":int(old_fleet.get("y",0) or 0),
+            })
+    return sorted(evidence,key=lambda item:(-int(item["ships_lost"]),int(item["fleet_id"])))
+
+
+def _fleet_loss_text(
+    *,
+    player_id: int,
+    previous: ObserverTurn,
+    current: ObserverTurn,
+    old: ObserverPlayer,
+    new: ObserverPlayer,
+    ship_loss: int,
+    mass_loss: int,
+    evidence: list[dict[str, int | str]],
+) -> str:
+    details=[]
+    for item in evidence:
+        fleet_id=int(item["fleet_id"])
+        location=f"last seen at ({item['last_x']}, {item['last_y']})"
+        if item["status"]=="disappeared":
+            details.append(
+                f"fleet ID {fleet_id} disappeared "
+                f"({item['ships_before']} ships; {location})"
+            )
+        else:
+            details.append(
+                f"fleet ID {fleet_id} was reduced "
+                f"({item['ships_before']}->{item['ships_after']} ships; {location})"
+            )
+
+    totals=(
+        f"ships {old.ships}->{new.ships}; fleets {old.fleets}->{new.fleets}"
+    )
+    if old.fleet_mass or new.fleet_mass:
+        totals+=f"; fleet mass {old.fleet_mass}->{new.fleet_mass}"
+    summary=(
+        f"P{player_id} suffered a major net fleet loss during Turn {current.turn} "
+        f"/ Year {current.year} ({totals}; net loss {ship_loss} ships"
+    )
+    if mass_loss:
+        summary+=f", {mass_loss} fleet mass"
+    summary+=")."
+    if details:
+        return f"{summary} Observed fleet change: {'; '.join(details)}. Cause is not decoded."
+    return f"{summary} No individual fleet disappearance was decoded; cause is not decoded."
+
+
 def derive_turn_events(previous: ObserverTurn|None, current: ObserverTurn) -> list[dict]:
     if previous is None:
         return []
@@ -154,18 +255,21 @@ def derive_turn_events(previous: ObserverTurn|None, current: ObserverTurn) -> li
                 events.append({
                     "type":"colonization","planet_id":int(planet_id),
                     "player":new_owner,
+                    "severity":"notable",
                     "text":f"P{new_owner} colonized planet #{int(planet_id)+1}."
                 })
             elif old_owner is not None and new_owner is None:
                 events.append({
                     "type":"planet_lost","planet_id":int(planet_id),
                     "from":old_owner,
+                    "severity":"major",
                     "text":f"P{old_owner} lost control of planet #{int(planet_id)+1}."
                 })
             elif old_owner is not None and new_owner is not None:
                 events.append({
                     "type":"capture","planet_id":int(planet_id),
                     "from":old_owner,"to":new_owner,
+                    "severity":"major",
                     "text":f"P{new_owner} captured planet #{int(planet_id)+1} from P{old_owner}."
                 })
 
@@ -178,12 +282,26 @@ def derive_turn_events(previous: ObserverTurn|None, current: ObserverTurn) -> li
         ship_loss=old.ships-p.ships
         mass_loss=old.fleet_mass-p.fleet_mass
         if ship_loss >= max(3,int(old.ships*0.20)) or mass_loss >= max(500,int(old.fleet_mass*0.25)):
+            evidence=_fleet_loss_evidence(previous,current,pid)
             events.append({
                 "type":"major_fleet_loss",
                 "player":pid,
+                "turn":current.turn,
+                "year":current.year,
+                "previous_turn":previous.turn,
+                "previous_year":previous.year,
+                "ships_before":old.ships,
+                "ships_after":p.ships,
+                "fleets_before":old.fleets,
+                "fleets_after":p.fleets,
                 "ships_lost_net":max(0,ship_loss),
                 "mass_lost_net":max(0,mass_loss),
-                "text":f"P{pid} suffered a major net fleet loss ({max(0,ship_loss)} ships, {max(0,mass_loss)} mass)."
+                "affected_fleets":evidence,
+                "severity":"major",
+                "text":_fleet_loss_text(
+                    player_id=pid,previous=previous,current=current,old=old,new=p,
+                    ship_loss=max(0,ship_loss),mass_loss=max(0,mass_loss),evidence=evidence,
+                ),
             })
     return events
 
@@ -201,6 +319,102 @@ def load_observer_turn(path: str|Path) -> ObserverTurn:
         fleet_signature=d["fleet_signature"],
         events=d.get("events",[]),
     )
+
+
+def _observer_controller(player: ObserverPlayer, personas: dict[str,str]) -> str:
+    """Use the configured AI persona when present; otherwise retain neutral ownership."""
+    persona=personas.get(str(player.player_id))
+    return f"AI/{persona}" if persona else "external/human"
+
+
+def build_turn_status_report(
+    current: ObserverTurn,
+    previous: ObserverTurn|None=None,
+    *,
+    personas: dict[str,str]|None=None,
+) -> str:
+    """Render one concise, durable observer section for the running report."""
+    personas=personas or {}
+    previous_players=_pmap(previous) if previous else {}
+    lines=[
+        f"## Turn {current.turn:03d} - Year {current.year}",
+        "",
+        "| Player | Controller | Planets | Population | Ships | Fleets | Fleet mass | Starbases |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for player in sorted(current.players,key=lambda p:p.player_id):
+        old=previous_players.get(player.player_id)
+        planets_delta=(f" ({player.planets-old.planets:+d})" if old else "")
+        population_delta=(f" ({player.population-old.population:+,})" if old else "")
+        ships_delta=(f" ({player.ships-old.ships:+d})" if old else "")
+        lines.append(
+            f"| P{player.player_id} {player.name} ({player.prt}) | "
+            f"{_observer_controller(player,personas)} | "
+            f"{player.planets:,}{planets_delta} | {player.population:,}{population_delta} | "
+            f"{player.ships:,}{ships_delta} | {player.fleets:,} | "
+            f"{player.fleet_mass:,} | {player.starbases:,} |"
+        )
+
+    major_events=[e for e in current.events if e.get("severity")=="major" or e.get("type") in {
+        "capture","planet_lost","major_fleet_loss",
+    }]
+    other_events=[e for e in current.events if e not in major_events]
+    lines.extend(["", "**Major events**"])
+    if major_events:
+        lines.extend(f"- {event.get('text','Unspecified major observer event.')}" for event in major_events)
+    else:
+        lines.append("- No planet capture, loss, or major net fleet-loss event detected this turn.")
+    if other_events:
+        lines.extend(["", "**Other notable events**"])
+        lines.extend(f"- {event.get('text','Unspecified observer event.')}" for event in other_events)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def build_running_game_report(
+    history: list[ObserverTurn],
+    *,
+    personas: dict[str,str]|None=None,
+    major_report_turns: list[int]|tuple[int,...]|set[int]|None=None,
+) -> str:
+    """Build one chronological game report from immutable observer snapshots.
+
+    Every completed turn gets its own player-status section.  Configured
+    checkpoint turns additionally receive the existing deeper observer report,
+    so a reader can follow the whole game without opening separate files.
+    """
+    personas=personas or {}
+    if not history:
+        return "# Stars! AI Running Game Report\n\nNo observer snapshots are available.\n"
+
+    ordered=sorted(history,key=lambda obs:obs.turn)
+    visible=[obs for obs in ordered if obs.turn > 0]
+    if not visible:
+        return "# Stars! AI Running Game Report\n\nNo completed turns are available yet.\n"
+    major_turns={int(turn) for turn in (major_report_turns or [])}
+    lines=["# Stars! AI Running Game Report", ""]
+    prior_major: ObserverTurn|None=None
+    for current in visible:
+        all_index=ordered.index(current)
+        previous=ordered[all_index-1] if all_index else None
+        lines.append(build_turn_status_report(current,previous,personas=personas).rstrip())
+        if current.turn in major_turns:
+            lines.extend([
+                "",
+                f"### Major report - Turn {current.turn:03d}",
+                "",
+                "```text",
+                build_human_report(
+                    current,
+                    ordered[:all_index+1],
+                    personas=personas,
+                    checkpoint_from=prior_major,
+                ).rstrip(),
+                "```",
+            ])
+            prior_major=current
+        lines.append("")
+    return "\n".join(lines).rstrip()+"\n"
 
 
 def build_human_report(
@@ -231,7 +445,7 @@ def build_human_report(
     fighting=bool(captures or fleet_losses)
 
     lines=[]
-    lines.append(f"Stars! AI Observer Report — Turn {current.turn} / Year {current.year}")
+    lines.append(f"Stars! AI Observer Report - Turn {current.turn} / Year {current.year}")
     lines.append("="*66)
     lines.append("")
 
@@ -247,7 +461,7 @@ def build_human_report(
     lines.append(f"{lead_phrase}. Observer score gap over second place: {gap_pct:.1f}%.")
     if fighting:
         if captures:
-            lines.append(f"Yes — fighting/conquest has begun. {len(captures)} enemy planet capture(s) occurred in the reporting window.")
+            lines.append(f"Yes - fighting/conquest has begun. {len(captures)} enemy planet capture(s) occurred in the reporting window.")
         else:
             lines.append("Likely fighting has begun: major fleet losses are visible, although no enemy planet changed hands in this window.")
     else:
@@ -260,9 +474,9 @@ def build_human_report(
         persona=personas.get(str(p.player_id),"")
         tag=f" / {persona}" if persona else ""
         lines.append(
-            f"{rank}. P{p.player_id} {p.name} [{p.prt}{tag}] — "
+            f"{rank}. P{p.player_id} {p.name} [{p.prt}{tag}] - "
             f"{p.planets} planets, pop {p.population:,}, {p.factories} factories, "
-            f"{p.ships} ships / {p.fleet_mass:,} fleet mass, techΣ {p.tech_sum}, "
+            f"{p.ships} ships / {p.fleet_mass:,} fleet mass, tech total {p.tech_sum}, "
             f"{p.starbases} starbases."
         )
     lines.append("")
@@ -282,7 +496,7 @@ def build_human_report(
                 f"factories {p.factories-old.factories:+d}, "
                 f"ships {p.ships-old.ships:+d}, "
                 f"fleet mass {p.fleet_mass-old.fleet_mass:+,}, "
-                f"techΣ {p.tech_sum-old.tech_sum:+d}."
+                f"tech total {p.tech_sum-old.tech_sum:+d}."
             )
         lines.append("")
 
@@ -307,7 +521,7 @@ def build_human_report(
     lines.append(f"- Population: P{best('population').player_id} with {best('population').population:,}.")
     lines.append(f"- Industry: P{best('factories').player_id} with {best('factories').factories} factories.")
     lines.append(f"- Fleet by mass: P{best('fleet_mass').player_id} with {best('fleet_mass').fleet_mass:,}.")
-    lines.append(f"- Technology: P{best('tech_sum').player_id} with techΣ {best('tech_sum').tech_sum}.")
+    lines.append(f"- Technology: P{best('tech_sum').player_id} with tech total {best('tech_sum').tech_sum}.")
     lines.append("")
 
     # Winners / losers

@@ -272,7 +272,7 @@ def test_design_planner_does_not_propose_unproven_scout_and_still_proposes_real_
 
 
 def test_native_design_capabilities_are_explicitly_split():
-    assert capability("create_design").status=="BLOCKED"  # advisory generic design
+    assert capability("create_design").status=="PARTIAL"  # generic ship and starbase compiler
     assert capability("create_ship_design").status=="PARTIAL"
     assert capability("delete_ship_design").status=="PARTIAL"
     assert capability("replace_ship_design").status=="BLOCKED"

@@ -1,7 +1,13 @@
 
 from pathlib import Path
 from stars_ai.adapters.stars_native import NativeBlock, read_blocks, parse_file_header
-from stars_ai.native.x_writer import _encode_blocks, _updated_x_header, _production_block
+from stars_ai.models import GameState, Planet, Position, RaceProfile, Tech
+from stars_ai.native.x_writer import (
+    _encode_blocks,
+    _updated_x_header,
+    _production_block,
+    _native_planet_mutation_authority,
+)
 
 def header(file_type=1, turn=0, player=0, salt=8):
     d=bytearray(16)
@@ -34,3 +40,27 @@ def test_update_x_header_uses_current_m_turn_and_game():
     assert ph.game_id==999
     assert ph.player_index==1
     assert out[14]==1
+
+
+def test_current_m_ownership_allow_list_rejects_stale_planet_mutation():
+    state=GameState(
+        "g",2479,1,RaceProfile(),Tech(),[
+            Planet(23,"Owned",Position(0,0),owner=1),
+            Planet(
+                131,"Lost",Position(1,0),owner=1,
+                native={
+                    "current_m_record":True,
+                    "current_m_owner":None,
+                    "intel_source":"current_m_unowned",
+                    "native_planet_mutation_allowed":False,
+                },
+            ),
+        ],[],
+        native={"current_m_owned_planet_ids":[23]},
+    )
+
+    assert _native_planet_mutation_authority(state,23)[0] is True
+    allowed,diagnostic=_native_planet_mutation_authority(state,131)
+    assert allowed is False
+    assert diagnostic["current_m_owner"] is None
+    assert diagnostic["intel_source"]=="current_m_unowned"

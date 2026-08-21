@@ -1,56 +1,109 @@
-# Stars! AI Player — Version 1
+# Stars! AI
 
-This repository is a runnable first version of an AI-player framework for **Stars!**.
+`stars-ai` is a Python 3.11+ AI player and native-host controller for **Stars!**. It reads either a normalized JSON state or native Stars! files, makes strategic decisions, and can run isolated multi-player native turns through the Windows host.
 
-## What V1 does
+The current implementation is version **8.8**. Its strategic decisions, native-format confidence boundaries, and pending validation work are maintained in [AI-Status.md](AI-Status.md).
 
-V1 intentionally separates **game-file I/O** from **AI decision-making**.
+## What it does
 
-It currently supports:
+- Generates deterministic orders for a normalized game state.
+- Reads native `.m#`, `.h#`, `.x#`, and `.xy` data through a StarsAPI-inspired model.
+- Plans colonization, population movement, production, research, exploration, logistics, diplomacy, and visible-threat responses.
+- Maintains player memory, decision traces, command-outcome checks, and cumulative player history during automated games.
+- Generates the supported native order types behind explicit safety checks, then runs a staged or play-on Windows host loop with immutable turn archives.
+- Validates stock hull geometry, design legality, current six-field research, PRT/LRT component eligibility, fuel, mass, and native Type27 design bodies before a proposed ship-design order is emitted.
 
-- A normalized JSON game-state format.
-- One AI process per Stars! player.
-- Persistent player memory across turns.
-- Deterministic heuristic decisions for:
-  - colonization,
-  - population movement,
-  - planet production,
-  - research allocation,
-  - scouting,
-  - simple military response.
-- A host/controller command that can run several AI players for the same turn.
-- JSON order output.
-- A clean adapter interface where a real `.m#` reader and `.x#` writer can be added.
-- A dry-run mode suitable for development and testing.
+Native design creation is a tightly controlled live-game path; see **Native safety** below and `AI-Status.md`.
 
-Current strategy/native milestone: **v8.1 capability-driven research**. The AI
-selects named, executable tech goals before production planning, supports safe
-15%/25% research postures, protects critical ship queues during sprints, and
-serializes explicit current/next research fields. See
-`V8_1_CAPABILITY_DRIVEN_RESEARCH.md`.
+## Repository layout
 
-## Important limitation
-
-This V1 does **not yet write native Stars! `.x#` turn files**.
-
-That support belongs in `src/stars_ai/adapters/stars_binary.py`. The AI engine does not need to change when the native turn-file adapter is added.
-
-This was an intentional design decision: direct binary-file support should only be enabled after the exact Stars! file-format implementation has been validated against real test turns.
-
-## Windows quick start
-
-Install Python 3.11+.
-
-From PowerShell:
-
-```powershell
-cd C:\Dev\repos\stars-ai-v1
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
+```text
+src/stars_ai/              Application package
+  adapters/                JSON and native-state adapters
+  autohost/                Native host configuration and order-file bridge contracts
+  native/                  Native Stars! records, history merger, and X writer
+  strategy/                Economy, exploration, military, research, diplomacy
+  rules/                   Conservative rules-engine helpers
+tests/                     Regression and native-format tests
+examples/                  JSON turn and manifest examples
+scripts/                   Maintenance helpers
+run-example.ps1            Create a venv, install, and run the JSON example
+run-autoplay.ps1           Run the Windows native autoplay controller
+autoplay-config.example.json  Template for a native host run
 ```
 
-Run the included example:
+## Source organization roadmap
+
+The current package is functional but still has roughly sixty modules at its
+top level. While a native playtest is running, files are not moved: a module
+move can break an import path, a command-line entry point, or an archived
+replay at exactly the wrong time. Documentation-only changes can continue
+safely during that period.
+
+After the playtest, the target layout is:
+
+```text
+src/stars_ai/
+  core/                  GameState/Order contracts, agent, memory, personas
+  planning/
+    expansion/           colony scoring, networks, planet promotion, scouting
+    economy/             production, logistics, cargo, population movement
+    military/            threat assessment, doctrine, invasion, counter-design
+    research/            capability catalog and research planning
+    design/              design synthesis, legality, lifecycle, stock catalogs
+  rules/                 Pure Stars! rules: fuel, components, population, etc.
+  native/                Binary records/codecs, state reader, X writer, history
+  runtime/               autoplay, Windows host, staging, playtest, archives
+  observability/         decision trace, observer reports, command outcomes
+  adapters/              Public JSON/native application-boundary adapters
+```
+
+This is a relocation plan, not a promise to merge unrelated behavior into a
+single large file. The first consolidation slices are intentionally narrow:
+
+- `cargo_planner`, `shared_transport`, `population_redistribution`, and
+  `logistics_capacity` become the logistics planning area while retaining
+  separate manifest, scheduling, and capacity responsibilities.
+- `colony_planner`, `base_network`, `expansion_network`, `fleet_intent`, and
+  exploration routing become the expansion planning area. Their shared
+  candidate/ranking value types should be co-located, not duplicated.
+- `design_*`, `ship_design_synth`, `counter_design`, stock hull/mod readers,
+  and component eligibility become the design area. The native Type-27 codec
+  remains in `native/` because it is a file-format concern, not design policy.
+- `windows_autohost`, `host`, `playtest`, `turn_archive`, and autohost bridge
+  contracts become runtime. `game_observer`, `native_observer`,
+  `decision_trace`, and trace helpers become observability.
+
+Compatibility import shims will be left in place for one release after each
+move. The dated `*.pre-*.bak` files are migration evidence, not runtime code;
+after their tests and binary comparisons are captured, they should move out of
+`src/` into a dated archive or be removed from the repository.
+
+### Documentation standard
+
+New or touched Python modules receive a plain-language module docstring. Public
+classes and functions state their responsibility, inputs/outputs when they are
+not obvious, and any native-format or game-rule boundary. Private helpers are
+documented when their name cannot fully explain a non-obvious invariant. This
+work is incremental and intentionally does not alter planning behavior.
+
+## Build and install
+
+From PowerShell in the repository root:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+python -m pip install pytest
+```
+
+The package has no runtime dependencies beyond Python. `pytest` is needed only to run the test suite.
+
+## Run the JSON example
+
+After installation, use either the installed command or the module form:
 
 ```powershell
 stars-ai play-turn `
@@ -60,206 +113,158 @@ stars-ai play-turn `
   --memory .\state\player2-memory.json
 ```
 
-Inspect the generated orders:
+`run-example.ps1` performs the editable install and runs this same example.
 
-```powershell
-Get-Content .\out\player2-orders.json
-```
-
-Run all AI players found in a game manifest:
+Run all JSON players described by a manifest:
 
 ```powershell
 stars-ai host-turn --manifest .\examples\game-manifest.json
 ```
 
-## Recommended Windows deployment
+## Inspect native files and plan one native turn
 
-```text
-C:\StarsAI\
-├── app\
-├── games\
-│   └── Orion\
-│       ├── host\
-│       ├── inbox\
-│       │   ├── player2\
-│       │   ├── player3\
-│       │   └── player4\
-│       ├── outbox\
-│       └── state\
-└── logs\
-```
-
-The future native Stars! adapter should:
-
-1. Read `game.m2` + `game.xy`.
-2. Convert them into `GameState`.
-3. Run the AI.
-4. Convert `OrderSet` into a legal `game.x2`.
-5. Never expose another player's hidden information to the agent.
-
-## Architecture
-
-```text
-Stars! player turn file
-        |
-        v
-   Turn Adapter
-        |
-        v
-    GameState
-        |
-        v
-   AI Player
-   /   |    \
-econ research military
-   \   |    /
-    OrderSet
-        |
-        v
-   Turn Adapter
-        |
-        v
-Stars! order file
-```
-
-## V1 strategy philosophy
-
-The V1 agent is intentionally conservative:
-
-- Favor strong green planets.
-- Expand while available high-quality planets exist.
-- Move population from crowded worlds to useful colonies.
-- Build basic infrastructure before excessive defenses.
-- Maintain research rather than allowing production to consume everything.
-- Scout unknown or weakly observed worlds.
-- Respond to visible hostile fleets near owned planets.
-- Do not use hidden host information.
-
-The goal of V1 is **correct architecture and complete autonomous turn generation**, not grandmaster-level play yet.
-
-## Next milestone
-
-V2 should focus on:
-
-1. Native `.m#` parsing.
-2. Native `.x#` order writing or UI-backed order submission.
-3. Real Stars! economy formulas.
-4. Race-aware factory/mine/population optimization.
-5. Ship design and battle simulation.
-6. AI-vs-AI regression testing.
-
-## V1.1 native Stars! milestone
-
-The project now includes a Python 3-native Stars! binary reader in:
-
-`src/stars_ai/adapters/stars_native.py`
-
-New commands:
+Inspect a native player turn or an existing order file:
 
 ```powershell
-stars-ai inspect-stars --mfile .\AI.m1 --xy .\AI.xy --out .\AI-state.json
-stars-ai inspect-orders --xfile .\AI.x1 --xy .\AI.xy --out .\AI-orders.json
+stars-ai inspect-stars --mfile .\sandbox\GAME.m1 --xy .\sandbox\GAME.xy --out .\out\state.json
+stars-ai inspect-orders --xfile .\sandbox\GAME.x1 --xy .\sandbox\GAME.xy --out .\out\orders.json
 ```
 
-Validated against a real year-2400 Stars! fixture. The reader currently decodes:
-
-- Stars! encrypted block stream and file headers
-- `.xy` galaxy metadata and planet coordinates
-- full/partial planet records
-- full/partial fleet records
-- fleet waypoints
-- basic player counts
-- `.x#` waypoint-add orders
-- `.x#` waypoint-task changes
-- `.x#` production queue changes
-- planet-change and Save & Submit blocks
-
-Known fixture results:
-
-- Homeworld: Magellan (planet 29 in the UI)
-- 25,000 population
-- 10 mines / 10 factories / 10 defenses
-- 6 fleets
-- Fleet 1 -> Serapa, Warp 7
-- Fleet 2 -> Quiche, Warp 6
-- Fleet 3 -> Knob, Warp 9
-- Fleet 6 waypoint task 3 = Remote Mining (confirmed by controlled human input)
-- Production queue change: 5 Mines + 2 Factories
-
-### Still intentionally disabled
-
-Native `.x#` **writing** is not yet enabled. We have proven that native state and submitted orders can be decoded. The next milestone is to encode a minimal safe `.x#` order set and validate it by opening/submitting it in Stars! before allowing the AI to generate arbitrary native turns.
-
-
-## Ship-design legality guard
-
-`stars_ai.design_legality` validates proposed ship loadouts before native order writing.
-It checks the hull slot count, allowed component category for each slot, slot quantity
-capacity, required slots, and a conservative per-player component-availability set.
-
-The current profiles intentionally fail closed: Scout and Destroyer rules are loaded
-from combinations already established by known-good game designs. Unknown hulls or
-unproven category/slot combinations are rejected rather than guessed. The module is
-structured so the complete standard Stars! MOD hull table can be imported as the
-next expansion without changing callers.
-
-
-## Comprehensive ship-design legality (v1.3)
-
-The native design validator now carries the complete stock Stars! hull legality matrix:
-
-- 32 ship hulls
-- 5 starbase hulls
-- all 37 designable stock hull types
-- exact native slot category bitmasks
-- exact per-slot component capacities
-- required engine-slot enforcement for ships
-- combined/general-purpose slot masks preserved exactly
-- fail-closed validation for unknown components when a player-availability set is supplied
-
-`stars_ai.design_catalog.hull_catalog()` exposes the matrix as structured data.
-`stars_ai.standard_mod` can parse an UNEDITED.MOD-compatible database to build component
-tech requirements and validate researched component availability separately from physical
-slot compatibility. This separation is intentional: a component may fit a slot but still
-be unavailable to the player because the required technology has not been reached.
-
-The stock hull-row source is bundled as `stars_ai/data_hulls.mod`; it is derived from the
-canonical StarsAPI/UNEDITED.MOD layout and is included in packaged builds.
-
-## Native Core v2 (StarsAPI port foundation)
-
-This package now includes `stars_ai.native`, a Python port/facade modeled directly on the public
-`stars-4x/starsapi` structures. It parses richer Player/Race, Planet, Fleet, Waypoint, Design,
-Production Queue, Battle Plan, and Object/Mystery-Trader state while preserving raw bytes for fields
-that remain uncertain upstream.
-
-Example:
+Generate normalized AI orders from native state:
 
 ```powershell
-python -m stars_ai.native.cli GAME3.m1 --xy GAME3.xy --x GAME3.x1 --full --json-out GAME3.native.json
-```
-
-The intended architecture is now:
-
-`native file crypto -> StarsAPI-style block records -> PlayerState -> normalized AI GameState -> strategy -> validated X-order writer`
-
-Reverse engineering should target only StarsAPI TODO/gap areas (for example packet/salvage internals,
-ResearchChange semantics, scores, and some order payloads) rather than re-discovering already mapped fields.
-
-## Native GameState bridge (v2.1)
-
-The AI decision engine can now read a native Stars! turn directly through the StarsAPI-inspired core:
-
-```powershell
-python -m stars_ai.cli play-native `
-  --mfile AI.m1 `
-  --xy AI.xy `
-  --xfile AI.x1 `
+stars-ai play-native `
+  --mfile .\sandbox\GAME.m1 `
+  --xy .\sandbox\GAME.xy `
+  --xfile .\sandbox\GAME.x1 `
   --player 1 `
-  --out out\orders.json `
-  --state-out out\gamestate.json
+  --out .\out\player1-orders.json `
+  --state-out .\out\player1-state.json `
+  --memory .\state\player1-memory.json
 ```
 
-`NativeCoreTurnAdapter` converts `PlayerState` into the stable AI-facing `GameState` while preserving native details in `native` dictionaries. It also adds `.xy`-only planets as unobserved targets, associates design records to players using PLAYER design counts, and infers basic fleet roles from the player's native ship designs.
+For a lower-level native state inspection:
 
-Native `.x#` writing remains a separate layer. `play-native` currently emits normalized JSON orders so the strategy engine can be validated independently before those orders are passed to the native order writer.
+```powershell
+python -m stars_ai.native.cli .\sandbox\GAME.m1 --xy .\sandbox\GAME.xy --x .\sandbox\GAME.x1 --full --json-out .\out\native-state.json
+```
+
+## Native autoplay
+
+1. Copy `autoplay-config.example.json` and set `stars_exe`, `seed_dir`, `output_dir`, and the player configuration.
+2. Put a disposable, matching native game in `seed_dir`: one `.hst`, one `.xy`, and a matching `.m#` / `.x#` pair for every configured AI player.
+3. Keep the seed directory, live Stars! directory, output directory, and AI-memory directory separate.
+4. Run:
+
+```powershell
+.\run-autoplay.ps1 -Config .\autoplay-config.json
+```
+
+Use `-Noop` to validate staging and host invocation while reusing existing X files:
+
+```powershell
+.\run-autoplay.ps1 -Config .\autoplay-config.json -Noop
+```
+
+The default controller validates the seed and live files, keeps known-good X templates, snapshots native data, merges each player's new `.m#` knowledge into `.h#`, validates that history merge, writes archive manifests and hashes, and stops on unsafe or unverified conditions. `play_on: true` continues a validated live game instead of restaging the seed.
+
+Do not use a valuable game for initial native-order or Type27 design-creation experiments. Start with a disposable seed and retain the generated archive.
+
+### Native autoplay JSON reference
+
+`run-autoplay.ps1 -Config` and `python -m stars_ai.autoplay_cli --config` load the
+top-level object in `autoplay-config.json` directly into the native autoplay
+configuration. Unknown fields are rejected; omitted fields use the defaults in
+the application. Start from [autoplay-config.example.json](autoplay-config.example.json).
+
+The controller always runs the live game beside `stars_exe`; there is no
+`live_dir` setting. `seed_dir` is the immutable source when starting a new run,
+and `output_dir` holds reports, logs, archives, and copied native snapshots.
+
+| Field | Type / default | How it is used |
+| --- | --- | --- |
+| `stars_exe` | required path | The Stars! executable. The controller launches it with `-g` and uses its directory for the live game files. |
+| `seed_dir` | required path | Immutable, complete starting game. It must contain one matching `.hst` and `.xy`, plus `.m#`, `.h#`, and `.x#` files for every AI player. |
+| `output_dir` | required path | Destination for run logs, observer reports, archived snapshots, generated order copies, and `autoplay-result.json`. |
+| `game_name` | optional string; ignored for selection | Compatibility field only. The actual game basename is discovered and validated from `seed_dir`, then replaces this value. |
+| `player_ids` | integer array; `[1,2,3,4]` | Player seats controlled by the AI. Each listed player needs matching native files and receives an order file each turn. |
+| `turns` | integer; `50` | Number of host generations to attempt. |
+| `play_on` | boolean; `false` | `false` stages a fresh live game from the seed. `true` validates and continues the existing live game for `turns` additional generations. |
+| `checkpoints` | integer array; `[10,25,50]` | Turns that receive full observer reports under `logs/checkpoints/`; the latest is copied to `LATEST_OBSERVER_REPORT.txt`. |
+| `host_password` | string or `null`; `null` | When supplied, adds the password to the Stars! host invocation. Keep real passwords out of committed JSON. |
+| `keep_every_turn` | boolean; `true` | Saves a post-host native snapshot for every completed turn under `logs/native/`. |
+| `auto_merge_history` | boolean; `true` | Merges each current player `.m#` into its cumulative `.h#` during bootstrap and after successful hosting. |
+| `require_history_sync` | boolean; `true` | Refuses to create/submit subsequent orders unless semantic M-to-H history coverage validates. Keep enabled for normal games. |
+| `stop_on_missing_x` | boolean; `true` | Stops before hosting if any configured player is missing its newly generated `.x#` order file. |
+| `host_timeout_seconds` | integer; `180` | Maximum time for Stars! to launch, finish, and produce settled output files before a diagnostic timeout is written. |
+| `host_poll_seconds` | number; `0.5` | Poll interval while waiting for the host process or generated files. |
+| `host_settle_seconds` | number; `1.5` | Required quiet period after native file changes before they are treated as complete. |
+| `prevent_parallel_stars` | boolean; `true` | Refuses to launch while another matching Stars! process is running, and waits for the launched process to exit. |
+| `use_seed_as_live` | deprecated boolean; `false` | Retained for old configuration compatibility only. It does not select the live directory; the controller always uses the directory beside `stars_exe`. |
+| `pre_host_audit` | boolean; `true` | Reads every generated `.x#` before launch and blocks hosting if its header, player, game identity, or order blocks are invalid. |
+| `print_observer_each_turn` | boolean; `true` | Prints a concise omniscient observer status after every completed host turn. Full chronological output is always written to `RUNNING_GAME_REPORT.md`. |
+| `cleanup_output_on_start` | boolean; `true` | Removes prior run output at `output_dir` before staging. Persistent AI memory and X templates are preserved because they default outside that directory. |
+| `console_player_logs` | integer array or `null`; `null` | Selects detailed AI decision logs to echo: `null` means all configured AI players, `[1,2]` limits detail to those players, and `[]` suppresses player detail and prints the observer’s full per-turn section instead. |
+| `allied_pairs` | two-integer arrays; `[]` | Reciprocal Friend relationships supplied to AI strategy, for example `[[1,2]]` for P1 and P2. They affect AI planning; they do not serialize diplomacy orders. |
+| `personas` | object of player-ID strings to names | Assigns the strategy persona for each AI player and labels it in decision/observer reports, for example `{"1":"Balanced","2":"Expansionist"}`. |
+| `x_template_dir` | path or `null`; `null` | Permanent known-good `.x#` templates. `null` creates a sibling directory beside `seed_dir`, safely outside both the seed and disposable output directory. |
+| `ai_state_dir` | path or `null`; `null` | Persistent per-player strategic memory. `null` creates a sibling directory beside `seed_dir`, so learned state survives output cleanup and play-on runs. |
+| `turn_archive_enabled` | boolean; `true` | Captures immutable native-state phases before writing, before hosting, after the host attempt, and after commit/failure. |
+| `turn_archive_include_logs` | boolean; `true` | Includes relevant generated logs in each turn-archive phase. |
+| `turn_archive_json_index` | boolean; `true` | Maintains `logs/turn-archive/index.json` and each turn’s `turn.json` index for programmatic archive lookup. |
+
+`playtest-config.json` is a separate, lightweight configuration for the
+in-process playtest harness, not the Windows native host loop. Its fields are:
+
+| Field | How it is used |
+| --- | --- |
+| `game_name` | Label for the playtest and its output directory. |
+| `max_turns` | Maximum simulated turns. |
+| `checkpoints` | Simulated turns that save recap JSON. |
+| `seed` | Deterministic seed for repeatable simulated games. |
+| `players` | Array of player objects used to construct the simulation. |
+| `players[].player_id` | Numeric player seat. |
+| `players[].label` | Human-readable report label. |
+| `players[].persona` | Strategy persona assigned to that player. |
+| `players[].prt` | Primary racial trait used by the simulation. |
+| `players[].human` | When `true`, reserves the seat as human-controlled instead of AI-controlled. |
+| `turn_archive_enabled` | Enables archive capture for the playtest. |
+| `turn_archive_include_logs` | Includes playtest logs in archive captures. |
+| `turn_archive_json_index` | Writes JSON indexes for archive captures. |
+
+## Test
+
+Activate the virtual environment, then run:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m pytest -q
+```
+
+Run a focused test while working on a subsystem, for example:
+
+```powershell
+python -m pytest -q tests\test_v88_ship_creation.py
+python -m pytest -q tests\test_turn_archive_v871.py
+```
+
+Tests are grouped by the behavior they protect: native parsing and X serialization, history merging, colonization and logistics, research, ship design, strategic planning, autoplay staging, and archive integrity.
+
+## Native safety
+
+The project favors a fail-closed order writer over speculative serialization:
+
+- Native parsing preserves raw data where a field is not yet fully understood.
+- Fleet moves, supported waypoint tasks, colonization, production, research, and submission are emitted only in validated forms; unsupported mutations are skipped and reported.
+- Existing X files are treated as controlled templates rather than arbitrary bytes to overwrite.
+- Ship designs use the canonical stock-hull model plus the bundled StarsAPI `UNEDITED.MOD`; every component is checked against current research and official PRT/LRT gates before it can be encoded. Generic ship proposals are compiled through that same gate into the Type27 lifecycle; unvalidated starbase mutations remain advisory.
+- A design replacement is always delete, read back on a later turn, then create. It is never an atomic same-turn mutation.
+- Type27 creation emits only the captured owner-aware staging/final pair (`01 A4` for Player 1; `11 A4` for Player 2), without unrelated orders or Type46. The Player-1 Fuel-Mizer replay is host-accepted; Player 2 and deletion remain separately gated pending dedicated host replays.
+
+See `AI-Status.md` for the exact confidence boundary and the recommended next validation sequence.
+
+## Development notes
+
+The main command entry point is `src/stars_ai/cli.py`; the native autoplay entry point is `src/stars_ai/autoplay_cli.py`. Strategy code consumes the stable `GameState` model rather than native records directly. The native adapter and writer form the boundary between strategy and Stars! binary files.
+
+Generated files belong under `out/`, `playtests/`, `sandbox/`, or a separately configured game/output location. Avoid modifying a live game before the configuration and seed validation steps have completed.

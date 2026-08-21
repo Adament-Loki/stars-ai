@@ -1,3 +1,5 @@
+"""Top-level coordinator for one deterministic Stars! AI player turn."""
+
 from __future__ import annotations
 from .models import GameState, OrderSet
 from .memory import AgentMemory
@@ -11,17 +13,26 @@ from .strategy.diplomacy import add_diplomacy_orders
 from .v4_coordinator import augment_orders_v4
 from .fleet_intent import ensure_fleet_activity
 from .fuel_planner import apply_fuel_safety
+from .warp_policy import optimize_active_route_warps
 from .design_development import add_design_development_orders
 from .strategic_watchdog import evaluate_strategic_watchdog
 
 
 class StarsAgent:
+    """Coordinate memory, strategic planners, safety checks, and turn tracing.
+
+    This class deliberately owns orchestration only. Individual domains add
+    semantic orders through focused strategy modules, while native encoding is
+    handled later by the adapter/writer boundary.
+    """
+
     def __init__(
         self,
         state: GameState,
         memory: AgentMemory | None = None,
         persona: StrategicPersona | None = None,
     ):
+        """Create an agent using supplied or default persistent strategy state."""
         self.state = state
         self.memory = memory or AgentMemory()
         self.persona = persona or BalancedPersona()
@@ -29,6 +40,7 @@ class StarsAgent:
         self.fleet_intents: list[dict] = []
 
     def play_turn(self) -> OrderSet:
+        """Produce the complete, prioritized semantic order set for this turn."""
         orders = OrderSet(
             game_name=self.state.game_name,
             year=self.state.year,
@@ -85,6 +97,7 @@ class StarsAgent:
         add_design_development_orders(self.state, orders, plan)
         augment_orders_v4(self.state, orders, plan)
         deconflict_recon_orders(self.state,orders)
+        optimize_active_route_warps(self.state, orders)
         apply_fuel_safety(self.state, orders)
 
         # Fleet-activity invariant: every owned fleet must have an explicit
@@ -143,5 +156,6 @@ class StarsAgent:
         return orders
 
     def _observe(self) -> None:
+        """Compatibility hook retained for callers that previously requested observation."""
         """Compatibility shim retained for external callers."""
         self.memory.reconcile_state(self.state)

@@ -6,13 +6,20 @@ from ..util import distance
 from ..colony_planner import score_colony_candidates, reserved_colony_target_ids
 from ..warp_policy import mission_warp
 from ..fuel_planner import mission_reachable, mission_reachable_with_planned_cargo
-from ..objective_production import plan_objective_ship_builds
+from ..objective_production import BuildRequest, plan_objective_ship_builds
 from ..cargo_planner import derive_cargo_plan
-from ..starbase_planner import plan_support_base_builds, STARBASE_QUEUE_SLOT_OFFSET
+from ..starbase_planner import (
+    plan_support_base_builds,
+    plan_support_base_material_demands,
+    STARBASE_QUEUE_SLOT_OFFSET,
+)
+from ..expansion_network import evaluate_expansion_network
 from ..planet_economy import (decode_race_economy, installation_status, estimated_operating_resources,
-                              theoretical_max_population, planet_population_capacity,
-                              population_capacity_fraction, projected_population_growth,
-                              projected_next_population)
+                              estimated_mineral_output, mineral_surface_stock,
+                              working_mineral_reserve, factory_germanium_floor,
+                              is_economic_core, theoretical_max_population,
+                              planet_population_capacity, population_capacity_fraction,
+                              projected_population_growth, projected_next_population)
 from ..population_units import (
     COLONY_LOAD_COLONISTS,
     COLONY_LOAD_KT,
@@ -21,6 +28,12 @@ from ..population_units import (
 )
 from ..terraforming import evaluate_terraforming
 from ..research_planner import ResearchDecision
+from ..planetary_scanners import (
+    PLANETARY_SCANNER_QUEUE_ITEM,
+    best_penetrating_planetary_scanner,
+    planetary_scanner_sites,
+)
+from ..shared_transport import schedule_shared_transport_orders
 
 def _planet_under_fleet(fleet, owned):
     pid=int(fleet.native.get("position_object_id",-1))
@@ -42,6 +55,92 @@ def _colony_source_reserve(state: GameState) -> int:
     turn = max(0, int(state.year) - 2400)
     return colony_source_reserve_for_turn(turn)
 
+
+def _distribute_ship_builds(shipyards, requests, promotion_by_planet):
+    """Spread strategic builds across operational yards.
+
+    A ship build request is an empire requirement, not an instruction to make
+    one world carry the whole queue.  Giving each ready yard a share produces
+    colony, scout, freight, and defense hulls concurrently.  Core/promotion
+    hubs are still assigned first, so the fastest and best supplied yard gets
+    the first share without silently idling every other shipyard.
+    """
+    ordered=sorted(
+        shipyards,
+        key=lambda p:(
+            -int(getattr(promotion_by_planet.get(int(p.id)),"promotion_tier",3) or 3),
+            int(p.population or 0),int(p.factories or 0),int(p.mines or 0),-int(p.id),
+        ),
+        reverse=True,
+    )
+    assigned={int(p.id):[] for p in ordered}
+    if not ordered:
+        return assigned
+    for request in requests:
+        remaining=max(0,int(request.quantity))
+        lane_index=0
+        shares={int(world.id):0 for world in ordered}
+        # One ship to each lane first gives the greatest immediate strategic
+        # throughput.  Extra copies cycle from the strongest yard outward.
+        while remaining:
+            world=ordered[lane_index % len(ordered)]
+            shares[int(world.id)]+=1
+            lane_index+=1
+            remaining-=1
+        for world in ordered:
+            quantity=shares[int(world.id)]
+            if quantity:
+                assigned[int(world.id)].append(BuildRequest(
+                    request.role,request.design_slot,request.design_name,quantity,
+                    request.priority,request.reason,
+                ))
+    return assigned
+
+
+def _prioritize_economic_infrastructure(queue, *, opening_growth:bool=False):
+    """Put operable mines and factories ahead of discretionary projects.
+
+    A queue is a commitment to an order, not a claim that all of its mineral
+    bills are already funded.  When the planner detects an I/B/G shortfall,
+    allowing a long scout, colony, or base queue to remain first causes the
+    planet to spend its early production on work it cannot complete while its
+    mineral income remains flat.  Installations must therefore be first even
+    during a research sprint; a research contributor that is deliberately
+    cleared later still receives its explicit empty/research queue.
+    """
+    mines=[item for item in queue if item.get("item")=="mine"]
+    factories=[item for item in queue if item.get("item")=="factory"]
+    if not mines and not factories:
+        return queue
+    other=[
+        item for item in queue
+        if item.get("item") not in {"mine","factory"}
+    ]
+    if opening_growth:
+        # Early playtest evidence showed a preserved scout queue hiding a new
+        # colony build behind fourteen probes.  Exploration now has enough
+        # momentum; mines/factories first, then colony hulls and the freighters
+        # that sustain them, is the necessary opening production sequence.
+        project_order={
+            "colony":0,
+            "freighter":1,
+            "miner":2,
+            "scout":3,
+            "combat":4,
+        }
+        other=[
+            item
+            for _,item in sorted(
+                enumerate(other),
+                key=lambda row:(
+                    project_order.get(str(row[1].get("role") or ""), 5)
+                    if row[1].get("item")=="ship_design" else 5,
+                    row[0],
+                ),
+            )
+        ]
+    return [*mines,*factories,*other]
+
 def add_economic_orders(
     state: GameState,
     orders: OrderSet,
@@ -50,25 +149,62 @@ def add_economic_orders(
 ) -> None:
     owned=[p for p in state.planets if p.owner==state.player_id]
     develop=plan.objective("develop") if plan else 1.0
-    factory_w=plan.planet("factories") if plan else 1.0
-    mine_w=plan.planet("mines") if plan else 1.0
     defense_w=plan.planet("defenses") if plan else 1.0
 
 
 
     race_economy=decode_race_economy(state.race)
+    promotion_network=evaluate_expansion_network(state)
+    promotion_by_planet={int(h.planet_id):h for h in promotion_network.hubs}
+    penetrating_scanner=best_penetrating_planetary_scanner(state)
+    scanner_sites=set(planetary_scanner_sites(state,penetrating_scanner,limit=2))
+    state.native["planetary_sensor_plan"]={
+        "capability":penetrating_scanner,
+        "target_planet_ids":sorted(scanner_sites),
+        "policy":"Deploy up to two researched penetrating planetary scanners on mature core/frontier hubs; existing M-file scanners are retained.",
+    }
     ship_builds=plan_objective_ship_builds(state,plan)
+    # A strategic base is not allowed to block its world's mines/factories
+    # until the exact remaining hull/component bill plus working reserve is on
+    # the ground.  The blocked demand remains visible to freight routing below.
+    support_base_material_demands={
+        int(demand.planet_id): demand
+        for demand in plan_support_base_material_demands(state,plan)
+    }
+    state.native["support_base_material_demands"]=[
+        demand.to_dict() for demand in support_base_material_demands.values()
+    ]
     support_base_builds={
         request.planet_id:request
         for request in plan_support_base_builds(state,plan)
+        if bool(
+            support_base_material_demands.get(int(request.planet_id))
+            and support_base_material_demands[int(request.planet_id)].ready
+        )
     }
     shipyards=[p for p in owned if bool(((p.native or {}).get('starbase_capabilities') or {}).get('can_build_ships'))]
-    primary=max(shipyards,key=lambda p:(p.population,p.factories,p.mines),default=None)
+    ship_builds_by_planet=_distribute_ship_builds(
+        shipyards,ship_builds,promotion_by_planet,
+    )
     existing=state.native.get('production_by_planet',{})
-    research_contributors=set(
+    research_posture=str(
+        getattr(research_decision,"posture","") or ""
+    ).rsplit(".",1)[-1].upper()
+    key_research_sprint=bool(
+        research_decision is not None
+        and research_posture in {"SPRINT","MILITARY_EMERGENCY"}
+        and int(research_decision.allocation_percent or 0)>=25
+    )
+    selected_research_contributors=set(
         int(x) for x in (
             research_decision.contributor_planet_ids if research_decision is not None else ()
         )
+    )
+    # Routine research never displaces baseline economic development.  Only a
+    # named high-commitment sprint (or an active military emergency) may do so.
+    # This is shared empire logic, deliberately independent of AI persona.
+    research_contributors=(
+        selected_research_contributors if key_research_sprint else set()
     )
     protected_research=set(
         int(x) for x in (
@@ -100,16 +236,28 @@ def add_economic_orders(
         strategic_priority=0
         status=installation_status(p,race_economy)
         resource_est=estimated_operating_resources(p,race_economy)
+        promotion=promotion_by_planet.get(int(p.id))
+        promotion_tier=int(getattr(promotion,"promotion_tier",3) or 3)
+        promotion_rank=getattr(promotion,"promotion_rank",None)
+        promotion_label={0:"HW",1:"P1",2:"P2"}.get(promotion_tier,"LOCAL")
+        promotion_priority={0:132,1:126,2:120}.get(promotion_tier,110)
 
+        base_demand=support_base_material_demands.get(int(p.id))
         base_request=support_base_builds.get(p.id)
         if base_request is not None:
             queue.append(base_request.queue_item())
             reasons.append(base_request.reason)
             strategic_priority=max(strategic_priority,base_request.priority)
+        elif base_demand is not None:
+            # Keep the normal development queue active while minerals are
+            # concentrated.  Leaving the stalled starbase at queue position 1
+            # was the direct cause of idle, under-mined hub worlds.
+            reasons.append(base_demand.reason)
 
-        # Existing custom ships are strategic commitments. Preserve them at the
-        # principal shipyard so one-turn autoplay does not erase work in progress.
-        if primary is not None and p.id==primary.id:
+        # Existing custom ships are strategic commitments. Preserve them at
+        # every operational shipyard so parallel production never erases work
+        # that was previously assigned to a secondary yard.
+        if int(p.id) in ship_builds_by_planet:
             old=[]
             for q in existing.get(str(p.id),existing.get(p.id,[])):
                 if (
@@ -134,7 +282,7 @@ def add_economic_orders(
                     })
             queue.extend(old)
             preserved={int(x['design_slot']):x for x in old}
-            for req in ship_builds:
+            for req in ship_builds_by_planet[int(p.id)]:
                 if req.design_slot in preserved:
                     item=preserved[req.design_slot]
                     item['quantity']=int(item.get('quantity',0))+int(req.quantity)
@@ -150,6 +298,149 @@ def add_economic_orders(
                     reasons.append(req.reason)
                     strategic_priority=max(strategic_priority,req.priority)
 
+        # HARD RULE: never intentionally build more installations than the CURRENT
+        # population can operate. Growth can open more headroom next year.
+        infrastructure=[]
+        # Promotion has a deliberate resource sequence. The homeworld remains
+        # the primary core; selected P1 worlds receive the same reserve and
+        # installation-first treatment so they can become true relay cores.
+        # P2s receive accelerated development only after their P1 parent is
+        # operational (the expansion network withholds their active lane until
+        # then), preventing the AI from overextending into the third tier.
+        is_core=is_economic_core(p) or promotion_tier <= 1
+        promoted_p2=promotion_tier == 2 and bool(getattr(promotion,"parent_exporter_id",None))
+        mineral_stock=mineral_surface_stock(p)
+        mineral_output=estimated_mineral_output(p,race_economy)
+        if not race_economy.alternate_reality:
+            factory_headroom=int(status["factory_headroom"])
+            mine_headroom=int(status["mine_headroom"])
+            germanium_per_factory=3 if race_economy.factory_germanium_discount else 4
+            reserve_before_infrastructure=working_mineral_reserve(
+                p,race_economy,queue,is_core=is_core,
+            )
+            mineral_deficits={
+                mineral:max(0,int(reserve_before_infrastructure[mineral])-mineral_stock[mineral])
+                for mineral in ("ironium","boranium","germanium")
+            }
+            germanium_reserve=factory_germanium_floor(
+                p,race_economy,is_core=is_core,
+            )
+            germanium_for_factories=max(0,int(p.germanium)-germanium_reserve)
+            germanium_factory_cap=germanium_for_factories//germanium_per_factory
+            if promotion_tier == 0:
+                factory_batch=min(factory_headroom,25); mine_batch=min(mine_headroom,25)
+            elif promotion_tier == 1:
+                factory_batch=min(factory_headroom,20); mine_batch=min(mine_headroom,20)
+            elif is_core:
+                factory_batch=min(factory_headroom,25); mine_batch=min(mine_headroom,25)
+            elif promoted_p2:
+                factory_batch=min(factory_headroom,14); mine_batch=min(mine_headroom,12)
+            else:
+                factory_batch=min(factory_headroom,10); mine_batch=min(mine_headroom,8)
+            # A mine field begins producing in groups of ten.  Avoid issuing a
+            # token mine queue that cannot produce any minerals next year when
+            # the planet has the population/resources to complete the group.
+            operated_mines=int(mineral_output["operated_mines"])
+            if operated_mines<10 and mine_headroom>0:
+                mine_batch=min(
+                    mine_headroom,
+                    max(mine_batch,10-operated_mines),
+                )
+            germanium_short=(
+                factory_headroom>0
+                and germanium_factory_cap < factory_batch
+            )
+            output_shortfall=any(
+                amount is not None and int(amount)<(12 if is_core else 8 if promoted_p2 else 4)
+                for amount in mineral_output["estimated_mineral_output"].values()
+            )
+            needs_mining=bool(
+                mine_headroom>0
+                and (
+                    is_core
+                    or promoted_p2
+                    or germanium_short
+                    or any(mineral_deficits.values())
+                    or output_shortfall
+                )
+            )
+
+            # Mine capacity comes first whenever a core needs stock or
+            # production is constrained.  This grows all three minerals rather
+            # than reacting only after Germanium has already run out.
+            if needs_mining and mine_batch>0:
+                mine_reason=(
+                    "core_mineral_reserve"
+                    if is_core and any(mineral_deficits.values())
+                    else "core_mine_capacity" if is_core
+                    else "mineral_reserve_or_output"
+                )
+                infrastructure.append({
+                    'item':'mine',
+                    'quantity':mine_batch,
+                    'reason':mine_reason,
+                    'mineral_deficits':mineral_deficits,
+                })
+                reasons.append(
+                    f"baseline mineral capacity: {mine_batch} mines for I/B/G reserve "
+                    f"deficits {mineral_deficits['ironium']}/"
+                    f"{mineral_deficits['boranium']}/"
+                    f"{mineral_deficits['germanium']}kT"
+                )
+
+            # Never queue more factories than current surface Germanium can pay
+            # for after the appropriate working floor.  Core worlds keep a
+            # larger stock so they can continue ship/base production.
+            if factory_headroom>0 and germanium_factory_cap>0:
+                qty=min(factory_batch,germanium_factory_cap)
+                if qty>0:
+                    infrastructure.append({
+                        'item':'factory',
+                        'quantity':qty,
+                        'germanium_cost_each':germanium_per_factory,
+                        'germanium_available':int(p.germanium),
+                        'germanium_floor':germanium_reserve,
+                    })
+                    reasons.append(
+                        f"baseline factory capacity: {qty} factories while retaining "
+                        f"{germanium_reserve}kT Germanium"
+                    )
+
+            # Non-core colonies still develop toward their current operating
+            # cap even when their stock report is incomplete.
+            if mine_headroom>0 and not needs_mining:
+                infrastructure.append({
+                    'item':'mine','quantity':mine_batch,'reason':'mine_capacity'
+                })
+                reasons.append(f"baseline mine capacity: {mine_batch} mines")
+
+            # Defenses are not a default sink for excess resources. Only a
+            # persona with an explicitly elevated defense posture spends on them;
+            # otherwise capped planets prefer objective ships or research.
+            if (
+                defense_w>1.15
+                and p.defenses<max(5,round(5*defense_w))
+                and p.population>=70000
+            ):
+                infrastructure.append({'item':'defense','quantity':max(1,round(defense_w))})
+
+        # Mines and factories are the universal economic foundation: optional
+        # ships, bases, and terraforming never jump ahead of currently operable
+        # infrastructure.  Research allocation changes whether a world is
+        # cleared for research; it never reverses an under-mined world's
+        # production order.
+        if infrastructure:
+            queue[0:0]=infrastructure
+            if promotion_tier <= 1:
+                reasons.insert(
+                    0,
+                    f"{promotion_label} promotion rank {promotion_rank or 1}: "
+                    "installations precede optional local projects",
+                )
+            strategic_priority=max(strategic_priority,promotion_priority)
+
+        # Terraforming improves a mature world, but it is never the reason an
+        # immature world postpones the mines and factories that pay for it.
         terraforming=evaluate_terraforming(state,p)
         if terraforming.tech_steps>0 and terraforming.tech_gain>0:
             queue.append({
@@ -162,77 +453,9 @@ def add_economic_orders(
             })
             reasons.append(
                 f"terraform {p.name} from {terraforming.current_habitability}% toward "
-                f"{terraforming.tech_habitability}% ({terraforming.tech_steps} available steps)"
+                f"{terraforming.tech_habitability}% ({terraforming.tech_steps} available steps) after economic infrastructure"
             )
             strategic_priority=max(strategic_priority,108)
-
-        # HARD RULE: never intentionally build more installations than the CURRENT
-        # population can operate. Growth can open more headroom next year.
-        if not race_economy.alternate_reality:
-            factory_headroom=int(status["factory_headroom"])
-            mine_headroom=int(status["mine_headroom"])
-            germanium_per_factory=3 if race_economy.factory_germanium_discount else 4
-            germanium_reserve=max(8,2*germanium_per_factory)
-            germanium_for_factories=max(0,int(p.germanium)-germanium_reserve)
-            germanium_factory_cap=germanium_for_factories//germanium_per_factory
-            germanium_short=(
-                factory_headroom>0
-                and germanium_factory_cap < min(factory_headroom,10)
-            )
-
-            # If Germanium is the constraint, build useful mines first.
-            if mine_headroom>0 and germanium_short:
-                desired=max(
-                    1,
-                    round(
-                        min(8,mine_headroom,max(1,p.population//25000))
-                        * min(max(mine_w,1.25),1.75)
-                    ),
-                )
-                qty=min(mine_headroom,desired)
-                if qty>0:
-                    queue.append({'item':'mine','quantity':qty,'reason':'germanium_constraint'})
-
-            # Never queue more factories than current surface Germanium can pay
-            # for after a small strategic reserve.
-            if factory_headroom>0 and germanium_factory_cap>0:
-                desired=max(
-                    1,
-                    round(
-                        min(10,factory_headroom,max(1,p.population//20000))
-                        * min(factory_w,1.75)
-                    ),
-                )
-                qty=min(factory_headroom,desired,germanium_factory_cap)
-                if qty>0:
-                    queue.append({
-                        'item':'factory',
-                        'quantity':qty,
-                        'germanium_cost_each':germanium_per_factory,
-                        'germanium_available':int(p.germanium),
-                    })
-
-            if mine_headroom>0 and not germanium_short:
-                desired=max(
-                    1,
-                    round(
-                        min(8,mine_headroom,max(1,p.population//25000))
-                        * min(mine_w,1.75)
-                    ),
-                )
-                qty=min(mine_headroom,desired)
-                if qty>0:
-                    queue.append({'item':'mine','quantity':qty})
-
-            # Defenses are not a default sink for excess resources. Only a
-            # persona with an explicitly elevated defense posture spends on them;
-            # otherwise capped planets prefer objective ships or research.
-            if (
-                defense_w>1.15
-                and p.defenses<max(5,round(5*defense_w))
-                and p.population>=70000
-            ):
-                queue.append({'item':'defense','quantity':max(1,round(defense_w))})
 
         current_queue=existing.get(str(p.id),existing.get(p.id,[])) or []
         current_has_standard=any(
@@ -261,6 +484,40 @@ def add_economic_orders(
             ]
             strategic_priority=max(strategic_priority,145)
 
+        if int(p.id) in scanner_sites:
+            scanner_name=str((penetrating_scanner or {}).get("name", "penetrating planetary scanner"))
+            scanner_range=int((penetrating_scanner or {}).get("range", 0) or 0)
+            queue.append({
+                "item":PLANETARY_SCANNER_QUEUE_ITEM,
+                "quantity":1,
+                "scanner_name":scanner_name,
+                "scanner_range":scanner_range,
+                "penetrating":True,
+                "standard_item_id":27,
+                "native_status":"ENABLED_UNTRUSTED_STANDARD_QUEUE_ITEM",
+            })
+            reasons.append(
+                f"deploy researched {scanner_name} planetary sensor ({scanner_range} ly normal / "
+                f"{scanner_range // 2} ly penetrating range) for border and planet intelligence"
+            )
+            strategic_priority=max(strategic_priority,118)
+
+        # Keep the precedence explicit at the final queue assembly point.  It
+        # protects against future queue additions above (or a preserved custom
+        # ship build) accidentally placing an unaffordable ship ahead of the
+        # mine/factory work that restores its mineral supply.
+        queue=_prioritize_economic_infrastructure(
+            queue,
+            opening_growth=max(0,int(state.year)-2400)<10,
+        )
+
+        mineral_reserve=working_mineral_reserve(
+            p,race_economy,queue,is_core=is_core,
+        )
+        mineral_deficits={
+            mineral:max(0,int(mineral_reserve[mineral])-mineral_stock[mineral])
+            for mineral in ("ironium","boranium","germanium")
+        }
         payload={
             'planet_id':p.id,
             'queue':queue,
@@ -271,6 +528,26 @@ def add_economic_orders(
                 'operable_mines_per_10k':race_economy.operable_mines_per_10k,
                 'factory_output_per_10':race_economy.factory_output_per_10,
                 'mine_output_per_10':race_economy.mine_output_per_10,
+                'economic_core':is_core,
+                'promotion':{
+                    'tier':promotion_tier,
+                    'label':promotion_label,
+                    'rank':promotion_rank,
+                    'parent_id':getattr(promotion,"promotion_parent_id",None),
+                    'parent_operational':bool(getattr(promotion,"parent_exporter_id",None)),
+                    'economic_value':getattr(promotion,"economic_value",None),
+                    'strategic_value':getattr(promotion,"strategic_value",None),
+                    'overall_value':getattr(promotion,"overall_value",None),
+                    'development_priority':promotion_priority,
+                },
+                'mineral_surface_stock':mineral_stock,
+                'mineral_reserve':mineral_reserve,
+                'mineral_reserve_deficits':mineral_deficits,
+                'support_base_material_demand':(
+                    base_demand.to_dict() if base_demand is not None else None
+                ),
+                'estimated_mineral_output':mineral_output['estimated_mineral_output'],
+                'mineral_concentrations':mineral_output['concentrations'],
                 'germanium_surface':int(p.germanium),
                 'germanium_per_factory':3 if race_economy.factory_germanium_discount else 4,
                 'germanium_concentration':(p.native or {}).get('mineral_concentrations',[None,None,None])[2],
@@ -290,7 +567,7 @@ def add_economic_orders(
                     f"{plan.persona_name + ': ' if plan else ''}objective production first: "
                     + ' | '.join(reasons)
                 )
-                priority=max(110,strategic_priority)
+                priority=max(promotion_priority,110,strategic_priority)
             else:
                 reason=(
                     f"{plan.persona_name + ': ' if plan else ''}build only currently operable infrastructure: "
@@ -300,35 +577,29 @@ def add_economic_orders(
                 priority=int(60*develop)
             orders.add('set_planet_queue',payload,reason,priority=priority)
         else:
-            # If Stars! is carrying a stale factory/mine queue after the population
-            # cap has been reached, explicitly clear it. An empty production queue
-            # allows the planet's available resources to flow to empire research.
-            #
-            # If no current queue exists, no native order is needed; report logic
-            # still identifies the planet as RESEARCH / NO USEFUL BUILD.
-            should_clear=bool(current_queue)
-            if should_clear:
-                payload['clear_queue']=True
-                payload['research_when_idle']=True
-                orders.add(
-                    'set_planet_queue',
-                    payload,
-                    (
-                        f"{plan.persona_name + ': ' if plan else ''}"
-                        + (
-                            f"selected contributor to the {research_decision.capability_name} sprint; "
-                            "clear only noncritical production and direct capacity to the named unlock."
-                            if is_research_contributor and research_decision is not None
-                            else (
-                                f"population currently supports only {status['factory_cap']} factories and "
-                                f"{status['mine_cap']} mines; existing {p.factories}/{p.mines}. No higher-priority "
-                                "ship or useful installation is queued, so clear planetary production and direct "
-                                "capacity to research."
-                            )
+            # Emit an explicit native queue decision even for a previously empty
+            # world.  A deliberate empty/research queue is not an accidental
+            # idle planet and makes every planet's turn intent auditable.
+            payload['clear_queue']=True
+            payload['research_when_idle']=True
+            orders.add(
+                'set_planet_queue',
+                payload,
+                (
+                    f"{plan.persona_name + ': ' if plan else ''}"
+                    + (
+                        f"selected contributor to the {research_decision.capability_name} sprint; "
+                        "hold an explicit empty queue and direct capacity to the named unlock."
+                        if is_research_contributor and research_decision is not None
+                        else (
+                            f"population currently supports only {status['factory_cap']} factories and "
+                            f"{status['mine_cap']} mines; existing {p.factories}/{p.mines}. No higher-priority "
+                            "operable production exists, so hold an explicit research queue."
                         )
-                    ),
-                    priority=145 if is_research_contributor else 92,
-                )
+                    )
+                ),
+                priority=145 if is_research_contributor else 92,
+            )
 
 
 
@@ -511,109 +782,13 @@ def add_economic_orders(
             )
 
 
-    logistics=plan.objective("logistics")*plan.mission("transport") if plan else 1.0
-    freighters=[
-        f for f in state.fleets
-        if f.owner==state.player_id and f.role=="freighter" and f.destination_planet_id is None
-    ]
-
-    for fleet in freighters:
-        here=_planet_under_fleet(fleet,owned)
-        cargo=(fleet.native or {}).get("cargo",{})
-        ci=int(cargo.get("ironium",0) or 0)
-        cb=int(cargo.get("boranium",0) or 0)
-        cg=int(cargo.get("germanium",0) or 0)
-
-        # The destination waypoint itself now performs the complete delivery:
-        # Unload All I/B/G/Population + Load Optimal Fuel.
-        #
-        # If cargo is unexpectedly still aboard at an owned planet, recover by
-        # reissuing that same validated policy before assigning another route.
-        if here is not None and (ci>0 or cb>0 or cg>0 or int(cargo.get("population",0) or 0)>0):
-            orders.add(
-                "transport_unload_remainder",
-                {
-                    "fleet_id":fleet.id,
-                    "destination_planet_id":here.id,
-                    "warp":int((fleet.native or {}).get("observed_warp",1) or 1),
-                    "mission":"transport_unload_all",
-                    "cargo_before":{
-                        "ironium":ci,
-                        "boranium":cb,
-                        "germanium":cg,
-                        "population":int(cargo.get("population",0) or 0),
-                    },
-                    "unload":{
-                        "ironium":"all",
-                        "boranium":"all",
-                        "germanium":"all",
-                        "population":"all",
-                    },
-                    "fuel":"load_optimal",
-                },
-                f"{plan.persona_name + ': ' if plan else ''}finish delivery at {here.name} before another route; "
-                f"cargo remaining I/B/G={ci}/{cb}/{cg}. Use validated Unload All cargo + Load Optimal fuel.",
-                priority=145,
-            )
-            continue
-
-        source=here
-        if source is None:
-            continue
-
-
-        candidates=[]
-        for target in owned:
-            if target.id==source.id or not mission_reachable(fleet,target.position,"transport"):
-                continue
-            cargo_plan=derive_cargo_plan(source,target,fleet,race_economy,orders)
-            if cargo_plan is None:
-                continue
-
-            travel=distance(fleet.position,target.position)
-            # Germanium gets higher strategic weight because factory growth
-            # depends on it; useful total payload and short travel break ties.
-            route_score=(
-                3.0*cargo_plan.germanium
-                +cargo_plan.ironium
-                +cargo_plan.boranium
-                -0.25*travel
-            )
-            candidates.append((route_score,target,cargo_plan,travel))
-
-        if not candidates:
-            continue
-
-        route_score,target,cargo_plan,travel=max(candidates,key=lambda x:x[0])
-        load=cargo_plan.as_load()
-
-        orders.add(
-            "transport_minerals",
-            {
-                "fleet_id":fleet.id,
-                "source_planet_id":source.id,
-                "destination_planet_id":target.id,
-                "warp":mission_warp(fleet,target.position,"transport"),
-                "load":load,
-                "load_total":cargo_plan.total,
-                "cargo_capacity":cargo_plan.capacity,
-                "cargo_capacity_confidence":(fleet.native or {}).get(
-                    "cargo_capacity_confidence","unknown"
-                ),
-                "unload":{
-                    "ironium":"all",
-                    "boranium":"all",
-                    "germanium":"all",
-                    "population":"all",
-                },
-                "fuel":"load_optimal",
-                "cargo_plan":cargo_plan.to_dict(),
-            },
-            f"{plan.persona_name + ': ' if plan else ''}dynamic shipment "
-            f"{source.name}->{target.name}: I/B/G="
-            f"{load['ironium']}/{load['boranium']}/{load['germanium']}kT "
-            f"({cargo_plan.total}/{cargo_plan.capacity}kT conservative capacity). "
-            + " ".join(cargo_plan.rationale)
-            + " Destination Transport task unloads all cargo and loads optimal fuel.",
-            priority=int((88+min(25,cargo_plan.germanium//4))*logistics),
-        )
+    # Population and mineral freight share one fleet-level ranked schedule.
+    # The scheduler consumes the just-created production queues so a selected
+    # P1/P2/tactical destination gets one full manifest, not competing orders
+    # from independent population and mineral passes.
+    schedule_shared_transport_orders(
+        state,
+        orders,
+        plan,
+        support_base_material_demands=support_base_material_demands,
+    )

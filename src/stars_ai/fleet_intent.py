@@ -13,11 +13,19 @@ RECON_ROLES = {"scout", "unknown"}
 def _existing_fleet_order(orders: OrderSet, fleet_id: int):
     return next((
         o for o in orders.orders
-        if o.kind in (
+        if (
+            o.kind == "merge_fleets"
+            and int(fleet_id) in {
+                int(o.payload.get("target_fleet_id",o.payload.get("fleet_id",-1))),
+                *(int(value) for value in (o.payload.get("source_fleet_ids") or [])),
+            }
+        ) or (
+            o.kind in (
             "move_fleet", "colony_operation", "transport_population",
-            "transport_minerals", "transport_unload_remainder",
+            "transport_minerals", "transport_unload_remainder", "remote_mine",
+            )
+            and int(o.payload.get("fleet_id", -1)) == int(fleet_id)
         )
-        and int(o.payload.get("fleet_id", -1)) == int(fleet_id)
     ), None)
 
 
@@ -33,6 +41,17 @@ def _owned_planet_under_fleet(state: GameState, fleet):
     p=next((p for p in owned if p.id==pid),None)
     if p is not None: return p
     return next((p for p in owned if abs(float(p.position.x)-float(fleet.position.x)) <= 0.5 and abs(float(p.position.y)-float(fleet.position.y)) <= 0.5),None)
+
+
+def _fleet_is_at_planet(fleet, planet) -> bool:
+    """Use native object identity first, with a coordinate fallback."""
+    native=fleet.native or {}
+    if int(native.get("position_object_id", -1) or -1) == int(planet.id):
+        return True
+    return (
+        abs(float(fleet.position.x)-float(planet.position.x)) <= 0.5
+        and abs(float(fleet.position.y)-float(planet.position.y)) <= 0.5
+    )
 
 
 def _mining_candidates(state: GameState, fleet):
@@ -62,11 +81,13 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                 "transport_population":"LOAD POPULATION + TRANSPORT",
                 "transport_minerals":"LOAD + TRANSPORT",
                 "transport_unload_remainder":"UNLOAD CARGO",
+                "merge_fleets":"MERGE FOR BULK TRANSPORT",
             }.get(existing.kind)
             if action is None:
                 if mission=="return_for_colonists": action="RETURN FOR COLONISTS"
                 elif mission=="return_for_population_export": action="RETURN TO EXPORT HUB"
                 elif mission=="reposition_for_remote_mining": action="REPOSITION FOR REMOTE MINING"
+                elif mission=="remote_mine": action="REMOTE MINE"
                 else: action="MOVE"
             intents.append({
                 "fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":action,
@@ -79,6 +100,9 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
             intents.append({'fleet_id':fleet.id,'fleet_name':fleet.name,'role':fleet.role,'action':'HOLD / FUEL BLOCKED','reason':(fleet.native or {}).get('fuel_block_reason','No safe fuel route.'),'destination_planet_id':None}); continue
         if fleet.destination_planet_id is not None:
             intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"CONTINUE WAYPOINT","reason":f"Fleet already has active destination planet {fleet.destination_planet_id}; preserve current mission.","destination_planet_id":fleet.destination_planet_id}); continue
+        existing_fleet_target=(fleet.native or {}).get("native_destination_fleet_id")
+        if existing_fleet_target is not None:
+            intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"CONTINUE INTERCEPT","reason":f"Fleet already has active target-fleet waypoint {existing_fleet_target}; preserve the current interception order.","destination_planet_id":None}); continue
 
         if fleet.role=="colony":
             ranked=[c for c in score_colony_candidates(state,fleet,plan) if c.planet_id not in assigned_targets]
@@ -101,6 +125,19 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
             candidates=_mining_candidates(state,fleet)
             if candidates:
                 score,target,mineral_score,travel=candidates[0]
+                if _fleet_is_at_planet(fleet,target):
+                    # Arrival with a movement task is not a productive remote
+                    # miner. The captured client transaction changes the
+                    # stationary current waypoint to task 3.
+                    orders.add("remote_mine",{
+                        "fleet_id":fleet.id,"destination_planet_id":target.id,
+                        "warp":0,"mission":"remote_mine",
+                        "target_mineral_score":mineral_score,
+                        "native_reference":"sandbox/GAME.x2 Type5 current-waypoint task=3",
+                    },f"Set Remote Mining task at {target.name}; concentration sum={mineral_score}. Client reference uses stationary WaypointChangeTask task 3.",priority=82)
+                    assigned_targets.add(target.id)
+                    intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"REMOTE MINE","reason":f"At observed mining target {target.name}; set native Remote Mining waypoint task.","destination_planet_id":target.id})
+                    continue
                 orders.add("move_fleet",{"fleet_id":fleet.id,"destination_planet_id":target.id,"warp":mission_warp(fleet,target.position,"reposition_for_remote_mining"),"mission":"reposition_for_remote_mining"},f"Move remote miner to observed mining target {target.name}; concentration sum={mineral_score}, distance={travel:.1f}, score={score:.1f}.",priority=66)
                 assigned_targets.add(target.id); intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"REPOSITION FOR REMOTE MINING","reason":f"Observed mineral target {target.name}; concentration sum={mineral_score}, distance={travel:.1f}.","destination_planet_id":target.id})
             else:

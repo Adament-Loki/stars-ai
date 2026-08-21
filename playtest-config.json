@@ -36,5 +36,8 @@
       "prt": "SD",
       "human": false
     }
-  ]
+  ],
+  "turn_archive_enabled": true,
+  "turn_archive_include_logs": true,
+  "turn_archive_json_index": true
 }

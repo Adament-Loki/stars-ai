@@ -5,9 +5,11 @@ from .models import GameState
 from .util import distance
 from .empire_geometry import distance_from_homeworld
 from .terraforming import evaluate_terraforming
+from .expansion_network import evaluate_expansion_network
 
 
-MAX_COLONY_SUPPORT_DISTANCE=300.0
+OPENING_COLONY_SUPPORT_DISTANCE=300.0
+MAX_COLONY_SUPPORT_DISTANCE=650.0
 MIN_COLONY_SCORE=0.0
 
 
@@ -20,6 +22,25 @@ def reserved_colony_target_ids(state:GameState) -> set[int]:
         and f.role=="colony"
         and f.destination_planet_id is not None
     }
+
+
+def colony_support_distance(state:GameState) -> float:
+    """Return the current expansion envelope for colony-target discovery.
+
+    Early colonies must remain close enough to be supplied from the homeworld.
+    Once an empire has relay worlds and a mature transport network, a permanent
+    300-ly cutoff artificially hides valid outer-ring targets.  Fleet-level
+    fuel planning still decides whether any particular colonizer can travel
+    there; this value only controls strategic target discovery.
+    """
+    owned_count=sum(1 for planet in state.planets if planet.owner==state.player_id)
+    turn=max(0,int(state.year)-2400)
+    relay_bonus=min(250.0,max(0,owned_count-3)*25.0)
+    maturity_bonus=min(100.0,max(0,turn-12)*4.0)
+    return min(
+        MAX_COLONY_SUPPORT_DISTANCE,
+        OPENING_COLONY_SUPPORT_DISTANCE+relay_bonus+maturity_bonus,
+    )
 
 
 @dataclass(frozen=True)
@@ -47,7 +68,14 @@ def colonization_policy(state:GameState, plan=None) -> ColonizationPolicy:
         )
 
     turn=max(0,int(state.year)-2400)
-    if turn<=15:
+    # The first three turns are capital-constrained: colony hulls compete with
+    # mines, factories, scouts, and freighters.  The normal floor is therefore
+    # a strong *ranking preference*, not a ban on a viable lower-habitability
+    # claim.  If high-quality claims exist, their score wins; if they do not,
+    # the empire may still expand into a positive-habitability world.
+    if turn<=3:
+        values=("opening_prime",60,55,105,.16,.30,.12)
+    elif turn<=15:
         values=("opening_quality",60,50,85,.20,.28,.10)
     elif turn<=25:
         values=("opening_broadening",50,40,80,.35,.26,.09)
@@ -59,8 +87,8 @@ def colonization_policy(state:GameState, plan=None) -> ColonizationPolicy:
         values=("late_resource_expansion",1,1,0,1.05,.20,.06)
 
     stage,floor,resource_floor,mineral,weight,travel,support=values
-    # Persona selectivity remains a small modifier after the shared selective
-    # opening. It cannot make an opening race settle below the 60% doctrine.
+    # Persona selectivity remains a small score-reference modifier after the
+    # shared opening. It never turns the preference into a hard settlement ban.
     if turn>15 and plan is not None:
         persona_floor=int(getattr(plan,"colonize_min_habitability",40) or 40)
         adjustment=round((persona_floor-40)*.20)
@@ -95,6 +123,11 @@ def _eligibility(
         return False,"habitability_unknown"
 
     hab=int(evaluated_habitability)
+    # Racially uninhabitable worlds are not colony claims. Positive worlds,
+    # including a low-quality world that can serve an otherwise valuable
+    # expansion cluster, remain eligible and are ranked below better claims.
+    if hab<=0:
+        return False,"uninhabitable"
     if hab>=int(policy.normal_habitability_floor):
         return True,"racial_habitability"
 
@@ -107,17 +140,18 @@ def _eligibility(
     if resource_exception:
         return True,"exceptional_resources"
 
-    # A compact bridge world may be worth accepting below the normal quality
-    # floor, but never below the phase's resource floor. This is intentionally
-    # demanding during the opening so ordinary marginal worlds do not qualify.
+    # A compact bridge world receives an explicit basis in the decision trace.
+    # It is already viable by virtue of its positive habitability; this label
+    # explains why a lower-ranked candidate can be strategically useful.
     frontier_exception=bool(
-        hab>=int(policy.resource_habitability_floor or 1)
+        policy.stage!="opening_prime"
+        and hab>=int(policy.resource_habitability_floor or 1)
         and nearby_frontier>=8
         and nearest_owned<=80.0
     )
     if frontier_exception:
         return True,"compact_frontier_bridge"
-    return False,"below_phase_habitability_floor"
+    return True,"viable_below_preferred_habitability"
 
 
 def colony_planet_is_eligible(state:GameState, planet, plan=None) -> bool:
@@ -127,7 +161,7 @@ def colony_planet_is_eligible(state:GameState, planet, plan=None) -> bool:
     policy=colonization_policy(state,plan)
     owned=[p for p in state.planets if p.owner==state.player_id]
     nearest=min((distance(planet.position,q.position) for q in owned),default=0.0)
-    if nearest>MAX_COLONY_SUPPORT_DISTANCE:
+    if nearest>colony_support_distance(state):
         return False
     nearby=sum(
         1 for q in state.planets
@@ -172,19 +206,21 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
     owned=[p for p in state.planets if p.owner==state.player_id]
     universal=bool((state.race.native or {}).get("universal_hab",False))
     policy=colonization_policy(state,plan)
+    promotion_network=evaluate_expansion_network(state)
+    p1_hubs=[h for h in promotion_network.hubs if int(getattr(h,"promotion_tier",3) or 3)==1]
+    p2_count_by_parent={int(h.promotion_parent_id):0 for h in p1_hubs}
+    for h in promotion_network.hubs:
+        if int(getattr(h,"promotion_tier",3) or 3)==2 and h.promotion_parent_id is not None:
+            p2_count_by_parent[int(h.promotion_parent_id)]=p2_count_by_parent.get(int(h.promotion_parent_id),0)+1
     candidates=[]
 
     # V8_5_LAYER1_COLONY_PROGRAM
-    # Opening onion doctrine: deliberately establish 4-5 quality Layer-1 hubs
+    # Opening onion doctrine: deliberately establish 3-5 quality Layer-1 hubs
     # around the homeworld. This is a SCORE bonus only; normal racial-hab,
     # resource-exception, terraform and support-distance eligibility still
     # applies first, so the AI never settles a bad world just to hit a quota.
     turn=max(0,int(state.year)-2400)
-    owned_layer1=sum(
-        1 for q in owned
-        if 65.0 <= distance_from_homeworld(state,q.position) <= 190.0
-    )
-    layer1_needed=max(0,5-owned_layer1)
+    layer1_needed=max(0,promotion_network.layer1_target_count-len(p1_hubs))
 
     for p in state.planets:
         if p.owner is not None or not p.observed:
@@ -196,7 +232,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             (distance(p.position,q.position) for q in owned),
             default=travel,
         )
-        if nearest_owned>MAX_COLONY_SUPPORT_DISTANCE:
+        if nearest_owned>colony_support_distance(state):
             continue
         home_distance=distance_from_homeworld(state,p.position)
         potential=evaluate_terraforming(state,p)
@@ -239,12 +275,42 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
         layer1_bonus=0.0
         if turn<=30 and layer1_needed>0 and 65.0<=home_distance<=190.0:
             radial=max(0.0,1.0-abs(home_distance-130.0)/100.0)
-            layer1_bonus=(
-                8.0
-                + 2.5*min(5,nearby_frontier)
-                + 7.0*radial
-                + 1.5*min(5,layer1_needed)
+            # P1 status breaks close calls among viable opening worlds; it
+            # must not override a substantially safer nearby colony merely to
+            # complete a geometric quota.
+            layer1_bonus=min(10.0,
+                2.5
+                + 0.75*min(5,nearby_frontier)
+                + 2.5*radial
+                + 0.5*min(5,layer1_needed)
             )
+
+        # Once at least the minimum three P1 relays are chosen, let each P1
+        # reserve a compact second-tier neighborhood. This is a colonization
+        # preference, not an eligibility override, and it is weaker than the
+        # unfinished P1 program so the network expands in the intended order.
+        p2_parent=None
+        p2_parent_distance=None
+        p2_bonus=0.0
+        if turn<=40 and len(p1_hubs)>=promotion_network.layer1_minimum_count:
+            choices=[]
+            for hub in p1_hubs:
+                parent=next((q for q in owned if int(q.id)==int(hub.planet_id)),None)
+                if parent is None:
+                    continue
+                parent_distance=distance(parent.position,p.position)
+                remaining=max(
+                    0,
+                    int(promotion_network.layer2_target_children_per_parent)
+                    -int(p2_count_by_parent.get(int(hub.planet_id),0)),
+                )
+                if remaining<=0 or not 65.0<=parent_distance<=190.0:
+                    continue
+                radial=max(0.0,1.0-abs(parent_distance-130.0)/100.0)
+                choices.append((float(hub.overall_value)+0.20*radial,hub,parent_distance,remaining))
+            if choices:
+                _, p2_parent, p2_parent_distance, p2_remaining=max(choices,key=lambda row:row[0])
+                p2_bonus=5.0+4.0*min(1.0,float(p2_remaining)/3.0)
 
         if universal:
             # Triple-immune/universal-hab races grow equivalently everywhere.
@@ -252,7 +318,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             mineral_bonus=mineral_avg*1.45
             known_bonus=8.0 if mineral_known else 0.0
             score=(
-                mineral_bonus+known_bonus+cluster_bonus+home_bonus+layer1_bonus
+                mineral_bonus+known_bonus+cluster_bonus+home_bonus+layer1_bonus+p2_bonus
                 -travel_penalty-support_penalty-home_penalty-population_penalty-stale_penalty
             )
             explanation=(
@@ -264,6 +330,8 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"nearby expansion cluster adds {cluster_bonus:.1f}; "
                 f"home distance {home_distance:.1f} adds {home_bonus:.1f} and costs {home_penalty:.1f}; "
                 f"Layer-1 hub program bonus={layer1_bonus:.1f} (need {layer1_needed} more of target 5); "
+                f"P2 relay bonus={p2_bonus:.1f} (parent={getattr(p2_parent,'planet_id',None)}, "
+                f"distance={p2_parent_distance}); "
                 f"remembered intel age={intel_age}"
             )
             hab=100
@@ -282,7 +350,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 +float(potential.tech_steps)*.35
             )
             score=(
-                hab+quality_bonus+mineral_bonus+cluster_bonus+home_bonus+layer1_bonus
+                hab+quality_bonus+mineral_bonus+cluster_bonus+home_bonus+layer1_bonus+p2_bonus
                 -travel_penalty-support_penalty-home_penalty-population_penalty
                 -speculation_penalty-stale_penalty
             )
@@ -299,6 +367,8 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"strategic cluster adds {cluster_bonus:.1f}; "
                 f"home distance {home_distance:.1f} adds {home_bonus:.1f} and costs {home_penalty:.1f}; "
                 f"Layer-1 hub program bonus={layer1_bonus:.1f} (need {layer1_needed} more of target 5); "
+                f"P2 relay bonus={p2_bonus:.1f} (parent={getattr(p2_parent,'planet_id',None)}, "
+                f"distance={p2_parent_distance}); "
                 f"remembered intel age={intel_age}"
             )
             hab=int(potential.planning_habitability)

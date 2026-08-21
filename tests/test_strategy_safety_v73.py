@@ -48,7 +48,7 @@ def test_empty_colony_ship_leaves_low_population_owned_world_for_loading_base():
     assert move.payload["destination_planet_id"]==0
 
 
-def test_exploration_route_stays_inside_owned_support_radius():
+def test_exploration_route_can_extend_beyond_owned_support_radius():
     planets=[
         Planet(0,"Home",Position(0,0),owner=1,observed=True),
         Planet(1,"Near",Position(100,0),observed=False),
@@ -60,6 +60,6 @@ def test_exploration_route_stays_inside_owned_support_radius():
     orders=OrderSet("g",state.year,1)
     add_exploration_orders(state,orders,None)
     scan=next(x for x in orders.orders if x.payload.get("mission")=="scan")
-    assert 3 not in scan.payload["route_planet_ids"]
+    assert 3 in scan.payload["route_planet_ids"]
     assert len(scan.payload["route_waypoints"])==len(scan.payload["route_planet_ids"])
     assert len(scan.payload["route_waypoints"])<=7

@@ -26,12 +26,14 @@ def add_diplomacy_orders(state: GameState, orders: OrderSet, plan: StrategicPlan
                 "AI ally candidate has high trust and low threat.",
                 priority=62,
             )
-        elif attitude == "hostile" and conflict.get("recommended_action") == "oppose" and native_relation != 2:
-            orders.add(
-                "set_player_relation",
-                {"player_id": player_id, "relation": "enemy"},
-                "Threat/conflict assessment recommends opposition.",
-                priority=64,
+        elif attitude == "hostile" and conflict.get("recommended_action") == "oppose":
+            # Stars! does not require an Enemy relation write before a player
+            # may be treated as a threat.  Keep hostility as an internal
+            # strategic posture: it can drive defensive positioning, fields,
+            # force composition, and later validated attack orders without
+            # wasting a turn on an unneeded/unsupported relation mutation.
+            orders.notes.append(
+                f"Player {player_id}: opposition posture selected; preserve native relation and act on observed threat."
             )
 
         if is_human and attitude == "helpful":

@@ -164,6 +164,70 @@ def _copy_directory_files(source_root: Path | None, dest: Path, patterns: tuple[
     return inventory
 
 
+
+
+def _atomic_json_write(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(_jsonable(value), indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _update_json_archive_index(archive_root: Path, manifest: dict[str, Any], manifest_path: Path) -> None:
+    """Maintain machine-readable per-turn and global archive indexes (v8.8)."""
+    rel_manifest = str(manifest_path.relative_to(archive_root))
+    turn_tag = str(manifest["turn_tag"])
+    phase = str(manifest["phase"])
+    turn_path = archive_root / turn_tag / "turn.json"
+    if turn_path.exists():
+        try:
+            turn_doc = json.loads(turn_path.read_text(encoding="utf-8"))
+        except Exception:
+            turn_doc = {}
+    else:
+        turn_doc = {}
+    phases = dict(turn_doc.get("phases") or {})
+    phases[phase] = {
+        "manifest": rel_manifest,
+        "captured_at_ns": int(manifest["captured_at_ns"]),
+        "native_file_count": len(manifest.get("native_files") or {}),
+        "all_sources_stable": all(
+            bool(row.get("source_stable_during_capture"))
+            for section in ("native_files","x_templates","ai_state","turn_logs")
+            for row in (manifest.get(section) or {}).values()
+        ),
+    }
+    turn_doc = {
+        "schema_version": 1,
+        "turn_tag": turn_tag,
+        "game_basename": manifest.get("game_basename"),
+        "phases": phases,
+    }
+    _atomic_json_write(turn_path, turn_doc)
+
+    index_path = archive_root / "index.json"
+    if index_path.exists():
+        try:
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+        except Exception:
+            index = {}
+    else:
+        index = {}
+    turns = dict(index.get("turns") or {})
+    turns[turn_tag] = {
+        "turn_json": str(turn_path.relative_to(archive_root)),
+        "phase_count": len(phases),
+        "phases": sorted(phases),
+    }
+    index = {
+        "schema_version": 1,
+        "format": "stars-ai-turn-archive-index",
+        "game_basename": manifest.get("game_basename"),
+        "turns": turns,
+    }
+    _atomic_json_write(index_path, index)
+
+
 def archive_turn_phase(
     archive_root: str | Path,
     *,
@@ -176,6 +240,7 @@ def archive_turn_phase(
     ai_state_root: str | Path | None = None,
     config: Any = None,
     metadata: dict[str, Any] | None = None,
+    json_index: bool = True,
 ) -> Path:
     """Freeze an immutable, hash-addressable diagnostic snapshot of one turn phase.
 
@@ -234,9 +299,10 @@ def archive_turn_phase(
         "config": _jsonable(config) if config is not None else None,
         "metadata": _jsonable(metadata or {}),
     }
-    (dest / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
-    )
+    manifest_path = dest / "manifest.json"
+    _atomic_json_write(manifest_path, manifest)
+    if json_index:
+        _update_json_archive_index(archive_root, manifest, manifest_path)
     (dest / "README_REPLAY.txt").write_text(
         "STARS! AI immutable turn archive\n"
         f"Turn: {turn_tag}\nPhase: {phase}\n\n"

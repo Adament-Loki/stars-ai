@@ -1,4 +1,11 @@
 
+"""Encode semantic AI orders into a fresh, client-shaped Stars! X transaction.
+
+The module is intentionally the only place that turns planner intent into
+binary blocks.  Each helper either implements a captured/validated block form
+or records enough provenance for a playtest failure to be diagnosed.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -22,18 +29,31 @@ from stars_ai.persona import (
 from stars_ai.native_capabilities import capability
 from stars_ai.native.design_change import (
     UnsafeShipDesignMutationError, assert_deletable_ship_design_slot,
-    assert_free_ship_design_slot, create_ship_design_blocks,
+    assert_free_ship_design_slot, assert_free_starbase_design_slot,
+    create_ship_design_blocks, create_starbase_design_blocks,
     delete_existing_ship_design_block, encoded_ship_design_from_payload,
 )  # V8_6_NATIVE_DESIGN_LIFECYCLE_PATCH
-from stars_ai.native.population_transport import population_load_block
+from stars_ai.native.population_transport import medium_load_block, population_load_block
 from stars_ai.planet_economy import theoretical_max_population, planet_population_capacity, population_capacity_fraction, projected_population_growth, projected_next_population
+from stars_ai.ship_design_synth import synthesize_generic_design_proposal
 
 ORDER_BLOCK_TYPES = {
     1,2,3,4,5,10,19,23,24,25,27,29,34,35,36,37,38,40,42,44,46
 }
 
+# The isolated Type27 client capture remains our reference form, but autoplay
+# is intentionally permissive: design mutations travel with every other
+# encodable order the AI selected.  Each mixed transaction is trace-marked so
+# a host/client rejection is attributable during playtests.
+TYPE27_AUTOPLAY_ENABLED = True
+TYPE27_ISOLATE_TRANSACTION = False
+TYPE27_AUTOPLAY_BLOCK_REASON = (
+    "Native Type27 ship-design mutation is disabled by configuration."
+)
+
 @dataclass
 class NativeWriteResult:
+    """Result of one X-file write, including emitted/skipped decision evidence."""
     player_id: int
     year: int
     emitted: list[dict]
@@ -43,7 +63,10 @@ class NativeWriteResult:
 
 
 class UnsafeWaypointMutationError(RuntimeError):
+    """Raised when a requested native waypoint mutation would alter unknown state."""
+
     def __init__(self, diagnostic:dict):
+        """Retain the structured safety diagnostic alongside the exception message."""
         self.diagnostic=dict(diagnostic)
         super().__init__(str(self.diagnostic.get("reason","unsafe native waypoint mutation blocked")))
 
@@ -133,7 +156,16 @@ def _encode_queue_item(
         # Native custom production IDs share one six-bit namespace: ship slots
         # are 0..15 and starbase slots are 16..25.
         return _u16(((16+int(design_slot))<<10)|qty)+_u16((complete<<4)|4)
-    ids={'max_terraform':5,'factory':7,'mine':8,'defense':9}
+    ids={
+        'max_terraform':5,
+        'factory':7,
+        'mine':8,
+        'defense':9,
+        # Standard production item 27 is decoded by StarsAPI as Planetary
+        # Scanner.  The planner enables it only after the official MOD shows a
+        # race-legal researched Snooper X model, and every use is trace-tagged.
+        'planetary_scanner':27,
+    }
     if item_name not in ids: raise ValueError(f'Unsupported validated production item: {item_name}')
     return _u16((ids[item_name]<<10)|qty)+_u16((complete<<4)|2)
 
@@ -148,6 +180,47 @@ def _production_block(planet_id:int, queue:list[dict])->NativeBlock:
             int(q.get('complete_percent',0) or 0),
         )
     return NativeBlock(29,len(data),bytes(data))
+
+
+def _native_planet_mutation_authority(state:Any, planet_id:int)->tuple[bool,dict[str,Any]]:
+    """Return whether the current native turn authorizes a local planet command.
+
+    Persistent intelligence is useful for choosing scout and military goals,
+    but it is not an authority to change a planet.  The native adapter records
+    the exact current-M owned-world set before memory reconciliation; use that
+    immutable set when available so a lost colony can never receive Type-29 or
+    leftover-research orders because an older memory still calls it ours.
+    """
+    pid=int(planet_id)
+    planet=next((p for p in state.planets if int(p.id)==pid),None)
+    current_owned=(state.native or {}).get("current_m_owned_planet_ids")
+    if current_owned is not None:
+        authorized=pid in {int(value) for value in current_owned}
+        return authorized,{
+            "planet_id":pid,
+            "authority":"current_m_owned_planet_ids",
+            "current_m_owner":(
+                None if planet is None else (planet.native or {}).get("current_m_owner")
+            ),
+            "intel_source":None if planet is None else (planet.native or {}).get("intel_source"),
+        }
+
+    # JSON/unit-test adapters predate the current-M allow-list.  Preserve their
+    # normal behavior, while still refusing a planet explicitly marked as a
+    # memory-only or current-M-unowned record.
+    native=(planet.native or {}) if planet is not None else {}
+    authorized=bool(
+        planet is not None
+        and planet.owner is not None
+        and int(planet.owner)==int(state.player_id)
+        and bool(native.get("native_planet_mutation_allowed",True))
+    )
+    return authorized,{
+        "planet_id":pid,
+        "authority":"normalized_state_fallback",
+        "current_m_owner":native.get("current_m_owner"),
+        "intel_source":native.get("intel_source"),
+    }
 
 
 RESEARCH_FIELD_CODES = {
@@ -205,10 +278,37 @@ def _waypoint_add_block(
     waypoint_index:int=1,
 )->NativeBlock:
     fleet_id=int(payload["fleet_id"])
-    target_id=int(payload["destination_planet_id"])
-    target=next((p for p in state.planets if p.id==target_id),None)
-    if target is None:
-        raise ValueError(f"Unknown destination planet {target_id}")
+    target_fleet_id=payload.get("destination_fleet_id")
+    if target_fleet_id is not None:
+        target_id=int(target_fleet_id)
+        target_owner=payload.get("destination_fleet_owner")
+        target=next(
+            (
+                fleet for fleet in state.fleets
+                if int(fleet.id)==target_id
+                and (target_owner is None or int(fleet.owner)==int(target_owner))
+            ),
+            None,
+        )
+        if target is None:
+            raise ValueError(f"Unknown destination fleet {target_owner or '?'}:{target_id}")
+        if not 0 <= target_id <= 0x1FF:
+            raise ValueError(f"Fleet waypoint target must be a 9-bit local fleet id; got {target_id}")
+        # StarsAPI WaypointChangeTaskBlock documents low nibble 2 as a fleet
+        # target. The high nibble 1 is the normal WaypointAdd framing used by
+        # our validated planet target 0x11; this new 0x12 form is deliberately
+        # traced as an intercept experiment until a client capture is added.
+        if int(object_type) == 0x11:
+            object_type=0x12
+        target_x=float(target.position.x)
+        target_y=float(target.position.y)
+    else:
+        target_id=int(payload["destination_planet_id"])
+        target=next((p for p in state.planets if p.id==target_id),None)
+        if target is None:
+            raise ValueError(f"Unknown destination planet {target_id}")
+        target_x=float(target.position.x)
+        target_y=float(target.position.y)
     warp=max(0,min(15,int(payload.get("warp",7))))
     mission=str(payload.get("mission","")).lower()
     task=0
@@ -223,9 +323,9 @@ def _waypoint_add_block(
     data=(
         _u16(raw_fleet)
         + _u16(waypoint_index)
-        + _u16(int(target.position.x))
-        + _u16(int(target.position.y))
-        + _u16(target_id & 0x7ff)
+        + _u16(int(target_x))
+        + _u16(int(target_y))
+        + _u16(target_id & 0x1ff if target_fleet_id is not None else target_id & 0x7ff)
         + bytes([(warp<<4)|task, object_type])
     )
     return NativeBlock(4,len(data),data)
@@ -235,11 +335,35 @@ def _raw_fleet_number(state:Any, fleet_id:int) -> int:
     player_id=int(getattr(state,"player_id",1))
     return ((player_id-1) << 9) | (int(fleet_id) & 0x1ff)
 
+
+def _fleet_merge_block(payload:dict) -> NativeBlock:
+    """Encode StarsAPI's decoded Type37 FleetsMerge layout.
+
+    Type37 carries local 9-bit fleet numbers (not the owner-tagged raw fleet
+    number used by waypoint blocks): retained target first, then each fleet to
+    merge into it.  The field layout is decoded by StarsAPI but has no client
+    encode capture yet, so callers must trace the emitted bytes.
+    """
+    target=int(payload.get("target_fleet_id",payload.get("fleet_id",-1)))
+    sources=[int(value) for value in (payload.get("source_fleet_ids") or [])]
+    if not 0 <= target <= 0x1ff:
+        raise ValueError(f"Type37 target fleet must be a local 9-bit id; got {target}")
+    if not sources:
+        raise ValueError("Type37 fleet merge requires at least one source fleet")
+    if target in sources or len(set(sources)) != len(sources):
+        raise ValueError("Type37 fleet merge source ids must be distinct and exclude the retained fleet")
+    if any(not 0 <= source <= 0x1ff for source in sources):
+        raise ValueError(f"Type37 source fleets must be local 9-bit ids; got {sources}")
+    data=b"".join(_u16(value) for value in (target,*sources))
+    return NativeBlock(37,len(data),data)
+
 def _manual_load_population_25kt_block(state:Any, fleet_id:int)->NativeBlock:
     """Load 25 kT of population cargo: 2,500 colonists."""
     return NativeBlock(1,7,_u16(_raw_fleet_number(state,fleet_id))+bytes.fromhex("25 00 12 08 19"))
 
-def _manual_load_minerals_block(state:Any, fleet_id:int, load:dict)->NativeBlock:
+def _manual_load_minerals_block(
+    state:Any, fleet_id:int, load:dict, *, preloaded_kt:int=0,
+)->NativeBlock:
     """
     Empirically generalized small mineral-load form.
 
@@ -268,10 +392,11 @@ def _manual_load_minerals_block(state:Any, fleet_id:int, load:dict)->NativeBlock
     if fleet is not None:
         c=(fleet.native or {}).get("cargo",{})
         current=sum(int(c.get(k,0) or 0) for k in ("ironium","boranium","germanium","population"))
-    if capacity>0 and current+sum(vals)>capacity:
+    already_planned=max(0,int(preloaded_kt))
+    if capacity>0 and current+already_planned+sum(vals)>capacity:
         raise ValueError(
             f"Requested mineral load {sum(vals)}kT exceeds conservative available cargo capacity "
-            f"{max(0,capacity-current)}kT for fleet {fleet_id}"
+            f"{max(0,capacity-current-already_planned)}kT for fleet {fleet_id}"
         )
 
     data=(
@@ -301,6 +426,133 @@ def _waypoint_change_task_block(state:Any, *, fleet_id:int, destination_planet_i
         +additional
     )
     return NativeBlock(5,len(data),data)
+
+
+def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
+    """Encode the client-captured stationary Remote Mining task transition.
+
+    ``sandbox/GAME.x2`` is the controlling sample: a miner already at
+    Sheridan uses Type 5 on waypoint index 0, with warp 0, task 3, and the
+    current planet object type.  This deliberately does *not* synthesize a
+    move-and-mine transaction; travel completes first, then this exact current
+    waypoint mutation starts production.
+    """
+    fleet_id=int(payload["fleet_id"])
+    destination_id=int(payload["destination_planet_id"])
+    fleet=_fleet_state(state,fleet_id)
+    target=next((p for p in state.planets if int(p.id)==destination_id),None)
+    if fleet is None or target is None:
+        raise UnsafeWaypointMutationError({
+            "operation":"remote_mine","result":"BLOCK",
+            "reason":"Remote-mining task requires an owned fleet and a known target planet.",
+        })
+    native=fleet.native or {}
+    waypoints=list(native.get("waypoints") or [])
+    if int(native.get("waypoint_count",len(waypoints)) or 0) != 1 or not waypoints:
+        raise UnsafeWaypointMutationError({
+            "operation":"remote_mine","fleet_id":fleet_id,"result":"BLOCK",
+            "reason":"Remote Mining is validated only for the single stationary current waypoint captured in sandbox/GAME.x2.",
+        })
+    current=waypoints[0]
+    object_type=int(current.get("position_object_type",0)) & 0xff
+    # Do not turn a legitimate object id of zero into the ``-1`` sentinel.
+    # (The current client capture uses id 98, but this guard keeps the exact
+    # form correct for any valid planet id.)
+    raw_current_target=current.get("position_object",-1)
+    current_target=int(-1 if raw_current_target is None else raw_current_target) & 0x7ff
+    at_target=(
+        int(native.get("position_object_id",-1) or -1)==destination_id
+        or (
+            abs(float(fleet.position.x)-float(target.position.x)) <= 0.5
+            and abs(float(fleet.position.y)-float(target.position.y)) <= 0.5
+        )
+    )
+    if not at_target or current_target != destination_id or (object_type & 0x0f) != 1:
+        raise UnsafeWaypointMutationError({
+            "operation":"remote_mine","fleet_id":fleet_id,"result":"BLOCK",
+            "reason":"Remote Mining may change only the current planet waypoint at the miner's verified target.",
+            "current_target":current_target,"requested_target":destination_id,
+            "object_type":object_type,"at_target":at_target,
+        })
+    current_task=int(current.get("task",0) or 0)
+    if current_task == 3:
+        return None
+    if current_task != 0 or int(current.get("warp",0) or 0) != 0:
+        raise UnsafeWaypointMutationError({
+            "operation":"remote_mine","fleet_id":fleet_id,"result":"BLOCK",
+            "reason":"The captured Remote Mining transition is task 0 / warp 0 -> task 3; preserve other current waypoint forms.",
+            "current_task":current_task,"current_warp":int(current.get("warp",0) or 0),
+        })
+    return _waypoint_change_task_block(
+        state,fleet_id=fleet_id,destination_planet_id=destination_id,
+        warp=0,task=3,object_type=object_type,waypoint_index=0,
+    )
+
+
+def _minefield_task_block(state: Any, payload: dict) -> NativeBlock | None:
+    """Emit the narrowly-scoped experimental stationary Lay Mines transition.
+
+    The Type-5 shape is established by the client-captured stationary Remote
+    Mining transition. Stars! task numbering identifies task 4 as Lay Mines,
+    but we have not yet captured a human-created minefield X file. To keep the
+    experiment attributable, this function permits only ``task 0 / warp 0``
+    on waypoint zero at an owned anchor planet; movement to the anchor is a
+    separate ordinary task-0 turn.
+    """
+    fleet_id = int(payload["fleet_id"])
+    destination_id = int(payload["destination_planet_id"])
+    fleet = _fleet_state(state, fleet_id)
+    target = next((planet for planet in state.planets if int(planet.id) == destination_id), None)
+    if fleet is None or target is None or int(target.owner or -1) != int(state.player_id):
+        raise UnsafeWaypointMutationError({
+            "operation": "lay_minefield", "result": "BLOCK",
+            "reason": "Minefield deployment requires an owned minelayer at a known owned anchor planet.",
+        })
+    if str(fleet.role).casefold() != "minelayer":
+        raise UnsafeWaypointMutationError({
+            "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
+            "reason": "Only a fleet classified from its current design as minelayer may lay a territorial minefield.",
+        })
+    native = fleet.native or {}
+    waypoints = list(native.get("waypoints") or [])
+    if int(native.get("waypoint_count", len(waypoints)) or 0) != 1 or not waypoints:
+        raise UnsafeWaypointMutationError({
+            "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
+            "reason": "Experimental mine laying is limited to the single stationary current waypoint form.",
+        })
+    current = waypoints[0]
+    raw_current_target = current.get("position_object")
+    current_target = int(-1 if raw_current_target is None else raw_current_target) & 0x7FF
+    object_type = int(current.get("position_object_type", 0)) & 0xFF
+    raw_position = native.get("position_object_id")
+    position_object_id = -1 if raw_position is None else int(raw_position)
+    at_target = (
+        position_object_id == destination_id
+        or (
+            abs(float(fleet.position.x) - float(target.position.x)) <= 0.5
+            and abs(float(fleet.position.y) - float(target.position.y)) <= 0.5
+        )
+    )
+    if not at_target or current_target != destination_id or (object_type & 0x0F) != 1:
+        raise UnsafeWaypointMutationError({
+            "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
+            "reason": "Mine laying may change only the current waypoint of a stationary minelayer at its owned target planet.",
+            "current_target": current_target, "requested_target": destination_id,
+            "object_type": object_type, "at_target": at_target,
+        })
+    current_task = int(current.get("task", 0) or 0)
+    if current_task == 4:
+        return None
+    if current_task != 0 or int(current.get("warp", 0) or 0) != 0:
+        raise UnsafeWaypointMutationError({
+            "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
+            "reason": "The inferred Lay Mines transition permits only task 0 / warp 0 -> task 4; preserving all other waypoint forms.",
+            "current_task": current_task, "current_warp": int(current.get("warp", 0) or 0),
+        })
+    return _waypoint_change_task_block(
+        state, fleet_id=fleet_id, destination_planet_id=destination_id,
+        warp=0, task=4, object_type=object_type, waypoint_index=0,
+    )
 
 
 def _fleet_state(state:Any, fleet_id:int):
@@ -335,6 +587,8 @@ def _native_waypoint_details(state:Any, fleet_id:int)->dict:
     out={
         "normalized_destination":None,
         "native_waypoint_destination":None,
+        "native_waypoint_target_id":None,
+        "native_waypoint_target_type":None,
         "native_waypoint_warp":None,
         "native_waypoint_task":None,
         "native_waypoint_object_type":None,
@@ -355,12 +609,19 @@ def _native_waypoint_details(state:Any, fleet_id:int)->dict:
         wp=wps[1]
         object_type=int(wp.get("position_object_type",0)) & 0xff
         out["native_waypoint_object_type"]=object_type
+        out["native_waypoint_target_type"]=object_type & 0x0f
         out["native_waypoint_warp"]=int(wp.get("warp",0))
         out["native_waypoint_task"]=int(wp.get("task",0))
         if (object_type & 0x0f)==1 and wp.get("position_object") is not None:
             out["native_waypoint_destination"]=int(wp["position_object"]) & 0x7ff
+            out["native_waypoint_target_id"]=out["native_waypoint_destination"]
+        elif (object_type & 0x0f)==2 and wp.get("position_object") is not None:
+            out["native_waypoint_target_id"]=int(wp["position_object"]) & 0x1ff
     if out["native_waypoint_destination"] is None:
         out["native_waypoint_destination"]=out["normalized_destination"]
+    if out["native_waypoint_target_id"] is None and out["native_waypoint_destination"] is not None:
+        out["native_waypoint_target_id"]=out["native_waypoint_destination"]
+        out["native_waypoint_target_type"]=1
     return out
 
 
@@ -385,14 +646,22 @@ def _native_waypoint_decision(
     operation_kind:str|None=None,
 )->dict:
     fid=int(payload["fleet_id"])
-    desired=int(payload["destination_planet_id"])
+    is_fleet_target=payload.get("destination_fleet_id") is not None
+    desired=int(payload["destination_fleet_id"] if is_fleet_target else payload["destination_planet_id"])
+    desired_type=2 if is_fleet_target else 1
+    desired_label=(
+        f"fleet {payload.get('destination_fleet_owner','?')}:{desired}"
+        if is_fleet_target else f"planet {desired}"
+    )
     requested_task=_requested_waypoint_task(payload,operation_kind=operation_kind)
     details=_native_waypoint_details(state,fid)
-    existing=details["native_waypoint_destination"]
+    existing=details["native_waypoint_target_id"]
     diagnostic={
         "fleet_id":fid,
         **details,
         "requested_destination":desired,
+        "requested_target_id":desired,
+        "requested_target_type":desired_type,
         "requested_warp":int(payload.get("warp",7)),
         "requested_mission":str(payload.get("mission") or operation_kind or "move"),
         "requested_task":requested_task,
@@ -404,26 +673,38 @@ def _native_waypoint_decision(
         diagnostic.update(
             result="BLOCKED RETARGET",
             reason=(
-                "Native waypoint #1 is active but is not a safely decoded planet destination; "
+                "Native waypoint #1 is active but is not a safely decoded planet/fleet target; "
                 "preserving it instead of inserting or replacing native bytes."
             ),
         )
         return diagnostic
-    if int(existing)!=desired:
+    if int(existing)!=desired or int(details["native_waypoint_target_type"] or 0)!=desired_type:
         diagnostic.update(
             result="BLOCKED RETARGET",
             reason=(
-                f"Native destination P{existing} differs from requested P{desired}; "
+                f"Native destination target {existing}/type {details['native_waypoint_target_type']} differs from "
+                f"requested {desired_label}; "
                 "the synthetic WaypointChangeTask retarget path is disabled."
             ),
         )
         return diagnostic
     native_task=details["native_waypoint_task"]
     if native_task is not None and int(native_task)==requested_task:
+        native_warp=details["native_waypoint_warp"]
+        requested_warp=int(payload.get("warp",7))
+        if native_warp is not None and int(native_warp)!=requested_warp and desired_type==1:
+            diagnostic.update(
+                result="UPDATE WARP",
+                reason=(
+                    f"Native waypoint already targets {desired_label} with task {requested_task}; "
+                    f"refresh Warp {native_warp}->{requested_warp} using Type-5 waypoint update."
+                ),
+            )
+            return diagnostic
         diagnostic.update(
             result="CONTINUE",
             reason=(
-                f"Native waypoint already has destination P{desired} and compatible task {requested_task}; "
+                f"Native waypoint already has destination {desired_label} and compatible task {requested_task}; "
                 "preserving the active waypoint without a replacement order."
             ),
         )
@@ -431,7 +712,7 @@ def _native_waypoint_decision(
     diagnostic.update(
         result="BLOCKED MISSION CHANGE",
         reason=(
-            f"Native waypoint already targets P{desired} with task {native_task}, but task "
+            f"Native waypoint already targets {desired_label} with task {native_task}, but task "
             f"{requested_task} was requested; preserving the active waypoint until this mutation is validated."
         ),
     )
@@ -454,13 +735,23 @@ def _movement_to_planet_block(
     Safe multi-turn waypoint lifecycle.
 
     Type-4 Add is emitted only when waypoint #1 is absent. An identical native
-    mission is preserved with no block, and a retarget is fail-closed. The old
-    synthetic Type-5 replacement path is intentionally disabled.
+    mission is preserved with no block. A same-target, same-task Warp refresh
+    uses the client-understood Type-5 waypoint form; retargeting is fail-closed.
     """
     fid=int(payload["fleet_id"])
     diagnostic=_native_waypoint_decision(state,payload,operation_kind="move_fleet")
     if diagnostic["result"]=="CONTINUE":
         return None
+    if diagnostic["result"]=="UPDATE WARP":
+        return _waypoint_change_task_block(
+            state,
+            fleet_id=fid,
+            destination_planet_id=int(payload["destination_planet_id"]),
+            warp=int(payload.get("warp",7)),
+            task=int(diagnostic["requested_task"]),
+            object_type=_existing_waypoint_object_type(state,fid,initial_object_type),
+            waypoint_index=1,
+        )
     if diagnostic["result"]!="ADD":
         raise UnsafeWaypointMutationError(diagnostic)
     return _waypoint_add_block(state,payload,object_type=initial_object_type)
@@ -476,8 +767,18 @@ def _movement_route_blocks(
     diagnostic=_native_waypoint_decision(state,payload,operation_kind="move_fleet")
     if diagnostic["result"]=="CONTINUE":
         return []
+    if diagnostic["result"]=="UPDATE WARP":
+        block=_movement_to_planet_block(
+            state,payload,initial_object_type=initial_object_type
+        )
+        return [block] if block is not None else []
     if diagnostic["result"]!="ADD":
         raise UnsafeWaypointMutationError(diagnostic)
+
+    # An intercept is a single direct waypoint to the observed foreign fleet;
+    # route chains are meaningful only for fixed planet targets.
+    if payload.get("destination_fleet_id") is not None:
+        return [_waypoint_add_block(state,payload,object_type=0x12,waypoint_index=1)]
 
     raw_specs=(payload.get("route_waypoints") or []) if payload.get("route_managed") else []
     specs=[]
@@ -559,9 +860,20 @@ TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL = bytes.fromhex(
     "00 20 00 20 00 20 00 20 00 70"
 )
 
+# P1 human-client 200-kT population transport control (turn 2407): leave
+# minerals untouched and unload all population.  It is intentionally distinct
+# from the mineral-transport form above, including the target object byte.
+TRANSPORT_POPULATION_UNLOAD_ALL = bytes.fromhex("00 00 00 00 00 00 00 20")
+
 
 def _transport_population_blocks(state:Any,payload:dict)->list[NativeBlock]:
-    """Load bounded population at source, fly normally, unload all at owned destination."""
+    """Emit a Type-2 population transport, optionally topped off with minerals.
+
+    200 kT population-only is the host-accepted control. sandbox/GAME.x1 adds
+    the client-created Type-2 selected-cargo form for a merged fleet carrying
+    Boranium, Germanium, and Population in one record. Generalized selected
+    quantities remain trace-required.
+    """
     fid=int(payload["fleet_id"])
     pid=int(payload["destination_planet_id"])
     warp=int(payload.get("warp",6))
@@ -572,18 +884,49 @@ def _transport_population_blocks(state:Any,payload:dict)->list[NativeBlock]:
         return []
     if diagnostic["result"]!="ADD":
         raise UnsafeWaypointMutationError(diagnostic)
-    route_type=0x51
-    return [
-        population_load_block(state,fid,qty),
+    mineral_load={
+        "ironium":int((payload.get("mineral_load") or {}).get("ironium",0) or 0),
+        "boranium":int((payload.get("mineral_load") or {}).get("boranium",0) or 0),
+        "germanium":int((payload.get("mineral_load") or {}).get("germanium",0) or 0),
+    }
+    mixed_load=sum(mineral_load.values())>0
+    # The strict population-only control retains its client-observed 0x11
+    # route/task. Mixed cargo requires the normal transport all-unload/refuel
+    # policy, so it deliberately uses the separately observed 0x51 family.
+    route_type=0x51 if mixed_load else 0x11
+    # sandbox/GAME.x1: a human merged two Privateers and issued Type37 followed
+    # by one Type2 ``12 0E`` B/G/Population load.  The client uses the Type2
+    # selection mask to carry the entire mixed manifest; do not synthesize a
+    # competing Type1 mineral order after the population load.
+    blocks=[
+        medium_load_block(
+            state,
+            fid,
+            {"population":qty, **mineral_load},
+            capacity_override=payload.get("merged_cargo_capacity_kt"),
+        ) if mixed_load else population_load_block(state,fid,qty)
+    ]
+    blocks.extend([
         _movement_to_planet_block(
             state,{"fleet_id":fid,"destination_planet_id":pid,"warp":warp,"mission":"transport"},
-            initial_object_type=0x51,
+            initial_object_type=route_type,
         ),
         _waypoint_change_task_block(
             state,fleet_id=fid,destination_planet_id=pid,warp=warp,task=1,
-            additional=TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL,object_type=route_type
+            additional=(TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL if mixed_load else TRANSPORT_POPULATION_UNLOAD_ALL),
+            object_type=route_type,
         ),
-    ]
+    ])
+    return blocks
+
+
+def _transport_manifest_total(payload:dict)->int:
+    """Return the positive cargo payload a transport order is allowed to move."""
+    minerals=(payload.get("mineral_load") or payload.get("load") or {})
+    return max(0,int(payload.get("population_kt",0) or 0))+sum(
+        max(0,int(minerals.get(mineral,0) or 0))
+        for mineral in ("ironium","boranium","germanium")
+    )
 
 
 def _transport_mineral_blocks(state:Any,payload:dict)->list[NativeBlock]:
@@ -615,6 +958,52 @@ def _transport_mineral_blocks(state:Any,payload:dict)->list[NativeBlock]:
             object_type=route_type,
         ),
     ]
+
+
+def _annotate_untrusted_emissions(emitted:list[dict]) -> None:
+    """Attach durable capability provenance to emitted native trace records.
+
+    This runs for every writer path, not only population cargo. Individual
+    experimental paths add their own exact block sequence before this common
+    annotation so a later host failure can be attributed to a concrete codec.
+    """
+    for event in emitted:
+        native_capability=capability(str(event.get("kind", "")))
+        if native_capability.status != "VALIDATED":
+            event["native_capability"]={
+                "status": native_capability.status,
+                "reason": native_capability.reason,
+                "trace_required": True,
+            }
+
+
+def _population_emitted_payload(
+    payload:dict, population_blocks:list[NativeBlock], native_action:str,
+) -> dict:
+    """Build the trace payload for a population transport emission."""
+    ep=dict(payload)
+    ep["native_waypoint_action"]=native_action
+    experiment=dict(ep.get("native_experiment") or {})
+    mixed_load=sum(int(v or 0) for v in (ep.get("mineral_load") or {}).values())>0
+    experiment.update({
+        "enabled": True,
+        "trust_level": (
+            "VALIDATED"
+            if int(ep.get("population_kt",0) or 0)==200 and not mixed_load
+            else "EXPERIMENTAL"
+        ),
+        "block_sequence": [
+            {"type_id":int(block.type_id),"length":int(block.size),"data_hex":block.data.hex(" ")}
+            for block in population_blocks
+        ],
+        "waypoint_route_type": "0x51" if mixed_load else "0x11",
+        "destination_task_policy": (
+            "unload_all_cargo_and_load_optimal_fuel"
+            if mixed_load else "unload_all_population"
+        ),
+    })
+    ep["native_experiment"]=experiment
+    return ep
 
 
 
@@ -660,6 +1049,26 @@ def _player_relation_friend_block(target_player_id:int)->NativeBlock:
 FILEHASH_CANONICAL_TAIL = bytes.fromhex(
     "4f 91 6d 00 f3 00 00 00 00 f0 61 08 00 c0 aa"
 )
+
+def _frame_order_stream(generated:list[NativeBlock], xblocks:list[NativeBlock], *, type27_client_framing:bool)->list[NativeBlock]:
+    """Apply Save+Submit framing around generated order blocks.
+
+    Ordinary turns retain the controlled three-submit workflow. The
+    host-accepted Player-1 Type27 capture contains only its two DesignChange
+    blocks and a footer--no SaveAndSubmit record.
+    """
+    order_stream=list(generated)
+    if type27_client_framing:
+        return order_stream
+    template_submit=next((b for b in xblocks if b.type_id==46),None)
+    if template_submit is None:
+        return order_stream
+    submit=NativeBlock(46,template_submit.size,template_submit.data)
+    order_stream.extend([
+        submit,NativeBlock(46,submit.size,submit.data),NativeBlock(46,submit.size,submit.data)
+    ])
+    return order_stream
+
 
 def _fresh_filehash_block(order_stream:list[NativeBlock])->NativeBlock:
     order_len=sum(2+len(b.data) for b in order_stream if b.type_id != 0)
@@ -716,6 +1125,25 @@ def _object_name_for_fleet(state, fleet_id:int) -> str:
     f=next((f for f in state.fleets if f.id==fleet_id and f.owner==state.player_id),None)
     return f.name if f is not None else f"Fleet {fleet_id}"
 
+
+def _object_name_for_waypoint_target(state, payload:dict) -> str:
+    """Render either a fixed world or an observed fleet target for the trace."""
+    target_fleet_id=payload.get("destination_fleet_id")
+    if target_fleet_id is not None:
+        owner=payload.get("destination_fleet_owner")
+        fleet=next(
+            (
+                candidate for candidate in state.fleets
+                if int(candidate.id)==int(target_fleet_id)
+                and (owner is None or int(candidate.owner)==int(owner))
+            ),
+            None,
+        )
+        label=fleet.name if fleet is not None else f"Fleet {target_fleet_id}"
+        return f"P{owner if owner is not None else '?'} {label}"
+    target=payload.get("destination_planet_id")
+    return _object_name_for_planet(state,int(target)) if target is not None else "none"
+
 def _build_decision_report(
     state,
     orders,
@@ -770,6 +1198,37 @@ def _build_decision_report(
         lines.append(
             f"{fleet.name} - {action} - {intent['reason']}"
         )
+
+    lines += ["", "TERRITORIAL DEFENSE"]
+    territorial = (state.native or {}).get("territorial_defense") or {}
+    violations = list(territorial.get("violations", []) or [])
+    if violations:
+        lines.append(str(territorial.get("reason", "Territorial response active.")))
+        for violation in violations:
+            lines.append(
+                f"P{violation.get('owner')} fleet {violation.get('fleet_name', violation.get('fleet_id'))} - "
+                f"{str(violation.get('classification', 'unknown')).upper()} VIOLATION near "
+                f"{violation.get('anchor_planet_name', 'owned world')} at "
+                f"{float(violation.get('distance_ly', 0)):.1f}/{float(violation.get('claim_radius_ly', 0)):.1f} ly; "
+                f"severity={float(violation.get('severity', 0)):.2f}; "
+                f"patrol={'Y' if violation.get('requires_patrol') else 'N'}; "
+                f"minefield={'Y' if violation.get('requires_minefield') else 'N'}."
+            )
+        anchors=territorial.get("uncovered_minefield_anchor_ids", []) or []
+        if anchors:
+            lines.append(f"Uncovered minefield anchor planet IDs: {anchors}.")
+        escalation=territorial.get("source_escalation") or {}
+        if escalation:
+            source=escalation.get("source_planet_name") or "no visible source world"
+            lines.append(
+                f"Source-world posture: {escalation.get('status','DEFEND_TERRITORY')} - source={source}; "
+                f"hold-current-territory={'Y' if escalation.get('can_hold_current_territory') else 'N'}; "
+                f"desperate-neutralization={'Y' if escalation.get('desperate_to_neutralize_host') else 'N'}; "
+                f"invasion-authorized={'Y' if escalation.get('invasion_authorized') else 'N'}. "
+                f"{escalation.get('reason','')}"
+            )
+    else:
+        lines.append("No non-friendly armed or transport fleet is inside perceived territory.")
 
     colony_intents=[
         x for x in getattr(agent,"fleet_intents",[])
@@ -851,6 +1310,20 @@ def _build_decision_report(
             continue
     
         econ=o.payload.get("economy",{})
+        mineral_stock=econ.get("mineral_surface_stock",{}) or {}
+        mineral_reserve=econ.get("mineral_reserve",{}) or {}
+        mineral_output=econ.get("estimated_mineral_output",{}) or {}
+        mineral_text=(
+            f"; I/B/G stock {int(mineral_stock.get('ironium',p.ironium))}/"
+            f"{int(mineral_stock.get('boranium',p.boranium))}/"
+            f"{int(mineral_stock.get('germanium',p.germanium))}kT; reserve "
+            f"{int(mineral_reserve.get('ironium',0))}/"
+            f"{int(mineral_reserve.get('boranium',0))}/"
+            f"{int(mineral_reserve.get('germanium',0))}kT; annual mine I/B/G "
+            f"{mineral_output.get('ironium','?')}/"
+            f"{mineral_output.get('boranium','?')}/"
+            f"{mineral_output.get('germanium','?')}"
+        )
         cap_text=(
             f"Y{econ.get('population_source_year',pop_year)} M-file pop raw="
             f"{econ.get('population_raw_hundreds',raw_pop)}x100 => "
@@ -863,7 +1336,7 @@ def _build_decision_report(
             f"mines {int(econ.get('mines',p.mines))}/{int(econ.get('mine_cap',p.mines))}; "
             f"Germanium {int(econ.get('germanium_surface',p.germanium))}kT "
             f"(factory cost {int(econ.get('germanium_per_factory',4))}kT; "
-            f"conc={econ.get('germanium_concentration','?')}){sb_text}"
+            f"conc={econ.get('germanium_concentration','?')}){mineral_text}{sb_text}"
         )
         queue=o.payload.get("queue",[])
         if queue:
@@ -923,13 +1396,18 @@ def _build_decision_report(
 
     lines += ["", "NATIVE WAYPOINT LIFECYCLE"]
     for diagnostic in waypoint_diagnostics or []:
+        requested=(
+            f"F{diagnostic.get('requested_target_id')}"
+            if diagnostic.get("requested_target_type")==2
+            else f"P{diagnostic.get('requested_target_id')}"
+        )
         lines.append(
             f"Fleet {diagnostic.get('fleet_id')} - {diagnostic.get('result')} - "
             f"normalized destination={diagnostic.get('normalized_destination')}; "
             f"native destination={diagnostic.get('native_waypoint_destination')}; "
             f"native warp/task={diagnostic.get('native_waypoint_warp')}/"
             f"{diagnostic.get('native_waypoint_task')}; requested "
-            f"{diagnostic.get('requested_mission')} -> P{diagnostic.get('requested_destination')} "
+            f"{diagnostic.get('requested_mission')} -> {requested} "
             f"@ W{diagnostic.get('requested_warp')}. {diagnostic.get('reason')}"
         )
     if not waypoint_diagnostics:
@@ -957,11 +1435,24 @@ def _build_decision_report(
     for e in emitted:
         payload=e.get("payload",{})
         kind=e.get("kind")
-        if kind in ("move_fleet","colony_operation","transport_population","transport_minerals","transport_unload_remainder"):
+        if kind=="merge_fleets":
+            retained=int(payload.get("target_fleet_id",payload.get("fleet_id",-1)))
+            merged=[int(value) for value in (payload.get("source_fleet_ids") or [])]
+            trust=(payload.get("native_experiment") or {}).get("trust_level","EXPERIMENTAL")
+            lines.append(
+                f"{_object_name_for_fleet(state,retained)} - {trust} TYPE37 FLEET MERGE: "
+                f"retain fleet {retained}; merge {merged}; encoded=[{payload.get('native_block_hex','?')}]. "
+                + (
+                    "A client-captured same-turn mixed load and waypoint follows; confirm merged capacity and cargo in next M file."
+                    if payload.get("one_turn_transport") else
+                    "No cargo movement is issued this turn; confirm aggregate capacity in next M file."
+                )
+            )
+            continue
+        if kind in ("move_fleet","colony_operation","transport_population","transport_minerals","transport_unload_remainder","remote_mine"):
             fid=int(payload.get("fleet_id",-1))
             name=_object_name_for_fleet(state,fid)
-            target=payload.get("destination_planet_id")
-            target_name=_object_name_for_planet(state,int(target)) if target is not None else "none"
+            target_name=_object_name_for_waypoint_target(state,payload)
             warp=payload.get("warp","?")
             if kind=="colony_operation":
                 loads_population=payload.get("load_25kt_population")
@@ -990,10 +1481,18 @@ def _build_decision_report(
                     f"source after load={payload.get('source_population_after_load','?')}."
                 )
             elif kind=="transport_population":
+                experiment=payload.get("native_experiment") or {}
+                mineral_load=payload.get("mineral_load") or {}
+                blocks=experiment.get("block_sequence") or []
+                block_text="; ".join(
+                    f"T{b.get('type_id')}[{b.get('data_hex')}]" for b in blocks
+                ) or "pending writer trace"
                 lines.append(
-                    f"{name} - EXPERIMENTAL POPULATION TRANSPORT -> {target_name} warp {warp} - "
+                    f"{name} - {experiment.get('trust_level','EXPERIMENTAL')} POPULATION TRANSPORT -> {target_name} warp {warp} - "
                     f"population={payload.get('population_colonists','?')} colonists / {payload.get('population_kt','?')} kT; "
-                    "loaded cargo flies normally and unloads before any later gate use."
+                    f"minerals I/B/G={mineral_load.get('ironium',0)}/{mineral_load.get('boranium',0)}/{mineral_load.get('germanium',0)} kT; "
+                    f"experiment={experiment.get('id','population-transport')}; blocks={block_text}. "
+                    "Loaded cargo flies normally and unloads before any later gate use."
                 )
             elif kind=="transport_minerals":
                 lines.append(
@@ -1006,6 +1505,13 @@ def _build_decision_report(
                     f"{name} - NATIVE UNLOAD REMAINDER @ {target_name} - "
                     f"cargo before={payload.get('cargo_before')}; unload={payload.get('unload')}. "
                     f"{e.get('reason','')}"
+                )
+            elif kind=="remote_mine":
+                lines.append(
+                    f"{name} - NATIVE REMOTE MINING @ {target_name} - "
+                    f"{payload.get('native_waypoint_action','?')}; "
+                    f"Type-5 current waypoint task={payload.get('native_waypoint_task','?')}; "
+                    f"client reference={payload.get('native_reference','?')}. {e.get('reason','')}"
                 )
             else:
                 fleet_state=_fleet_state(state,fid)
@@ -1119,34 +1625,17 @@ def write_ai_turn(
             )
     orders.orders.sort(key=lambda o:o.priority, reverse=True)
 
-    # V8_7_STARSAPI_TYPE27_ISOLATION
-    # During Type27 troubleshooting, a *safe executable* create/delete gets a
-    # clean native turn.  This separates DesignChange failures from interactions
-    # with movement/production/research blocks.  Strategy still computes every
-    # order, but the native writer emits only the design mutation for this player.
-    type27_isolation=False
-    type27_isolation_kind=None
-    type27_isolation_slot=None
-    for candidate in orders.orders:
-        try:
-            if candidate.kind=="create_ship_design":
-                d=encoded_ship_design_from_payload(candidate.payload)
-                if d.replace_existing:
-                    continue
-                assert_free_ship_design_slot(state,d.slot)
-                type27_isolation=True
-                type27_isolation_kind=candidate.kind
-                type27_isolation_slot=int(d.slot)
-                break
-            if candidate.kind=="delete_ship_design":
-                slot=int(candidate.payload["target_slot"])
-                assert_deletable_ship_design_slot(state,slot)
-                type27_isolation=True
-                type27_isolation_kind=candidate.kind
-                type27_isolation_slot=slot
-                break
-        except UnsafeShipDesignMutationError:
-            continue
+    # Keep whether a design was requested for diagnostics. The client capture
+    # was isolated, but permissive autoplay intentionally combines each legal
+    # Type27 mutation with the ordinary orders selected for this same turn.
+    type27_client_framing=False
+    type27_kind=None
+    type27_slot=None
+    type27_requested=any(
+        candidate.kind in {"create_design", "create_ship_design", "delete_ship_design"}
+        for candidate in orders.orders
+    )
+    type27_exact_client_transaction=False
 
     # Read current M header and known-good X template.
     _, mblocks, _ = read_blocks(m_path)
@@ -1166,7 +1655,12 @@ def write_ai_turn(
     emitted=[]
     skipped=[]
     generated=[]
+    design_tail=[]
     touched_fleets=set()
+    # A retained Type37 fleet is the sole deliberate exception to the normal
+    # one-operation guard: the client capture proves merge -> Type2 load ->
+    # waypoint is one legal transaction for that retained fleet.
+    merged_transport_fleets=set()
     touched_planets=set()
     touched_relations=set()
     touched_design=False
@@ -1174,19 +1668,25 @@ def write_ai_turn(
 
     for o in orders.orders:
         cap=capability(o.kind)
-        if type27_isolation and o.kind not in {"create_ship_design","delete_ship_design"}:
-            skipped.append({
-                "kind":o.kind,
-                "reason":(
-                    f"V8.7 Type27 isolation: emitting only {type27_isolation_kind} "
-                    f"for slot {type27_isolation_slot} this turn so host acceptance "
-                    "tests DesignChange independently from other native order families."
-                ),
-                "payload":o.payload,
-            })
-            continue
         try:
-            if o.kind=="colony_operation":
+            if o.kind=="merge_fleets":
+                target_fleet=int(o.payload.get("target_fleet_id",o.payload.get("fleet_id",-1)))
+                source_fleets=[int(value) for value in (o.payload.get("source_fleet_ids") or [])]
+                involved={target_fleet,*source_fleets}
+                if any(fleet_id in touched_fleets for fleet_id in involved):
+                    skipped.append({"kind":o.kind,"reason":"A fleet selected for Type37 merge already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                merge_block=_fleet_merge_block(o.payload)
+                generated.append(merge_block)
+                touched_fleets.update(involved)
+                if bool(o.payload.get("one_turn_transport",False)):
+                    merged_transport_fleets.add(target_fleet)
+                ep=dict(o.payload)
+                ep["native_block_hex"]=merge_block.data.hex(" ")
+                ep["native_block_type"]=37
+                ep["native_capability_status"]=cap.status
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="colony_operation":
                 fid=int(o.payload["fleet_id"])
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
@@ -1234,7 +1734,14 @@ def write_ai_turn(
                 })
             elif o.kind=="transport_population":
                 fid=int(o.payload["fleet_id"])
-                if fid in touched_fleets:
+                if _transport_manifest_total(o.payload)<=0:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":"Refusing to encode an empty transport manifest.",
+                        "payload":o.payload,
+                    })
+                    continue
+                if fid in touched_fleets and fid not in merged_transport_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
                 movement_payload={**o.payload,"mission":"transport"}
@@ -1245,12 +1752,20 @@ def write_ai_turn(
                     touched_fleets.add(fid)
                     skipped.append({"kind":o.kind,"reason":diagnostic["reason"],"payload":{**o.payload,"native_waypoint_action":native_action}})
                     continue
-                generated.extend(_transport_population_blocks(state,o.payload))
+                population_blocks=_transport_population_blocks(state,o.payload)
+                generated.extend(population_blocks)
                 touched_fleets.add(fid)
-                ep=dict(o.payload); ep["native_waypoint_action"]=native_action
+                ep=_population_emitted_payload(o.payload,population_blocks,native_action)
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="transport_minerals":
                 fid=int(o.payload["fleet_id"])
+                if _transport_manifest_total(o.payload)<=0:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":"Refusing to encode an empty transport manifest.",
+                        "payload":o.payload,
+                    })
+                    continue
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
@@ -1286,7 +1801,7 @@ def write_ai_turn(
                 waypoint_diagnostics.append(diagnostic)
                 native_action=diagnostic["result"]
                 touched_fleets.add(fid)
-                if native_action!="ADD":
+                if native_action not in ("ADD","UPDATE WARP"):
                     skipped.append({
                         "kind":o.kind,
                         "reason":diagnostic["reason"],
@@ -1294,16 +1809,156 @@ def write_ai_turn(
                     })
                     continue
                 movement_blocks=_movement_route_blocks(
-                    state,o.payload,initial_object_type=0x11
+                    state,o.payload,
+                    initial_object_type=(0x12 if o.payload.get("destination_fleet_id") is not None else 0x11),
                 )
                 if not movement_blocks:
-                    raise RuntimeError("ADD waypoint decision unexpectedly produced no native blocks")
+                    raise RuntimeError("Native waypoint mutation unexpectedly produced no blocks")
                 generated.extend(movement_blocks)
                 ep=dict(o.payload)
                 ep["native_waypoint_action"]=native_action
-                ep["native_waypoints_added"]=len(movement_blocks)
+                if o.payload.get("destination_fleet_id") is not None:
+                    ep["native_target_type"]="fleet"
+                    ep["native_target_object_type"]=0x12
+                    ep["native_reference"]=(
+                        "StarsAPI WaypointChangeTaskBlock targetType=2 (fleet); "
+                        "the 0x12 WaypointAdd target form is enabled as a traced intercept experiment"
+                    )
+                    ep["native_experiment"]={
+                        "enabled":True,
+                        "id":"territorial-fleet-intercept-target2",
+                        "trust_level":"EXPERIMENTAL",
+                        "target_fleet_id":int(o.payload["destination_fleet_id"]),
+                        "target_fleet_owner":o.payload.get("destination_fleet_owner"),
+                    }
+                ep["native_waypoints_added"]=(
+                    len(movement_blocks) if native_action=="ADD" else 0
+                )
+                if native_action=="UPDATE WARP":
+                    ep["native_waypoint_warp_updated"]=int(o.payload.get("warp",0))
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="remote_mine":
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Only highest-priority fleet operation emitted.","payload":o.payload})
+                    continue
+                try:
+                    mining_block=_remote_mining_task_block(state,o.payload)
+                except UnsafeWaypointMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"remote_mining_safety":exc.diagnostic}})
+                    continue
+                touched_fleets.add(fid)
+                ep=dict(o.payload)
+                ep["native_waypoint_action"]=(
+                    "CONTINUE_REMOTE_MINING" if mining_block is None else "CHANGE_CURRENT_TASK_TO_REMOTE_MINING"
+                )
+                ep["native_waypoint_task"]=3
+                ep["native_reference"]="sandbox/GAME.x2: Type5 index=0 warp=0 task=3 object_type=current"
+                if mining_block is not None:
+                    generated.append(mining_block)
+                    ep["native_block_hex"]=mining_block.data.hex(" ")
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="lay_minefield":
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Only highest-priority fleet operation emitted.","payload":o.payload})
+                    continue
+                try:
+                    minefield_block=_minefield_task_block(state,o.payload)
+                except UnsafeWaypointMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"minefield_safety":exc.diagnostic}})
+                    continue
+                touched_fleets.add(fid)
+                ep=dict(o.payload)
+                ep["native_waypoint_action"]=(
+                    "CONTINUE_LAYING_MINES" if minefield_block is None else "CHANGE_CURRENT_TASK_TO_LAY_MINES"
+                )
+                ep["native_waypoint_task"]=4
+                ep["native_reference"]=(
+                    "Type5 stationary waypoint task 4 inferred from Stars! task map; "
+                    "Remote Mining task-3 capture validates only the common block shape"
+                )
+                ep["native_experiment"]={
+                    "enabled":True,
+                    "id":"territorial-minefield-task4",
+                    "trust_level":"EXPERIMENTAL",
+                    "minefield_type":str(o.payload.get("minefield_type","standard")),
+                    "preconditions":"owned anchor + minelayer + single stationary current planet waypoint task 0",
+                }
+                if minefield_block is not None:
+                    generated.append(minefield_block)
+                    ep["native_block_hex"]=minefield_block.data.hex(" ")
+                    ep["native_experiment"]["block_sequence"]=[{
+                        "type_id":int(minefield_block.type_id),
+                        "length":int(minefield_block.size),
+                        "data_hex":minefield_block.data.hex(" "),
+                    }]
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="create_design":
+                if not TYPE27_AUTOPLAY_ENABLED:
+                    skipped.append({
+                        "kind":o.kind,"reason":TYPE27_AUTOPLAY_BLOCK_REASON,
+                        "payload":o.payload,
+                    })
+                    continue
+                if touched_design:
+                    skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
+                    continue
+                generic_plan=synthesize_generic_design_proposal(state,o.payload)
+                if generic_plan is None:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            "Generic proposal cannot be compiled into a client-safe ship design: "
+                            "the requested hull/engine/components are not all researched and race-legal, "
+                            "the architecture already exists, or it is an unvalidated starbase mutation."
+                        ),
+                        "payload":o.payload,
+                    })
+                    continue
+                design=generic_plan.encoded
+                if design.replace_existing:
+                    skipped.append({"kind":o.kind,"reason":"Generic design needs a dead-slot recycle; delete it this turn and wait for next-M read-back before creating.","payload":o.payload})
+                    continue
+                is_starbase=bool(design.is_starbase)
+                try:
+                    safety=(
+                        assert_free_starbase_design_slot(state,design.slot)
+                        if is_starbase else assert_free_ship_design_slot(state,design.slot)
+                    )
+                except UnsafeShipDesignMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
+                    continue
+                design_blocks=(
+                    create_starbase_design_blocks(design,player_id=player_id)
+                    if is_starbase else create_ship_design_blocks(design,player_id=player_id)
+                )
+                design_tail.extend(design_blocks)
+                touched_design=True
+                type27_client_framing=TYPE27_ISOLATE_TRANSACTION
+                type27_kind="create_starbase_design" if is_starbase else o.kind
+                type27_slot=int(design.slot)
+                ep=dict(o.payload)
+                ep["native_conversion"]=generic_plan.to_payload()
+                ep["native_design_type"]="starbase" if is_starbase else "ship"
+                ep["slot_safety"]=safety.to_dict()
+                ep["type27_hex"]=[b.data.hex(" ") for b in design_blocks]
+                ep["design_body_codec"]="StarsAPI DesignBlock.encode/decode port"
+                if is_starbase:
+                    ep["native_reference"]=(
+                        "StarsAPI DesignBlock isStarbase body flag; owner-aware Type27 "
+                        "staging/final wrapper is enabled as a traced experimental extension"
+                    )
+                ep["type27_transaction_mode"]="isolated" if TYPE27_ISOLATE_TRANSACTION else "mixed_with_ordinary_orders"
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="create_ship_design":
+                if not TYPE27_AUTOPLAY_ENABLED:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":TYPE27_AUTOPLAY_BLOCK_REASON,
+                        "payload":o.payload,
+                    })
+                    continue
                 if touched_design:
                     skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
                     continue
@@ -1316,14 +1971,25 @@ def write_ai_turn(
                 except UnsafeShipDesignMutationError as exc:
                     skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
                     continue
-                design_blocks=create_ship_design_blocks(design)
-                generated.extend(design_blocks)
+                design_blocks=create_ship_design_blocks(design,player_id=player_id)
+                design_tail.extend(design_blocks)
                 touched_design=True
+                type27_client_framing=TYPE27_ISOLATE_TRANSACTION
+                type27_kind=o.kind
+                type27_slot=int(design.slot)
                 ep=dict(o.payload)
                 ep["type27_hex"]=[b.data.hex(" ") for b in design_blocks]
                 ep["design_body_codec"]="StarsAPI DesignBlock.encode/decode port"
+                ep["type27_transaction_mode"]="isolated" if TYPE27_ISOLATE_TRANSACTION else "mixed_with_ordinary_orders"
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="delete_ship_design":
+                if not TYPE27_AUTOPLAY_ENABLED:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":TYPE27_AUTOPLAY_BLOCK_REASON,
+                        "payload":o.payload,
+                    })
+                    continue
                 if touched_design:
                     skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
                     continue
@@ -1333,22 +1999,37 @@ def write_ai_turn(
                 except UnsafeShipDesignMutationError as exc:
                     skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
                     continue
-                delete_block=delete_existing_ship_design_block(slot)
-                generated.append(delete_block)
+                delete_block=delete_existing_ship_design_block(slot,player_id=player_id)
+                design_tail.append(delete_block)
                 touched_design=True
+                type27_client_framing=TYPE27_ISOLATE_TRANSACTION
+                type27_kind=o.kind
+                type27_slot=slot
                 ep=dict(o.payload)
                 ep["type27_hex"]=[delete_block.data.hex(" ")]
                 ep["design_body_codec"]="existing-design delete; no DesignBlock body"
+                ep["type27_transaction_mode"]="isolated" if TYPE27_ISOLATE_TRANSACTION else "mixed_with_ordinary_orders"
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="replace_ship_design":
                 skipped.append({"kind":o.kind,"reason":"Legacy atomic replace is blocked. v8.6 uses delete -> next-M readback -> create.","payload":o.payload})
             elif o.kind=="set_planet_queue":
                 pid=int(o.payload["planet_id"])
+                authorized,authority=_native_planet_mutation_authority(state,pid)
+                if not authorized:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            "Current M-file ownership does not authorize a native planet mutation; "
+                            "persistent intelligence may be used strategically but cannot queue production."
+                        ),
+                        "payload":{**o.payload,"native_planet_mutation_authority":authority},
+                    })
+                    continue
                 if pid in touched_planets:
                     continue
                 supported=[
                     q for q in o.payload.get('queue',[])
-                    if q.get('item') in ('max_terraform','factory','mine','defense','ship_design','starbase_design')
+                    if q.get('item') in ('max_terraform','factory','mine','defense','planetary_scanner','ship_design','starbase_design')
                 ]
                 clear_queue=bool(o.payload.get("clear_queue",False))
                 if not supported and not clear_queue:
@@ -1387,6 +2068,17 @@ def write_ai_turn(
                 })
             elif o.kind=="set_planet_research_mode":
                 pid=int(o.payload["planet_id"])
+                authorized,authority=_native_planet_mutation_authority(state,pid)
+                if not authorized:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            "Current M-file ownership does not authorize a native planet mutation; "
+                            "persistent intelligence may not change local research mode."
+                        ),
+                        "payload":{**o.payload,"native_planet_mutation_authority":authority},
+                    })
+                    continue
                 if not bool(o.payload.get("leftover_only",False)):
                     skipped.append({"kind":o.kind,"reason":"Only empirically validated leftover-only ON is supported.","payload":o.payload})
                     continue
@@ -1423,26 +2115,19 @@ def write_ai_turn(
                 "payload":o.payload
             })
 
+    # Type27 blocks follow the ordinary encoded order blocks. In permissive
+    # autoplay this intentionally creates a mixed transaction for host/client
+    # validation rather than dropping the AI's other actions.
+    ordinary_order_block_count=len(generated)
+    generated.extend(design_tail)
+
     # Build a fresh current-turn X transaction.
     # Valid controlled Stars! X files exist both with and without Type 46.
-    # Save+Submit lifecycle: do not invent an unknown Type-46 payload, but when
-    # the known-good template supplies one, reproduce the three consecutive blocks
-    # observed in the latest controlled Stars!-generated Save+Submit X for this workflow.
-    template_submit=next((b for b in xblocks if b.type_id==46),None)
-    order_stream=list(generated)
-    if template_submit is not None:
-        submit=NativeBlock(46,template_submit.size,template_submit.data)
-        if type27_isolation:
-            # Controlled client ship-design X files use a single trailing Type46
-            # in the clean create case.  Keep the diagnostic X as close to that
-            # observed transaction shape as possible.
-            order_stream.append(submit)
-        else:
-            order_stream.extend([
-                submit,
-                NativeBlock(46,submit.size,submit.data),
-                NativeBlock(46,submit.size,submit.data),
-            ])
+    # Save+Submit lifecycle: permissive mixed Type27 turns use the ordinary
+    # three-submit form and record that untrusted choice in the trace.
+    order_stream=_frame_order_stream(
+        generated,xblocks,type27_client_framing=type27_client_framing
+    )
 
     filehash=_fresh_filehash_block(order_stream)
     final_blocks=[filehash]+order_stream+[NativeBlock(0,0,b"")]
@@ -1491,6 +2176,12 @@ def write_ai_turn(
     memory_destination=memory_output_path or memory_path
     agent.memory.save(memory_destination)
 
+    # Every non-validated native capability remains enabled when it has a
+    # concrete writer, but is retained in the trace as an attributable
+    # experiment. Population transport additionally records its exact blocks
+    # at the point of emission above.
+    _annotate_untrusted_emissions(emitted)
+
     result=NativeWriteResult(
         player_id,state.year,emitted,skipped,str(output_x_path),waypoint_diagnostics
     )
@@ -1509,9 +2200,16 @@ def write_ai_turn(
                 "m_salt":m_salt,
                 "save_submit_count":sum(1 for b in order_stream if b.type_id==46),
                 "filehash_order_length":int.from_bytes(filehash.data[:2],"little"),
-                "type27_isolation":type27_isolation,
-                "type27_isolation_kind":type27_isolation_kind,
-                "type27_isolation_slot":type27_isolation_slot,
+                "type27_autoplay_enabled":TYPE27_AUTOPLAY_ENABLED,
+                "type27_isolation_enabled":TYPE27_ISOLATE_TRANSACTION,
+                "type27_requested":type27_requested,
+                "type27_exact_client_transaction":type27_exact_client_transaction,
+                "type27_client_framing":type27_client_framing,
+                "type27_mixed_with_ordinary_orders":bool(
+                    design_tail and not type27_client_framing and ordinary_order_block_count
+                ),
+                "type27_kind":type27_kind,
+                "type27_slot":type27_slot,
             },
             "persistent_intel":state.native.get("persistent_intel",{}),
             "strategic_watchdog":state.native.get("strategic_watchdog",{}),

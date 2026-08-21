@@ -4,12 +4,12 @@ from stars_ai.warp_policy import mission_warp
 from stars_ai.strategy.economy import add_economic_orders
 
 def test_old_observed_warp_does_not_cap_mission_warp():
-    f=Fleet(0,"Remote Miner",1,Position(0,0),role="miner",speed=8,native={"observed_warp":2})
-    assert mission_warp(f,Position(100,0),"reposition_for_remote_mining")==8
+    f=Fleet(0,"Remote Miner",1,Position(0,0),role="miner",speed=9,native={"observed_warp":2})
+    assert mission_warp(f,Position(100,0),"reposition_for_remote_mining")==9
 
-def test_short_miner_leg_can_use_7():
-    f=Fleet(0,"Remote Miner",1,Position(0,0),role="miner",speed=8)
-    assert mission_warp(f,Position(20,0),"reposition_for_remote_mining")==7
+def test_short_miner_leg_uses_its_available_speed():
+    f=Fleet(0,"Remote Miner",1,Position(0,0),role="miner",speed=9)
+    assert mission_warp(f,Position(20,0),"reposition_for_remote_mining")==9
 
 def test_colony_load_decision_surfaces_diagnostics():
     planets=[

@@ -43,7 +43,7 @@ def test_client_generated_privateer_free_slot_fixture_is_reproduced_exactly():
         name="Long Range Privateer",
         staging_name="Privateer",
     )
-    staging, final = create_ship_design_blocks(design)
+    staging, final = create_ship_design_blocks(design, final_control=0x64)
     assert staging.data == bytes.fromhex(
         "11 A4 07 10 0B 2C 96 00 05 19 00 00 00 00 00 00 00 00 00 "
         "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
@@ -68,8 +68,10 @@ def test_atomic_replace_is_not_an_encoder_operation_anymore():
         create_ship_design_blocks(design)
 
 
-def test_delete_block_is_observed_two_byte_form():
+def test_delete_block_is_owner_aware_two_byte_form():
+    assert delete_existing_ship_design_block(3,player_id=1).data == bytes.fromhex("00 03")
     assert delete_existing_ship_design_block(3).data == bytes.fromhex("10 03")
+    assert delete_existing_ship_design_block(3,player_id=3).data == bytes.fromhex("20 03")
 
 
 def test_writer_safety_refuses_delete_while_any_live_ship_uses_design():

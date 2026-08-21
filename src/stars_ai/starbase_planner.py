@@ -1,12 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+from functools import lru_cache
+from pathlib import Path
+import csv
 import math
 
 from .colony_planner import colony_planet_is_eligible
 from .empire_geometry import distance_from_homeworld
 from .expansion_network import evaluate_expansion_network
-from .planet_economy import decode_race_economy, estimated_operating_resources
+from .planet_economy import (
+    decode_race_economy,
+    estimated_operating_resources,
+    mineral_surface_stock,
+    working_mineral_reserve,
+)
+from .starsapi_items import stock_component_database
 from .util import distance
 
 STARBASE_QUEUE_SLOT_OFFSET = 16
@@ -36,6 +45,30 @@ class SupportBaseBuild:
         if self.complete_percent:
             item["complete_percent"] = self.complete_percent
         return item
+
+
+@dataclass(frozen=True)
+class SupportBaseMaterialDemand:
+    """The real remaining bill for a proposed or stalled support base.
+
+    A starbase must not reserve the front of a world queue merely because it is
+    strategically desirable.  This record makes the bill visible to the queue
+    planner and to freight routing, including partial construction already
+    paid for by the host.
+    """
+    planet_id: int
+    design_slot: int
+    design_name: str
+    complete_percent: int
+    resource_remaining: int
+    mineral_remaining: dict[str, int]
+    mineral_required: dict[str, int]
+    mineral_deficit: dict[str, int]
+    ready: bool
+    reason: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 def _production_for(state, planet_id: int) -> list[dict]:
@@ -159,7 +192,15 @@ def _candidate_score(state, planet, operational, plan, network) -> tuple[float, 
     network_gap = not operational or nearest_hub >= 120.0
     outer_bonus = 1.0 if int(planet.id) in set(network.outer_hub_ids) else 0.0
     layer1_pending = bool(hub and hub.designated_layer1 and not hub.graduated)
-    next_layer_child = bool(hub and hub.parent_exporter_id is not None and hub.ring >= 2)
+    promotion_tier = int(getattr(hub,"promotion_tier",3) or 3) if hub is not None else 3
+    promotion_rank = getattr(hub,"promotion_rank",None) if hub is not None else None
+    promotion_value = float(getattr(hub,"overall_value",0.0) or 0.0) if hub is not None else 0.0
+    # A P2 is deliberately not an active base project until its P1 has
+    # graduated. The classification remains visible, but the spending order is
+    # HW -> P1 -> active P2.
+    next_layer_child = bool(
+        hub and promotion_tier == 2 and hub.parent_exporter_id is not None
+    )
 
     score = (
         0.60 * min(1.5, pop / 250_000.0)
@@ -177,6 +218,7 @@ def _candidate_score(state, planet, operational, plan, network) -> tuple[float, 
         + (0.35 if network_gap else 0.0)
         + (2.20 if layer1_pending else 0.0)
         + (0.95 if next_layer_child else 0.0)
+        + 0.70 * promotion_value
     )
     detail = {
         "nearest_hub": nearest_hub,
@@ -192,6 +234,9 @@ def _candidate_score(state, planet, operational, plan, network) -> tuple[float, 
         "outer": bool(outer_bonus),
         "layer1_pending": layer1_pending,
         "next_layer_child": next_layer_child,
+        "promotion_tier": promotion_tier,
+        "promotion_rank": promotion_rank,
+        "promotion_value": promotion_value,
     }
     return score, detail
 
@@ -201,8 +246,9 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
 
     Existing projects are always continued. If the empire is below its base
     milestone, start up to two additional projects this turn on mature/high-value
-    worlds. Only an already-defined support-starbase design is used; brand-new
-    starbase design creation remains outside this native-safe path.
+    worlds. A newly proposed support design is deliberately not queued in this
+    same turn: it must first appear in the next M-file read-back, after which
+    this planner treats it exactly like any player-authored starbase design.
     """
     support_designs = _support_designs(state)
     preferred = _preferred_support_design(state)
@@ -254,6 +300,17 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
         ))
 
     deficit = max(0, int(target) - len(operational) - len(queued_planets))
+    # A distant Orbital Fort is not a shipyard/refuel hub.  Permit one upgrade
+    # project even when the numerical support-base milestone is met, while the
+    # material gate still prevents it from starving local development.
+    remote_fort_needs_upgrade=any(
+        bool(((p.native or {}).get("starbase_capabilities") or {}).get("is_orbital_fort"))
+        and not bool(((p.native or {}).get("starbase_capabilities") or {}).get("can_refuel"))
+        and distance_from_homeworld(state,p.position) >= 180.0
+        for p in owned
+    )
+    if deficit <= 0 and remote_fort_needs_upgrade:
+        deficit=1
     if deficit <= 0:
         return out
 
@@ -273,6 +330,12 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             minimum_population = 40_000 if has_base else 55_000
         elif hub is not None and hub.parent_exporter_id is not None:
             minimum_population = 50_000 if has_base else 70_000
+        elif has_base:
+            # An existing remote fort is already an orbital investment.  It is
+            # a valid support-base *candidate* at a smaller population; the
+            # separate material gate below/economy planner decides whether it
+            # may occupy the production queue this turn.
+            minimum_population = 20_000
         else:
             minimum_population = 55_000 if has_base else 85_000
         if int(planet.population or 0) < minimum_population:
@@ -309,12 +372,131 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             ),
             reason=(
                 f"promote high-value ring hub {planet.name} to {design_name} ({hull_name}): "
-                f"{nearest_text}; ring={detail['ring']}; home distance={detail['home_distance']:.1f} ly; "
+                + ("restore remote refueling and ship-construction support; " if detail["is_fort"] else "")
+                + f"{nearest_text}; ring={detail['ring']}; home distance={detail['home_distance']:.1f} ly; "
                 f"nearby viable/unknown frontier={detail['viable']}/{detail['unknown']}; "
                 f"population={int(planet.population or 0):,}; industry={detail['industry']}; "
                 f"estimated resources={detail['resources']}; hub score={score:.2f}; "
-                f"layer1_pending={detail['layer1_pending']}; next_layer_child={detail['next_layer_child']}. "
+                f"promotion=P{detail['promotion_tier']} rank={detail['promotion_rank']} "
+                f"value={detail['promotion_value']:.2f}; layer1_pending={detail['layer1_pending']}; "
+                f"next_layer_child={detail['next_layer_child']}. "
                 f"Support-base milestone={len(operational)} operational + {len(queued_planets)} queued / target {target}."
+            ),
+        ))
+    return out
+
+
+@lru_cache(maxsize=1)
+def _stock_starbase_hull_costs() -> dict[int, dict[str, int]]:
+    """Read stock hull costs from the same MOD data used for native designs."""
+    path = Path(__file__).with_name("data_hulls.mod")
+    costs: dict[int, dict[str, int]] = {}
+    for row in csv.reader(path.read_text(encoding="latin-1").splitlines()):
+        if not row or int(row[0]) != 16:
+            continue
+        numbers = [int(value) if value else 0 for value in row[3:]]
+        if len(numbers) < 12:
+            continue
+        hull_id = int(numbers[0])
+        costs[hull_id] = {
+            "resources": int(numbers[8]),
+            "ironium": int(numbers[9]),
+            "boranium": int(numbers[10]),
+            "germanium": int(numbers[11]),
+        }
+    return costs
+
+
+def _raw_slot_value(slot, key: str, default: int = 0) -> int:
+    if isinstance(slot, dict):
+        value = slot.get(key, default)
+    else:
+        value = getattr(slot, key, default)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def support_base_design_cost(profile: dict) -> dict[str, int]:
+    """Return the exact stock hull + fitted-component bill where slots exist.
+
+    Old/hand-built test states may not carry slot data.  In that case the bare
+    hull bill is still a safe lower bound, so the planner never invents a free
+    Space Station.
+    """
+    hull_id = int(profile.get("hull_id", -1) or -1)
+    total = dict(_stock_starbase_hull_costs().get(hull_id, {
+        "resources": 0, "ironium": 0, "boranium": 0, "germanium": 0,
+    }))
+    slots = list(profile.get("slots", []) or [])
+    database = stock_component_database()
+    for slot in slots:
+        category = _raw_slot_value(slot, "category")
+        item_id = _raw_slot_value(slot, "item_id")
+        count = max(0, _raw_slot_value(slot, "count"))
+        component = database.component(category, item_id)
+        if component is None or count <= 0:
+            continue
+        total["resources"] += count * int(component.resource_cost)
+        total["ironium"] += count * int(component.ironium)
+        total["boranium"] += count * int(component.boranium)
+        total["germanium"] += count * int(component.germanium)
+    return total
+
+
+def plan_support_base_material_demands(state, plan=None) -> list[SupportBaseMaterialDemand]:
+    """Expose ready/blocked base work for production and transport decisions."""
+    requests = plan_support_base_builds(state, plan)
+    profiles = _support_designs(state)
+    economy = decode_race_economy(state.race)
+    planets = {int(p.id): p for p in state.planets if p.owner == state.player_id}
+    out: list[SupportBaseMaterialDemand] = []
+    for request in requests:
+        planet = planets.get(int(request.planet_id))
+        profile = profiles.get(int(request.design_slot))
+        if planet is None or profile is None:
+            continue
+        cost = support_base_design_cost(profile)
+        completion = min(100, max(0, int(request.complete_percent or 0)))
+        # The native queue reports whole-percent completion.  Round remaining
+        # material up so a 99% record cannot be treated as already funded.
+        remaining_fraction = max(0.0, (100 - completion) / 100.0)
+        mineral_remaining = {
+            mineral: int(math.ceil(int(cost[mineral]) * remaining_fraction))
+            for mineral in ("ironium", "boranium", "germanium")
+        }
+        working = working_mineral_reserve(planet, economy, queue=())
+        mineral_required = {
+            mineral: mineral_remaining[mineral] + int(working[mineral])
+            for mineral in mineral_remaining
+        }
+        stock = mineral_surface_stock(planet)
+        deficit = {
+            mineral: max(0, mineral_required[mineral] - int(stock[mineral]))
+            for mineral in mineral_required
+        }
+        ready = not any(deficit.values())
+        shortage = "/".join(
+            f"{mineral[0].upper()}={deficit[mineral]}"
+            for mineral in ("ironium", "boranium", "germanium") if deficit[mineral]
+        ) or "none"
+        out.append(SupportBaseMaterialDemand(
+            planet_id=int(planet.id),
+            design_slot=int(request.design_slot),
+            design_name=str(request.design_name),
+            complete_percent=completion,
+            resource_remaining=int(math.ceil(int(cost["resources"]) * remaining_fraction)),
+            mineral_remaining=mineral_remaining,
+            mineral_required=mineral_required,
+            mineral_deficit=deficit,
+            ready=ready,
+            reason=(
+                f"{request.design_name} material gate at {planet.name}: remaining I/B/G="
+                f"{mineral_remaining['ironium']}/{mineral_remaining['boranium']}/{mineral_remaining['germanium']} kT; "
+                f"working-stock target I/B/G={mineral_required['ironium']}/{mineral_required['boranium']}/{mineral_required['germanium']} kT; "
+                f"shortage {shortage}. "
+                + ("Queue may proceed." if ready else "Hold the base queue and route minerals before construction resumes.")
             ),
         ))
     return out

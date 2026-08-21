@@ -1,9 +1,16 @@
 
+"""Stage, validate, host, archive, and report a multi-player native Stars! run.
+
+This module owns filesystem/process lifecycle only. Strategy happens through
+the configured order bridge; all live-game mutations are preceded by seed,
+history, and X-file consistency checks.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any
 import json
 import shutil
 import subprocess
@@ -13,290 +20,29 @@ import hashlib
 import re
 
 from .native.player_state import PlayerState
-from .native.x_writer import ORDER_BLOCK_TYPES, write_ai_turn
+from .native.x_writer import ORDER_BLOCK_TYPES
 from .native.history_merge import (
     inspect_history_coverage,
     merge_history_file,
 )
-from .native_observer import read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn, build_human_report
+from .autohost import (
+    ExternalCommandOrderBridge,
+    HistorySyncError,
+    IntegratedNativeOrderBridge,
+    LiveGameValidationError,
+    NativeOrderBridge,
+    NoopOrderBridge,
+    SeedValidationError,
+    TurnExecution,
+    ValidatedLiveGame,
+    ValidatedSeedGame,
+    WindowsAutoHostConfig,
+)
+from .native_observer import (
+    read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn,
+    build_human_report, build_running_game_report, build_turn_status_report,
+)
 from .turn_archive import archive_turn_phase
-
-@dataclass
-class WindowsAutoHostConfig:
-    stars_exe: str
-    seed_dir: str
-    output_dir: str
-    # Retained for configuration compatibility only. The authoritative game
-    # basename is discovered from seed_dir during fail-closed validation.
-    game_name: str | None = None
-    player_ids: list[int] = field(default_factory=lambda: [1,2,3,4])
-    turns: int = 50
-    # False/default: restore the immutable seed before playing. True: validate
-    # and continue the current game beside stars_exe for `turns` more turns.
-    play_on: bool = False
-    checkpoints: list[int] = field(default_factory=lambda: [10,25,50])
-    host_password: str | None = None
-    keep_every_turn: bool = True
-    # v8.7.1: immutable before/after snapshots for native-order debugging.
-    turn_archive_enabled: bool = True
-    turn_archive_include_logs: bool = True
-    # Merge each current M file into its cumulative H file in native Python.
-    # This replaces the Stars! client-open step required by headless hosting.
-    auto_merge_history: bool = True
-    # Fail closed if post-merge semantic coverage cannot be proven. Retained as
-    # a compatibility/safety switch; it no longer requests a manual client step.
-    require_history_sync: bool = True
-    stop_on_missing_x: bool = True
-    host_timeout_seconds: int = 180
-    host_poll_seconds: float = 0.5
-    host_settle_seconds: float = 1.5
-    prevent_parallel_stars: bool = True
-    # Deprecated compatibility field. Native operations always run beside the
-    # configured Stars! executable; seed_dir is immutable.
-    use_seed_as_live: bool = False
-    pre_host_audit: bool = True
-    print_observer_each_turn: bool = True
-    cleanup_output_on_start: bool = True
-    # Permanent known-good X templates. If omitted, defaults to a sibling of
-    # seed_dir so output cleanup and Stars! host processing cannot remove it.
-    x_template_dir: str | None = None
-    # Persistent strategic memory. Defaults to a sibling of seed_dir so output
-    # cleanup/restarts do not erase what each AI player has learned.
-    ai_state_dir: str | None = None
-    # Which players' detailed AI summaries/decision reports are echoed to the console.
-    # None => all configured players; [] => suppress per-player console detail.
-    console_player_logs: list[int] | None = None
-    # Reciprocal Friend relationships. Example [[1,2]] => P1<->P2.
-    allied_pairs: list[list[int]] = field(default_factory=list)
-    personas: dict[str,str] = field(default_factory=lambda: {
-        "1":"Balanced","2":"Expansionist","3":"Balanced","4":"Balanced"
-    })
-
-@dataclass
-class TurnExecution:
-    turn: int
-    player_order_files: list[str]
-    host_returncode: int | None
-    year_before: int | None
-    year_after: int | None
-    checkpoint_written: bool
-    success: bool
-    message: str
-
-
-class SeedValidationError(RuntimeError):
-    """The immutable starting game is unsafe or incomplete."""
-
-
-@dataclass(frozen=True)
-class ValidatedSeedGame:
-    seed_dir: Path
-    basename: str
-    game_id: int
-    turn: int
-    files: tuple[Path, ...]
-    hst: Path
-    xy: Path
-    m_files: dict[int, Path]
-    x_files: dict[int, Path]
-    x_sha256: dict[int, str]
-
-
-@dataclass(frozen=True)
-class ValidatedLiveGame:
-    game_dir: Path
-    basename: str
-    game_id: int
-    turn: int
-    files: tuple[Path, ...]
-    hst: Path
-    xy: Path
-    m_files: dict[int, Path]
-
-
-class LiveGameValidationError(RuntimeError):
-    """The requested play-on game is incomplete, mismatched, or unsafe."""
-
-
-class HistorySyncError(RuntimeError):
-    """Automatic history merge or its semantic coverage check failed."""
-
-class NativeOrderBridge:
-    """
-    Interface between semantic AI decisions and a real Stars! .x# file.
-
-    v4.3 intentionally refuses to fake unsupported native serialization.
-    Implementations must return a path to a valid native .x# file.
-    """
-    def create_x_file(
-        self,
-        *,
-        player_id: int,
-        m_path: Path,
-        xy_path: Path,
-        existing_x_path: Path | None,
-        output_x_path: Path,
-        turn_dir: Path,
-    ) -> Path:
-        raise NotImplementedError
-
-
-class IntegratedNativeOrderBridge(NativeOrderBridge):
-    """
-    Built-in semantic OrderSet -> native .x# bridge.
-
-    Requires one known-good X template per player. The autohost bootstraps those
-    templates once from the manually-created initial X files, stores immutable
-    copies outside the live game/output directories, and regenerates a fresh X
-    file from the current M header every turn.
-    """
-    def __init__(
-        self,
-        personas: dict[str,str] | None = None,
-        console_player_logs: list[int] | None = None,
-        allied_pairs: list[list[int]] | None = None,
-        memory_root: str | Path | None = None,
-    ):
-        self.personas=personas or {}
-        self.console_player_logs=None if console_player_logs is None else {int(x) for x in console_player_logs}
-        self.allied_pairs=[list(map(int,pair)) for pair in (allied_pairs or [])]
-        self.memory_root=Path(memory_root).resolve() if memory_root else None
-        self._pending_memories:dict[int,tuple[Path,Path]]={}
-
-    def _friend_ids_for(self, player_id:int) -> list[int]:
-        out=set()
-        for pair in self.allied_pairs:
-            if len(pair)!=2:
-                continue
-            a,b=int(pair[0]),int(pair[1])
-            if a==player_id and b!=player_id:
-                out.add(b)
-            elif b==player_id and a!=player_id:
-                out.add(a)
-        return sorted(out)
-
-    def create_x_file(self, *, player_id, m_path, xy_path, existing_x_path, output_x_path, turn_dir):
-        if existing_x_path is None or not existing_x_path.exists():
-            raise RuntimeError(
-                f"Integrated writer needs a persistent known-good .x{player_id} template."
-            )
-        memory_path=(
-            self.memory_root/f"player-{int(player_id):02d}-memory.json"
-            if self.memory_root is not None else None
-        )
-        pending_memory_path=(
-            self.memory_root/f"player-{int(player_id):02d}-memory.pending.json"
-            if self.memory_root is not None else None
-        )
-        result=write_ai_turn(
-            player_id=player_id,
-            m_path=m_path,
-            xy_path=xy_path,
-            template_x_path=existing_x_path,
-            output_x_path=output_x_path,
-            persona_name=self.personas.get(str(player_id),"Balanced"),
-            trace_path=turn_dir/f"{getattr(self,'turn_tag','current')}-player-{player_id:02d}-decision-native.json",
-            friend_player_ids=self._friend_ids_for(int(player_id)),
-            memory_path=memory_path,
-            memory_output_path=pending_memory_path,
-        )
-        if memory_path is not None and pending_memory_path is not None:
-            self._pending_memories[int(player_id)]=(memory_path,pending_memory_path)
-        moves=[
-            e for e in result.emitted
-            if e.get("kind")=="move_fleet"
-        ]
-        skipped_moves=[
-            e for e in result.skipped
-            if e.get("kind")=="move_fleet"
-        ]
-        move_text=", ".join(
-            f"F{m['payload'].get('fleet_id')}->P{m['payload'].get('destination_planet_id')}@W{m['payload'].get('warp','?')}"
-            for m in moves
-        ) or "none"
-        show_console = (
-            self.console_player_logs is None
-            or int(player_id) in self.console_player_logs
-        )
-        if show_console:
-            print(
-                f"[AI P{player_id} Y{result.year}] emitted moves: {move_text}; "
-                f"skipped moves: {len(skipped_moves)}",
-                flush=True
-            )
-        report_path=turn_dir/f"{getattr(self,'turn_tag','current')}-player-{player_id:02d}-DECISION_REPORT.txt"
-        if show_console and report_path.exists():
-            print(report_path.read_text(encoding="utf-8"), flush=True)
-        return output_x_path
-
-    def commit_pending_memory(self) -> None:
-        for player_id,(committed,pending) in sorted(self._pending_memories.items()):
-            if not pending.exists():
-                raise RuntimeError(
-                    f"Pending AI memory is missing for player {player_id}: {pending}"
-                )
-            pending.replace(committed)
-        self._pending_memories.clear()
-
-    def discard_pending_memory(self) -> None:
-        for _,pending in self._pending_memories.values():
-            pending.unlink(missing_ok=True)
-        self._pending_memories.clear()
-
-class ExternalCommandOrderBridge(NativeOrderBridge):
-    """
-    Allows the native order writer to be developed/tested independently.
-
-    Command placeholders:
-      {player_id} {m} {xy} {existing_x} {output_x} {turn_dir}
-
-    Example:
-      python native_writer.py --player {player_id} --m "{m}" --xy "{xy}" --out "{output_x}"
-    """
-    def __init__(self, command_template: str, timeout_seconds: int = 60):
-        self.command_template = command_template
-        self.timeout_seconds = timeout_seconds
-
-    def create_x_file(self, *, player_id, m_path, xy_path, existing_x_path, output_x_path, turn_dir):
-        cmd = self.command_template.format(
-            player_id=player_id,
-            m=str(m_path),
-            xy=str(xy_path),
-            existing_x=str(existing_x_path or ""),
-            output_x=str(output_x_path),
-            turn_dir=str(turn_dir),
-        )
-        cp = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=str(turn_dir),
-            capture_output=True,
-            text=True,
-            timeout=self.timeout_seconds,
-        )
-        (turn_dir / f"player-{player_id:02d}-native-writer.stdout.txt").write_text(cp.stdout or "", encoding="utf-8")
-        (turn_dir / f"player-{player_id:02d}-native-writer.stderr.txt").write_text(cp.stderr or "", encoding="utf-8")
-        if cp.returncode != 0:
-            raise RuntimeError(f"Native writer failed for P{player_id}: rc={cp.returncode}")
-        if not output_x_path.exists():
-            raise RuntimeError(f"Native writer did not create {output_x_path}")
-        return output_x_path
-
-class NoopOrderBridge(NativeOrderBridge):
-    """
-    Diagnostic bridge only.
-
-    Reuses an existing native .x# if supplied. It does NOT represent AI play
-    and exists only to verify the host automation/snapshot/observer loop.
-    """
-    def create_x_file(self, *, player_id, m_path, xy_path, existing_x_path, output_x_path, turn_dir):
-        if existing_x_path is None or not existing_x_path.exists():
-            raise RuntimeError(
-                f"No existing .x{player_id} available. Noop bridge cannot invent native orders."
-            )
-        shutil.copy2(existing_x_path, output_x_path)
-        return output_x_path
-
 
 def _persistent_x_template_root(cfg: WindowsAutoHostConfig, seed: Path) -> Path:
     if cfg.x_template_dir:
@@ -1510,6 +1256,24 @@ def _print_observer_summary(obs, personas: dict[str,str]|None=None) -> None:
         flush=True
     )
 
+
+def _write_running_observer_report(
+    root: Path,
+    history: list,
+    *,
+    personas: dict[str,str],
+    major_report_turns: list[int],
+) -> Path:
+    """Atomically refresh the one chronological report for the active game."""
+    report=build_running_game_report(
+        history,personas=personas,major_report_turns=major_report_turns,
+    )
+    destination=root / "RUNNING_GAME_REPORT.md"
+    temporary=destination.with_suffix(".md.tmp")
+    temporary.write_text(report,encoding="utf-8")
+    temporary.replace(destination)
+    return destination
+
 def _host_command(cfg: WindowsAutoHostConfig, hst: Path) -> list[str]:
     # Stars! manual: stars!.exe -g gamename.hst forces generation and exits.
     cmd = [cfg.stars_exe, "-g"]
@@ -1519,6 +1283,7 @@ def _host_command(cfg: WindowsAutoHostConfig, hst: Path) -> list[str]:
     return cmd
 
 def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge) -> list[TurnExecution]:
+    """Run the configured native game loop and return one result per host turn."""
     seed = Path(cfg.seed_dir).expanduser().resolve()
     root = Path(cfg.output_dir).expanduser().resolve()
     try:
@@ -1647,7 +1412,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     game_dir=game, basename=validated.basename,
                     logs_root=(logs_root if cfg.turn_archive_include_logs else None),
                     templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg,
+                    config=cfg, json_index=cfg.turn_archive_json_index,
                     metadata={"execution_turn":turn,"native_year_before":year_before},
                 )
             # This is deliberately before deleting or generating any X file.
@@ -1707,7 +1472,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     game_dir=game, basename=validated.basename,
                     logs_root=(logs_root if cfg.turn_archive_include_logs else None),
                     templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg,
+                    config=cfg, json_index=cfg.turn_archive_json_index,
                     metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files)},
                 )
 
@@ -1746,7 +1511,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     game_dir=game, basename=validated.basename,
                     logs_root=(logs_root if cfg.turn_archive_include_logs else None),
                     templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg,
+                    config=cfg, json_index=cfg.turn_archive_json_index,
                     metadata={
                         "execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,
                         "host_returncode":cp.returncode,"host_settled":bool(settled),
@@ -1801,7 +1566,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     game_dir=game, basename=validated.basename,
                     logs_root=(logs_root if cfg.turn_archive_include_logs else None),
                     templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg,
+                    config=cfg, json_index=cfg.turn_archive_json_index,
                     metadata={"execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,"success":True},
                 )
             msg=(
@@ -1826,7 +1591,25 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 observer_history.append(current_observer)
                 previous_observer = current_observer
 
-                if cfg.print_observer_each_turn:
+                _write_running_observer_report(
+                    root,observer_history,
+                    personas=cfg.personas,major_report_turns=cfg.checkpoints,
+                )
+
+                # An explicitly empty list is a useful quiet-playtest mode:
+                # suppress both AI decision reports while retaining one useful,
+                # human-readable observer account on the console. The durable
+                # run-root file retains the complete chronological history;
+                # printing just the new section avoids replaying old turns.
+                if cfg.console_player_logs == []:
+                    print("")
+                    print(build_turn_status_report(
+                        current_observer,
+                        observer_history[-2] if len(observer_history) > 1 else None,
+                        personas=cfg.personas,
+                    ),flush=True)
+                    print("")
+                elif cfg.print_observer_each_turn:
                     _print_observer_summary(current_observer, cfg.personas)
             except Exception as exc:
                 (logs_root / f"{turn_tag}-observer-error.txt").write_text(
@@ -1852,7 +1635,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 )
                 last_checkpoint_observer = current_observer
 
-                if cfg.print_observer_each_turn:
+                if cfg.print_observer_each_turn or cfg.console_player_logs == []:
                     print("")
                     print(report)
                     print("")
@@ -1877,7 +1660,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                         game_dir=game, basename=validated.basename,
                         logs_root=(logs_root if getattr(cfg,"turn_archive_include_logs",True) else None),
                         templates_root=templates_root, ai_state_root=ai_state_root,
-                        config=cfg,
+                        config=cfg, json_index=cfg.turn_archive_json_index,
                         metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files),
                                   "exception_type":type(exc).__name__,"exception":str(exc)},
                     )

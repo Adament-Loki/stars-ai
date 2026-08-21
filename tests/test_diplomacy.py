@@ -54,6 +54,17 @@ def test_enemy_near_home_is_hostile_and_conflict_assessed():
     assert view.conflict.strategic_risk >= 0
 
 
+def test_hostile_posture_does_not_require_an_enemy_relation_write():
+    state = make_state()
+    orders = StarsAgent(state, persona=BalancedPersona()).play_turn()
+    enemy_writes = [
+        order for order in orders.orders
+        if order.kind == 'set_player_relation' and order.payload.get('relation') == 'enemy'
+    ]
+    assert not enemy_writes
+    assert any('opposition posture selected' in note for note in orders.notes)
+
+
 def test_helpful_human_fleet_is_not_treated_as_military_target():
     state = make_state()
     # Remove P3 so only the helpful human P2 remains as another player's fleet.

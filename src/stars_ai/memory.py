@@ -189,11 +189,35 @@ class AgentMemory:
         year = int(state.year)
 
         current_observed = {int(p.id): bool(p.observed) for p in state.planets}
+        current_m_ownership_revoked: list[int] = []
 
         # First ingest only what the current M file genuinely exposes.
         for p in state.planets:
             if current_observed[int(p.id)]:
                 self._capture_planet(p, year, int(state.player_id))
+                continue
+
+            # A sparse current M record that explicitly has no owner is more
+            # recent than an old local-colony snapshot.  This occurs after a
+            # world is lost or abandoned: restoring the remembered owner makes
+            # the planner issue a Type-29 production command to a world the
+            # host no longer permits that player to control.
+            current_m_record=bool((p.native or {}).get("current_m_record",False))
+            current_m_owner=(p.native or {}).get("current_m_owner")
+            if not current_m_record or current_m_owner is not None:
+                continue
+            key=str(int(p.id))
+            remembered=dict(self.planet_intel.get(key,{}) or {})
+            if int(remembered.get("last_known_owner",-1) or -1)!=int(state.player_id):
+                continue
+            remembered["last_known_owner"]=None
+            remembered["last_seen_year"]=year
+            remembered["ownership_source"]="current_m_unowned"
+            remembered["ownership_revoked_year"]=year
+            self.planet_intel[key]=remembered
+            self.known_enemy_planets.pop(key,None)
+            p.native["current_m_revoked_stale_owner"]=int(state.player_id)
+            current_m_ownership_revoked.append(int(p.id))
 
         restored = 0
         for p in state.planets:
@@ -204,6 +228,33 @@ class AgentMemory:
 
             intel = self.planet_intel.get(str(int(p.id)))
             if not intel or not intel.get("ever_observed"):
+                continue
+
+            # Retain durable exploration intelligence from a lost world, but
+            # do not restore its historic population, industry, minerals, or
+            # ownership onto a current M record that says it is unowned.  The
+            # world remains strategically known while ceasing to be a local
+            # economic or production candidate immediately.
+            current_m_record=bool((p.native or {}).get("current_m_record",False))
+            current_m_owner=(p.native or {}).get("current_m_owner")
+            if current_m_record and current_m_owner is None:
+                p.observed=True
+                p.owner=None
+                p.habitability=intel.get("habitability")
+                if intel.get("environment") is not None:
+                    p.native["environment"]=list(intel["environment"])
+                if intel.get("original_environment") is not None:
+                    p.native["original_environment"]=list(intel["original_environment"])
+                if intel.get("mineral_concentrations") is not None:
+                    p.native["mineral_concentrations"]=list(intel["mineral_concentrations"])
+                last_seen=int(intel.get("last_seen_year",year))
+                p.native["observed_turn"]=last_seen-2400
+                p.native["intel_source"]="current_m_unowned"
+                p.native["intel_age_years"]=0
+                p.native["intel_from_memory"]=True
+                p.native["native_planet_mutation_allowed"]=False
+                p.native["ownership_confirmation"]="current_m_unowned"
+                restored += 1
                 continue
 
             # Restore strategic knowledge, but explicitly mark it stale.
@@ -244,6 +295,7 @@ class AgentMemory:
             "current_m_observed": current,
             "ever_observed": known,
             "restored_from_memory": restored,
+            "current_m_ownership_revoked_planet_ids": current_m_ownership_revoked,
             "total_planets": len(state.planets),
         }
 
@@ -414,7 +466,7 @@ class AgentMemory:
             kind=str(item.get("kind", ""))
             payload=dict(item.get("payload") or {})
 
-            if kind in ("move_fleet","colony_operation","transport_minerals"):
+            if kind in ("move_fleet","colony_operation","transport_population","transport_minerals"):
                 fid=int(payload["fleet_id"])
                 fleet=fleets.get(fid)
                 target_id=payload.get("destination_planet_id")
@@ -452,7 +504,7 @@ class AgentMemory:
                     mission=str(payload.get("mission", "move")).lower()
                     expectation_kind=(
                         "colonize" if kind=="colony_operation"
-                        else "transport" if kind=="transport_minerals"
+                        else "transport" if kind in ("transport_population","transport_minerals")
                         else "scan_arrival" if mission in ("scan","recon")
                         else "fleet_arrival"
                     )

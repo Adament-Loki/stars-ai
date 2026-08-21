@@ -7,42 +7,11 @@ import csv
 from .util import distance
 from .population_units import COLONY_LOAD_KT
 
-ENGINE=1; SCANNER=2; SHIELD=4; ARMOR=8; BEAM=16; TORPEDO=32; BOMB=64
-MINING_ROBOT=128; MINE_LAYER=256; ORBITAL=512; PLANETARY=1024; ELECTRICAL=2048; MECHANICAL=4096
-
-ENGINE_DATA = {
-    0:("Settler's Delight",2,(0,0,0,0,0,0,0,140,275,480,576),False),
-    1:("Quick Jump 5",4,(0,0,25,100,100,100,180,500,800,900,1080),False),
-    2:("Fuel Mizer",6,(0,0,0,0,0,35,120,175,235,360,420),False),
-    3:("Long Hump 6",9,(0,0,20,60,100,100,105,450,750,900,1080),False),
-    4:("Daddy Long Legs 7",13,(0,0,20,60,70,100,100,110,600,750,900),False),
-    5:("Alpha Drive 8",17,(0,0,15,50,60,70,100,100,115,700,840),False),
-    6:("Trans-Galactic Drive",25,(0,0,15,35,45,55,70,80,90,100,120),False),
-    7:("Interspace-10",25,(0,0,10,30,40,50,60,70,80,90,100),False),
-    8:("Enigma Pulsar",20,(0,0,0,0,0,0,65,75,85,95,105),True),
-    9:("Trans-Star 10",5,(0,0,5,15,20,25,30,35,40,45,50),False),
-    10:("Radiating Hydro-Ram Scoop",10,(0,0,0,0,0,0,0,165,375,600,720),True),
-    11:("Sub-Galactic Fuel Scoop",20,(0,0,0,0,0,0,85,105,210,380,456),True),
-    12:("Trans-Galactic Fuel Scoop",19,(0,0,0,0,0,0,0,88,100,145,174),True),
-    13:("Trans-Galactic Super Scoop",18,(0,0,0,0,0,0,0,0,65,90,108),True),
-    14:("Trans-Galactic Mizer Scoop",11,(0,0,0,0,0,0,0,0,0,70,84),True),
-    15:("Galaxy Scoop",8,(0,0,0,0,0,0,0,0,0,0,60),True),
-}
-
-COMPONENT_MASSES={
- ENGINE:{k:v[1] for k,v in ENGINE_DATA.items()},
- SCANNER:dict(enumerate([2,5,2,2,3,15,6,2,4,5,2,4,6,3,20,4])),
- SHIELD:dict(enumerate([1,1,1,10,2,1,10,1,1,1])),
- ARMOR:dict(enumerate([60,56,25,54,15,50,50,50,45,20,40,30])),
- BEAM:dict(enumerate([1,1,3,1,10,2,1,2,3,1,10,2,1,2,3,1,10,2,8,1,2,3,1,2])),
- TORPEDO:dict(enumerate([25,25,25,25,25,25,25,8,35,35,35,35])),
- BOMB:dict(enumerate([40,45,50,55,52,30,35,45,5,45,50,57,64,55,50])),
- MINING_ROBOT:dict(enumerate([80,240,240,240,240,80,20,80])),
- MINE_LAYER:dict(enumerate([25,30,30,30,10,15,20,100,135,140])),
- MECHANICAL:dict(enumerate([32,50,5,7,9,3,8,5,5,10,1])),
- ELECTRICAL:dict(enumerate([1,2,3,5,2,1,1,1,1,1,1,1,1,1,2,1,10])),
-}
-CATEGORY_MAX_MASS={ENGINE:25,SCANNER:20,SHIELD:10,ARMOR:60,BEAM:10,TORPEDO:35,BOMB:64,MINING_ROBOT:240,MINE_LAYER:140,ORBITAL:1600,PLANETARY:5000,ELECTRICAL:10,MECHANICAL:50}
+from .starsapi_items import (
+    ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO, BOMB, MINING_ROBOT,
+    MINE_LAYER, ORBITAL, PLANETARY, ELECTRICAL, MECHANICAL, ENGINE_DATA,
+    component_mass as _canonical_component_mass, stock_hulls,
+)
 
 @dataclass(frozen=True)
 class HullFuelSpec:
@@ -56,20 +25,17 @@ class DesignFuelProfile:
 
 @lru_cache(maxsize=1)
 def stock_hull_fuel_specs():
-    path=Path(__file__).with_name('data_hulls.mod'); out={}
-    for parts in csv.reader(path.read_text(encoding='latin-1').splitlines()):
-        if not parts or int(parts[0])!=15: continue
-        nums=[int(x) if x else 0 for x in parts[3:]]; hid=int(nums[0])
-        out[hid]=HullFuelSpec(hid,parts[2],int(nums[7]),int(nums[13]),int(nums[14]),int(nums[17]))
-    return out
+    return {
+        hid: HullFuelSpec(h.hull_id,h.name,h.mass,h.cargo,h.fuel,h.engine_count)
+        for hid,h in stock_hulls().items() if not h.is_starbase
+    }
 
 def _slot_values(s):
     if isinstance(s,dict): return int(s.get('category',0)),int(s.get('item_id',0)),int(s.get('count',0))
     return int(s.category),int(s.item_id),int(s.count)
 
 def component_mass(category,item_id):
-    v=COMPONENT_MASSES.get(category,{}).get(item_id)
-    return (int(v),True) if v is not None else (int(CATEGORY_MAX_MASS.get(category,100)),False)
+    return _canonical_component_mass(category,item_id)
 
 def design_fuel_profile(design,role='unknown'):
     hid=int(design.hull_id if hasattr(design,'hull_id') else design['hull_id'])
@@ -128,6 +94,16 @@ def highest_zero_fuel_warp(profile, max_warp=9):
     return 0
 
 
+def has_fuel_mizer_engines(profile) -> bool:
+    """Whether every ship in the fleet uses the Fuel Mizer engine.
+
+    A mixed-design fleet is only as fuel-limited as its non-Mizer ships, so it
+    deliberately does not qualify for the scout cruising exception.
+    """
+    groups=list(profile.get("groups",[]) or [])
+    return bool(groups) and all(int(group.get("engine_id") or -1)==2 for group in groups)
+
+
 def scout_one_way_budget(profile):
     """
     Recon probes are expendable strategic sensors, not round-trip transports.
@@ -177,6 +153,23 @@ def scout_one_way_warp(profile,distance_ly,ife=False,ce=False,pressure=1.0):
         if estimate_fuel(profile,d,w,ife=ife) <= 1e-9:
             return w
     return None
+
+
+def reconnaissance_warp(profile,distance_ly,ife=False,ce=False,pressure=1.0):
+    """Choose reconnaissance speed under the current fleet-arrival policy.
+
+    Conventional scouts retain their economical one-way exploration cruise.
+    A dedicated Fuel Mizer scout instead uses the fastest fuel-safe normal
+    warp: it has the fuel economy to arrive promptly and should not inherit a
+    permanent Warp-4/5 exploration ceiling.
+    """
+    if has_fuel_mizer_engines(profile):
+        return fastest_fuel_safe_warp(
+            profile,distance_ly,"scan",ife=ife,ce=ce
+        )
+    return scout_one_way_warp(
+        profile,distance_ly,ife=ife,ce=ce,pressure=pressure
+    )
 
 
 def scout_one_way_reachable(profile,distance_ly,ife=False,ce=False):
@@ -246,9 +239,9 @@ def mission_reachable(fleet,target_position,mission):
     m=str(mission or '').lower()
     d=distance(fleet.position,target_position)
     if m in ('scan','recon'):
-        return scout_one_way_reachable(
+        return reconnaissance_warp(
             fp,d,ife=bool(flags.get('ife')),ce=bool(flags.get('ce'))
-        )
+        ) is not None
     return fastest_fuel_safe_warp(fp,d,m,ife=bool(flags.get('ife')),ce=bool(flags.get('ce'))) is not None
 
 
@@ -292,18 +285,38 @@ def apply_fuel_safety(state,orders):
     kept=[]; extras=[]
 
     for o in orders.orders:
-        if o.kind not in ('move_fleet','colony_operation','transport_minerals'):
+        if o.kind not in ('move_fleet','colony_operation','transport_population','transport_minerals'):
             kept.append(o); continue
 
         fid=int(o.payload.get('fleet_id',-1))
         f=fleets.get(fid)
         target=planets.get(int(o.payload.get('destination_planet_id',-1)))
+        target_is_fleet=False
+        if target is None and o.payload.get('destination_fleet_id') is not None:
+            target_owner=o.payload.get('destination_fleet_owner')
+            target=next(
+                (
+                    candidate for candidate in state.fleets
+                    if int(candidate.id)==int(o.payload['destination_fleet_id'])
+                    and (target_owner is None or int(candidate.owner)==int(target_owner))
+                ),
+                None,
+            )
+            target_is_fleet=target is not None
         if not f or not target or not (f.native or {}).get('fuel_profile'):
             kept.append(o); continue
 
         fp=f.native['fuel_profile']
         if o.kind=='transport_minerals':
             fp=profile_with_planned_cargo(fp,o.payload.get('load'))
+        elif o.kind=='transport_population':
+            fp=profile_with_planned_cargo(
+                fp,
+                {
+                    'population':int(o.payload.get('population_kt',0) or 0),
+                    **dict(o.payload.get('mineral_load') or {}),
+                },
+            )
         elif o.kind=='colony_operation' and o.payload.get('load_25kt_population'):
             fp=profile_with_planned_cargo(
                 fp,
@@ -321,7 +334,7 @@ def apply_fuel_safety(state,orders):
         # explicitly create refuel_for_scan only when the detour unlocks a
         # valuable multi-world route.
         if ml in ('scan','recon'):
-            safe=scout_one_way_warp(
+            safe=reconnaissance_warp(
                 fp,d,
                 ife=bool(flags.get('ife')),
                 ce=bool(flags.get('ce')),
@@ -345,7 +358,10 @@ def apply_fuel_safety(state,orders):
             if route_waypoints:
                 route_waypoints[0]['warp']=int(safe)
             o.payload['fuel_plan']={
-                'policy':'one_way_probe',
+                'policy':(
+                    'fastest_fuel_safe_mizer_recon'
+                    if has_fuel_mizer_engines(fp) else 'one_way_probe'
+                ),
                 'requested_warp':requested,
                 'selected_warp':int(safe),
                 'distance':round(d,2),
@@ -400,7 +416,14 @@ def apply_fuel_safety(state,orders):
                         'destination_planet_id':b.id,
                         'warp':bw,
                         'mission':f'refuel_for_{mission}',
-                        'deferred_destination_planet_id':target.id,
+                        **(
+                            {
+                                'deferred_destination_fleet_id':int(target.id),
+                                'deferred_destination_fleet_owner':int(target.owner),
+                            }
+                            if target_is_fleet else
+                            {'deferred_destination_planet_id':target.id}
+                        ),
                         'fuel_plan':{
                             'reason':'low_fuel_refuel' if low else 'target_not_fuel_reachable',
                             'fuel':cur,'capacity':cap,'mass':fp.get('mass'),

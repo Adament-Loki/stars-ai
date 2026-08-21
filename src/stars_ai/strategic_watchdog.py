@@ -1,8 +1,12 @@
 
+"""Measure expansion progress and turn shortfalls into planning pressure."""
+
 from __future__ import annotations
 
 import math
 from typing import Any
+
+from .competitive_position import evaluate_competitive_position
 
 
 # Through Turn 25, galaxy percentages are intentionally NOT the planning basis.
@@ -28,6 +32,7 @@ MIDGAME_COVERAGE_MILESTONES = [
 
 
 def _next_milestone(turn: int, total_planets: int) -> dict[str, Any]:
+    """Return the current exploration and colonization objective window."""
     if turn <= 25:
         row = next((x for x in OPENING_HARD_MILESTONES if turn <= x[0]), OPENING_HARD_MILESTONES[-1])
         deadline, emin, eopt, cmin, copt = row
@@ -58,6 +63,7 @@ def _next_milestone(turn: int, total_planets: int) -> dict[str, Any]:
 
 
 def _pressure(value: int, minimum: int, optimal: int, turns_left: int) -> float:
+    """Convert distance from a deadline-bound goal into a bounded urgency value."""
     if value >= optimal:
         return 0.85
     if value >= minimum:
@@ -76,6 +82,7 @@ def _pressure(value: int, minimum: int, optimal: int, turns_left: int) -> float:
 
 
 def evaluate_strategic_watchdog(state, memory) -> dict[str, Any]:
+    """Summarize current expansion performance without using hidden opponent data."""
     turn = max(0, int(state.year) - 2400)
     total = max(1, len(state.planets))
     explored = int(memory.ever_observed_count())
@@ -113,6 +120,15 @@ def evaluate_strategic_watchdog(state, memory) -> dict[str, Any]:
     status["exploration_below_minimum"] = explored < int(milestone["explored_min"])
     status["colonization_below_minimum"] = new_colonies < int(milestone["new_colonies_min"])
 
+    competitive=evaluate_competitive_position(state)
+    status["competitive_position"]=competitive
+    catch_up=float(competitive["catch_up_pressure"])
+    # Milestones are minimum standards.  A public score deficit adds lawful
+    # competitive urgency without reading information that private games do
+    # not disclose.
+    status["exploration_pressure"]=max(status["exploration_pressure"],catch_up)
+    status["colonization_pressure"]=max(status["colonization_pressure"],catch_up)
+
     if status["scan_orders_total"] > 0:
         status["scan_target_reuse_ratio"] = round(
             max(0, status["scan_orders_total"] - status["unique_scan_targets_total"])
@@ -143,6 +159,18 @@ def evaluate_strategic_watchdog(state, memory) -> dict[str, Any]:
         f"new colonies={new_colonies}, owned={owned}, "
         f"new discoveries last 5 turns={status['discoveries_last_5_turns']}."
     )
+
+    if competitive["visibility"]=="public":
+        notes.append(
+            f"PUBLIC SCOREBOARD: rank {competitive['our_rank']}, score {competitive['our_score']}; "
+            f"leader P{competitive['leader_player_id']}={competitive['leader_score']} "
+            f"({competitive['score_ratio_to_leader']:.0%} of leader), status={competitive['status']}."
+        )
+    elif competitive["known_scores"]:
+        notes.append(
+            f"PRIVATE SCOREBOARD: current self score={competitive['our_score']}, rank={competitive['our_rank']}; "
+            "rival totals are not available to strategy."
+        )
 
     if turn >= 5 and status["discoveries_last_5_turns"] == 0 and explored < total:
         notes.append("STAGNATION: zero new planets discovered in the last five turns.")

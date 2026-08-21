@@ -1,3 +1,5 @@
+"""Translate the strategic research decision into one semantic native order."""
+
 from __future__ import annotations
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
@@ -6,6 +8,7 @@ from ..research_planner import ResearchDecision, plan_research
 
 
 def _fuel_mizer_available(state:GameState)->bool:
+    """Determine availability from researched IFE or an already fitted design."""
     lrts=set((state.race.native or {}).get("lrts",[]))
     # Fuel Mizer stock requirement is Propulsion 2; it is the defining early IFE
     # engine. Existing designs using native engine id 2 are also direct evidence.
@@ -22,6 +25,7 @@ def add_research_orders(
     plan: StrategicPlan | None = None,
     decision: ResearchDecision | None = None,
 ) -> ResearchDecision:
+    """Record the selected research posture, field, and any Fuel Mizer context."""
     decision = decision or plan_research(state, plan)
     fuel_mizer = _fuel_mizer_available(state)
     early_mizer_doctrine = bool(

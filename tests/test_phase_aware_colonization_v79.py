@@ -26,7 +26,7 @@ def _world(pid,name,hab,x=30,minerals=None,**native):
     )
 
 
-def test_opening_uses_racial_60_percent_quality_floor():
+def test_opening_uses_60_percent_as_a_quality_preference_not_a_ban():
     state=_state(2405,[
         _world(1,"Marginal",59,x=10,minerals=[50,50,50]),
         _world(2,"Attractive",60,x=40,minerals=[50,50,50]),
@@ -38,11 +38,12 @@ def test_opening_uses_racial_60_percent_quality_floor():
 
     assert policy.stage=="opening_quality"
     assert policy.normal_habitability_floor==60
-    assert [x.planet_name for x in ranked]==["Excellent","Attractive"]
+    assert {x.planet_name for x in ranked}=={"Excellent","Attractive","Marginal"}
+    assert next(x for x in ranked if x.planet_name=="Marginal").selection_basis=="viable_below_preferred_habitability"
     assert all("race-adjusted hab" in x.explanation for x in ranked)
 
 
-def test_opening_allows_only_compelling_resource_exception_below_60():
+def test_opening_ranks_compelling_resources_ahead_of_other_viable_low_hab_worlds():
     state=_state(2405,[
         _world(1,"Ordinary 55",55,minerals=[65,65,65]),
         _world(2,"Rich 55",55,x=35,minerals=[95,90,90]),
@@ -51,7 +52,27 @@ def test_opening_allows_only_compelling_resource_exception_below_60():
 
     ranked=score_colony_candidates(state,state.fleets[0])
 
-    assert [x.planet_name for x in ranked]==["Rich 55"]
+    assert {x.planet_name for x in ranked}=={"Ordinary 55","Rich 55","Rich But Too Poor"}
+    assert ranked[0].planet_name=="Rich 55"
+    assert ranked[0].selection_basis=="exceptional_resources"
+
+
+def test_first_three_turns_score_exceptional_worlds_above_marginal_frontier_claims():
+    state=_state(2402,[
+        # It is a useful viable bridge, but it should rank below a strong
+        # mineral claim while colony hulls are still scarce.
+        _world(1,"Bridge 55",55,x=30,minerals=[70,70,70]),
+        _world(2,"Exceptional 55",55,x=35,minerals=[110,110,110]),
+        *[_world(10+i,f"Frontier {i}",55,x=40+i,minerals=[40,40,40]) for i in range(8)],
+    ])
+
+    policy=colonization_policy(state)
+    ranked=score_colony_candidates(state,state.fleets[0])
+
+    assert policy.stage=="opening_prime"
+    assert policy.normal_habitability_floor==60
+    assert "Bridge 55" in {candidate.planet_name for candidate in ranked}
+    assert ranked[0].planet_name=="Exceptional 55"
     assert ranked[0].selection_basis=="exceptional_resources"
 
 
@@ -67,7 +88,7 @@ def test_midgame_broadens_to_less_habitable_worlds():
 
     assert policy.stage=="midgame_expansion"
     assert policy.normal_habitability_floor==35
-    assert {x.planet_name for x in ranked}=={"Forty","Rich Twenty Five"}
+    assert {x.planet_name for x in ranked}=={"Forty","Thirty Four","Rich Twenty Five"}
     assert next(x for x in ranked if x.planet_name=="Rich Twenty Five").selection_basis=="exceptional_resources"
 
 
@@ -85,12 +106,12 @@ def test_late_resource_expansion_can_prefer_rich_low_hab_world():
     assert ranked[0].planet_name=="Rich Ten"
 
 
-def test_colony_ship_demand_uses_same_phase_eligibility():
+def test_colony_ship_demand_uses_same_viability_policy_at_every_phase():
     low=_world(1,"Too Marginal For Opening",52,minerals=[50,50,50])
     early=_state(2405,[low])
     late=_state(2460,[low])
 
-    assert colony_planet_is_eligible(early,low) is False
+    assert colony_planet_is_eligible(early,low) is True
     assert colony_planet_is_eligible(late,late.planets[1]) is True
 
 

@@ -9,26 +9,20 @@ from ..warp_policy import mission_warp
 from ..fuel_planner import mission_reachable, highest_zero_fuel_warp
 from ..exploration_router import (
     build_probe_route,
+    exploration_promotion_target,
     evaluate_recon_refuel,
     route_waypoint_specs,
     scout_sector,
 )
+from ..scout_policy import enemy_contact_summary, custom_scout_missions
+from ..planetary_scanners import deployed_planetary_sensor_network
 
 
-MAX_SCOUT_SUPPORT_DISTANCE=300.0
 MAX_QUEUED_SCOUT_WAYPOINTS=7
 
 
 def _needs_recon(planet) -> bool:
     return not planet.observed
-
-
-def _distance_from_owned(state, planet) -> float:
-    owned=[p for p in state.planets if p.owner==state.player_id]
-    return min(
-        (distance(planet.position,p.position) for p in owned),
-        default=0.0,
-    )
 
 
 def _probe_fleets(state):
@@ -50,11 +44,22 @@ def add_exploration_orders(
 ) -> None:
     """
     Exploration is a native queued-route campaign, not a yearly nearest-target
-    choice. Each probe receives up to seven fuel-safe waypoints inside the
-    empire-supported frontier.
+    choice. Each probe receives up to seven fuel-safe waypoints.  Local worlds
+    are strongly preferred, but there is no arbitrary empire-support radius:
+    a viable one-way scout route may extend the frontier.
     """
     probes=_probe_fleets(state)
     state.native["recon_route_managed_fleets"]=[int(f.id) for f in probes]
+    contact=enemy_contact_summary(state)
+    custom_missions=custom_scout_missions(state)
+    sensor_network=deployed_planetary_sensor_network(state)
+    state.native["scout_exploration_policy"]={
+        **contact,
+        "classic_exploration_enabled":True,
+        "contact_limited_scout_building":bool(contact["enemy_contact"]),
+        "custom_missions":custom_missions,
+        "planetary_sensor_network":sensor_network,
+    }
     if not probes:
         return
 
@@ -74,48 +79,24 @@ def add_exploration_orders(
     if memory is not None:
         memory.prune_scout_routes(state)
 
-    owned=[p for p in state.planets if p.owner==state.player_id]
-    overextended=set()
-    for probe in probes:
-        if probe.destination_planet_id is not None or not owned:
-            continue
-        nearest=min(owned,key=lambda p:distance(probe.position,p.position))
-        separation=distance(probe.position,nearest.position)
-        if separation<=MAX_SCOUT_SUPPORT_DISTANCE:
-            continue
-        overextended.add(int(probe.id))
-        if memory is not None:
-            memory.clear_scout_route(int(probe.id))
-        orders.add(
-            "move_fleet",
-            {
-                "fleet_id":int(probe.id),
-                "destination_planet_id":int(nearest.id),
-                "warp":mission_warp(probe,nearest.position,"refuel"),
-                "mission":"return_from_exploration",
-                "support_distance":round(separation,2),
-            },
-            (
-                f"Probe is {separation:.1f} ly beyond the supported frontier; "
-                f"return to {nearest.name} before accepting another survey route."
-            ),
-            priority=max(95,int(105*scout_weight)),
-        )
-
     # A world leaves the reconnaissance pool permanently after its first valid
-    # observation. New native routes remain inside current owned-world support.
+    # observation. The route scorer prefers nearby supported clusters, but does
+    # not strand unexplored outer systems behind an arbitrary distance wall.
     unknown_all=[
         p for p in state.planets
         if _needs_recon(p)
-        and _distance_from_owned(state,p)<=MAX_SCOUT_SUPPORT_DISTANCE
     ]
     if not unknown_all:
         return
 
-    known_enemy=any(
-        p.owner not in (None,state.player_id)
-        for p in state.planets
-    )
+    border_missions={
+        int(mission["target_planet_id"]):mission
+        for mission in custom_missions
+        if mission.get("target_planet_id") is not None
+        and str(mission.get("kind", "")) == "border_recon"
+    }
+
+    known_enemy=bool(contact["enemy_contact"])
     eligible_aux=[
         f for f in state.fleets
         if state.year<=2410
@@ -171,7 +152,7 @@ def add_exploration_orders(
 
     for probe in probes:
         fid=int(probe.id)
-        if fid in overextended or fid in already_moving or probe.destination_planet_id is not None:
+        if fid in already_moving or probe.destination_planet_id is not None:
             continue
 
         # Remove this probe's own route from the global reservation while we
@@ -189,7 +170,6 @@ def add_exploration_orders(
             if any(
                 int(p.id)==int(x)
                 and _needs_recon(p)
-                and _distance_from_owned(state,p)<=MAX_SCOUT_SUPPORT_DISTANCE
                 for p in state.planets
             )
         ][:route_limit]
@@ -222,14 +202,33 @@ def add_exploration_orders(
                 p for p in unknown_all
                 if p.id not in assigned and p.id not in recent_targets
             ]
-            route=build_probe_route(
-                state,probe,candidates,
-                reserved=assigned,
-                pressure=pressure,
-                max_stops=route_limit,
-                sector=scout_sector(state,probe),
-                max_support_distance=MAX_SCOUT_SUPPORT_DISTANCE,
-            )
+            # Reserve a scout for a concrete contested-border gap before the
+            # general sector route is built.  This is the mobile complement to
+            # stationary planetary sensors: normal exploration continues, but
+            # we actively obtain intelligence where another empire is present.
+            border_candidates=[
+                planet for planet in candidates
+                if int(planet.id) in border_missions
+                and mission_reachable(probe,planet.position,"scan")
+            ]
+            if border_candidates:
+                target=min(
+                    border_candidates,
+                    key=lambda planet:distance(probe.position,planet.position),
+                )
+                route=build_probe_route(
+                    state,probe,[target],reserved=assigned,
+                    pressure=pressure,max_stops=1,
+                    sector=scout_sector(state,probe),
+                )
+            else:
+                route=build_probe_route(
+                    state,probe,candidates,
+                    reserved=assigned,
+                    pressure=pressure,
+                    max_stops=route_limit,
+                    sector=scout_sector(state,probe),
+                )
             if route is not None:
                 route_ids=list(route.planet_ids)
                 route_specs=list(route.waypoints or [])
@@ -247,6 +246,7 @@ def add_exploration_orders(
                 route_info=route.to_dict()
 
         if target is not None and route_ids:
+            target_promotion=exploration_promotion_target(state,target)
             fp=(probe.native or {}).get("fuel_profile") or {}
             free_warp=highest_zero_fuel_warp(fp) if fp else 0
             warp=int(route_specs[0]["warp"])
@@ -268,16 +268,27 @@ def add_exploration_orders(
                     "route_terminal":True,
                     "free_cruise_warp":free_warp,
                     "exploration_pressure":pressure,
+                    "promotion_target":target_promotion,
+                    "recon_focus":(
+                        "contested_border_intel"
+                        if int(target.id) in border_missions else "frontier_exploration"
+                    ),
+                    "border_mission":border_missions.get(int(target.id)),
                 },
                 (
                     f"{plan.persona_name + ': ' if plan else ''}"
                     f"probe campaign -> {target.name}; "
+                    f"{target_promotion['label']} promotion target; "
                     f"{route_remaining} unknown worlds remain on persistent forward route"
                     +(
                         f"; free cruise Warp {free_warp}"
                         if free_warp>=2 else ""
                     )
-                    +f". Route remains within {MAX_SCOUT_SUPPORT_DISTANCE:.0f} ly of owned support."
+                    +". Route prefers nearby supported worlds but may extend the frontier when fuel-safe."
+                    +(
+                        " Contested-border reconnaissance is prioritized because no live penetrating planetary sensor covers this target."
+                        if int(target.id) in border_missions else ""
+                    )
                 ),
                 priority=max(70,int(92*scout_weight)),
             )
@@ -288,6 +299,7 @@ def add_exploration_orders(
                 "next":target.id,
                 "remaining":route_remaining,
                 "free_cruise_warp":free_warp,
+                "promotion_target":target_promotion,
             })
             continue
 
@@ -438,7 +450,6 @@ def deconflict_recon_orders(state: GameState, orders: OrderSet) -> None:
         alternatives=[
             p for p in state.planets
             if _needs_recon(p)
-            and _distance_from_owned(state,p)<=MAX_SCOUT_SUPPORT_DISTANCE
             and p.id not in used
             and mission_reachable(f,p.position,"scan")
         ]
@@ -458,7 +469,6 @@ def deconflict_recon_orders(state: GameState, orders: OrderSet) -> None:
             pressure=pressure,
             max_stops=MAX_QUEUED_SCOUT_WAYPOINTS,
             sector=scout_sector(state,f),
-            max_support_distance=MAX_SCOUT_SUPPORT_DISTANCE,
         )
         if route is None:
             o.payload["deconflicted_hold"]=True

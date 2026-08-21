@@ -12,6 +12,7 @@ from .models import GameState
 from .persona import StrategicPlan
 from .planet_economy import decode_race_economy, estimated_operating_resources
 from .research_capabilities import ResearchCapability, stock_capability_catalog
+from .starsapi_items import MINING_ROBOT, component_spec, stock_component_database
 from .terraforming import evaluate_terraforming
 from .util import distance
 
@@ -19,6 +20,7 @@ from .util import distance
 FIELDS = ("energy", "weapons", "propulsion", "construction", "electronics", "biotechnology")
 EXPANSION_CATEGORIES = {"expansion", "logistics", "terraforming"}
 ONION_NETWORK_TAG = "onion_network"
+OPENING_GROWTH_TURNS = 10
 
 
 class ResearchPosture(str, Enum):
@@ -80,11 +82,25 @@ def _nearby_threats(state: GameState, plan: StrategicPlan | None) -> list:
     if not owned:
         return []
     radius = float(plan.defense_radius if plan else 100.0)
-    return [
-        fleet for fleet in state.fleets
-        if fleet.owner != state.player_id
-        and min(distance(fleet.position, planet.position) for planet in owned) <= radius
-    ]
+    threats=[]
+    for fleet in state.fleets:
+        if fleet.owner in (None,state.player_id):
+            continue
+        if min(distance(fleet.position, planet.position) for planet in owned) > radius:
+            continue
+        counts=(fleet.native or {}).get("ship_count", []) or []
+        hulls=sum(max(0,int(count or 0)) for count in counts)
+        mass=float((fleet.native or {}).get("mass", fleet.combat_power) or 0)
+        # A three-scout (or similarly tiny) contact group proves contact and
+        # still informs normal combat/escort production.  It does not prove an
+        # imminent battle worth locking empire research into Weapons every turn.
+        # Missing native fleet composition is uncertainty, not evidence that a
+        # contact is harmless.  Only a positively observed small/light group is
+        # classified as reconnaissance.
+        if 0 < hulls <= 3 and 0 < mass <= 100:
+            continue
+        threats.append(fleet)
+    return threats
 
 
 def _tech_after(state: GameState, requirements: dict[str, int]) -> GameState:
@@ -177,6 +193,69 @@ def _external_demands(state: GameState) -> list[ResearchDemand]:
     return out
 
 
+def _remote_miner_research_demand(state: GameState, designs: list[dict]) -> ResearchDemand | None:
+    """Return the first legal mining-robot unlock when real remote work exists."""
+    targets=[]
+    for planet in state.planets:
+        concentrations=(planet.native or {}).get("mineral_concentrations") or []
+        if (
+            planet.owner is None and planet.observed and len(concentrations) >= 3
+            and all(value is not None for value in concentrations[:3])
+            and sum(max(0,int(value)) for value in concentrations[:3]) >= 150
+        ):
+            targets.append(planet)
+    if not targets or any(str(design.get("role", "")) == "miner" for design in designs):
+        return None
+
+    race_prt=(state.race.native or {}).get("prt_id")
+    race_lrts={str(value).upper() for value in ((state.race.native or {}).get("lrts", []) or [])}
+    candidates=[]
+    for (category,item_id), raw in stock_component_database().components.items():
+        if int(category) != MINING_ROBOT:
+            continue
+        spec=component_spec(category,item_id)
+        if spec.required_prt is not None and int(race_prt if race_prt is not None else -1) != int(spec.required_prt):
+            continue
+        if spec.required_lrt is not None and str(spec.required_lrt).upper() not in race_lrts:
+            continue
+        requirements={
+            field:int(level) for field,level in zip(FIELDS,raw.tech_required)
+            if int(level) > 0
+        }
+        remaining=sum(max(0,int(level)-int(getattr(state.tech,field,0) or 0)) for field,level in requirements.items())
+        candidates.append((remaining,sum(requirements.values()),int(item_id),raw,spec,requirements))
+    if not candidates:
+        return None
+    remaining,_total,_item,raw,spec,requirements=min(candidates,key=lambda row:row[:3])
+    if remaining <= 0:
+        # The design synthesis path will handle the now-available component.
+        return None
+    capability=ResearchCapability(
+        capability_id=f"component:remote_miner:{int(raw.item_id)}",
+        name=spec.name,
+        category="logistics",
+        requirements=requirements,
+        post_unlock_action="Create and queue one race-legal remote miner for observed unowned mineral worlds.",
+        source="bundled StarsAPI UNEDITED.MOD mining-robot requirement",
+        tags=("remote_mining", "expansion_enabler"),
+    )
+    concentration=sum(
+        sum(max(0,int(value)) for value in (planet.native or {}).get("mineral_concentrations", [])[:3])
+        for planet in targets
+    )
+    return ResearchDemand(
+        capability=capability,
+        need=min(3.0,1.0+len(targets)*0.55),
+        urgency=1.45,
+        utilization=1.0,
+        value=min(3.0,1.2+concentration/450.0),
+        explanation=(
+            f"{len(targets)} observed unowned remote-mining target(s), combined concentration={concentration}; "
+            f"{spec.name} is the first component legal for this race, with remaining research {requirements}."
+        ),
+    )
+
+
 def _build_demands(
     state: GameState,
     plan: StrategicPlan | None,
@@ -226,6 +305,10 @@ def _build_demands(
         and bool(((p.native or {}).get("starbase_capabilities") or {}).get("can_build_ships"))
     )
     demands: list[ResearchDemand] = []
+
+    remote_mining_demand=_remote_miner_research_demand(state,designs)
+    if remote_mining_demand is not None:
+        demands.append(remote_mining_demand)
 
     for capability in catalog:
         if capability.unlocked(state.tech):
@@ -313,6 +396,27 @@ def _build_demands(
 
     threats = _nearby_threats(state, plan)
     if threats:
+        combat_slots={
+            int(design.get("design_number", -1))
+            for design in designs if str(design.get("role", "")) == "combat"
+        }
+        combat_assets=0
+        for fleet in state.fleets:
+            if fleet.owner != state.player_id:
+                continue
+            combat_assets += sum(
+                max(0,int(count or 0))
+                for slot,count in enumerate((fleet.native or {}).get("ship_count", []) or [])
+                if slot in combat_slots
+            )
+        for queue in ((state.native or {}).get("production_by_planet", {}) or {}).values():
+            combat_assets += sum(
+                max(0,int(item.get("count", 0) or 0))
+                for item in queue or []
+                if int(item.get("item_type", 0) or 0) == 4
+                and int(item.get("item_id", -1) or -1) in combat_slots
+            )
+        emergency=combat_assets < 3
         level = int(state.tech.weapons or 0) + 1
         capability = ResearchCapability(
             capability_id=f"military:weapons_readiness:{level}",
@@ -325,12 +429,17 @@ def _build_demands(
         )
         demands.append(ResearchDemand(
             capability,
-            min(3.0, 1.5 + len(threats) * 0.5),
-            2.0,
+            min(3.0, 1.0 + len(threats) * 0.5),
+            2.0 if emergency else 0.75,
             1.0,
             2.0,
-            True,
-            f"{len(threats)} hostile fleet(s) are inside the defense radius.",
+            emergency,
+            (
+                f"{len(threats)} hostile fleet(s) are inside the defense radius; "
+                f"combat/escort hulls live or queued={combat_assets}. "
+                + ("Emergency readiness remains below the minimum defensive force." if emergency
+                   else "Production has met the minimum defensive force, so this is no longer an emergency research lock.")
+            ),
         ))
 
     demands.extend(_external_demands(state))
@@ -530,6 +639,13 @@ def plan_research(
         or expansion_pressure(state) > 1.15
     )
     opening_network_debt = bool(network.turn <= 30 and network.expansion_network_debt)
+    turn = max(0, int(state.year) - 2400)
+    # The opening must establish its mineral economy and colony pipeline
+    # before it sacrifices one quarter of empire resources to a technology
+    # breakpoint.  Research continues at the normal background allocation,
+    # but no sprint (including a military-selected one) is allowed until turn
+    # 10.  This is shared economic doctrine, not a persona preference.
+    opening_growth_lock = turn < OPENING_GROWTH_TURNS
 
     candidates = sorted(
         (
@@ -580,16 +696,20 @@ def plan_research(
         if int(state.year) - start_year > expected + 2 and sum(remaining.values()) >= start_remaining:
             sprint_stalled = True
 
-    emergency = bool(chosen.military_emergency)
+    emergency = bool(chosen.military_emergency) and not opening_growth_lock
     sprint = bool(
         not sprint_stalled
         and 1 <= estimated_turns <= 5
         and chosen_score >= 55.0
         and chosen.utilization >= 0.55
     )
+    if opening_growth_lock:
+        sprint = False
     if emergency:
         posture = ResearchPosture.MILITARY_EMERGENCY
         sprint = True
+    elif opening_growth_lock:
+        posture = ResearchPosture.EXPANSION_FIRST
     elif sprint_stalled:
         posture = ResearchPosture.RECOVERY
     elif sprint:
@@ -615,6 +735,11 @@ def plan_research(
             f" OPENING NETWORK: radius={network.owned_radius_ly:.0f}/{network.target_radius_ly:.0f} ly; "
             f"outer hubs={list(network.outer_hub_ids)}; pop import backlog={network.population_import_backlog:,}; "
             f"bootstrap base={network.bootstrap_base_name}; ISB={'yes' if network.improved_starbases else 'no'}."
+        )
+    if opening_growth_lock:
+        reason += (
+            f" OPENING ECONOMY: turn {turn} keeps research at 15% until turn "
+            f"{OPENING_GROWTH_TURNS}; mines, factories, and colony hulls have first claim on production."
         )
     if sprint_stalled:
         reason += " WARNING - prior sprint exceeded its horizon without measurable tech progress; 15% recovery posture selected."

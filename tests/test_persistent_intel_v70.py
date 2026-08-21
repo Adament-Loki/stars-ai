@@ -52,6 +52,37 @@ def test_ever_observed_planet_survives_sparse_next_m_file():
     assert d1["restored_from_memory"]==1
 
 
+def test_current_m_unowned_record_revokes_stale_local_ownership():
+    """A lost world remains known, but cannot return as a local economy target."""
+    mem=AgentMemory()
+    s0=_state(2478,observed_ids={0,1},owners={0:1,1:1})
+    for planet in s0.planets:
+        planet.native.update({
+            "current_m_record":True,
+            "current_m_owner":planet.owner,
+            "current_m_owned_by_player":planet.owner==1,
+        })
+    mem.reconcile_state(s0)
+
+    # The next M file still names P1, but its current record explicitly says
+    # the planet is unowned after a capture/abandonment event.
+    s1=_state(2479,observed_ids={0},owners={0:1})
+    lost=next(p for p in s1.planets if p.id==1)
+    lost.native={
+        "current_m_record":True,
+        "current_m_owner":None,
+        "current_m_owned_by_player":False,
+    }
+    diag=mem.reconcile_state(s1)
+
+    assert lost.observed is True  # durable exploration knowledge remains
+    assert lost.owner is None
+    assert lost.native["intel_source"]=="current_m_unowned"
+    assert lost.native["native_planet_mutation_allowed"] is False
+    assert mem.planet_intel["1"]["last_known_owner"] is None
+    assert diag["current_m_ownership_revoked_planet_ids"]==[1]
+
+
 def test_known_world_count_is_monotonic_across_sparse_turns():
     mem=AgentMemory()
     counts=[]

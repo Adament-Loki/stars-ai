@@ -92,6 +92,7 @@ def _hub_state(production=None):
     )
     fort = Planet(
         1, "Frontier Fort", Position(240, 0), owner=1, population=20_000,
+        ironium=2_000, boranium=2_000, germanium=2_000,
         native={
             "has_starbase": True,
             "starbase_design": 1,
@@ -234,8 +235,11 @@ def test_remote_orbital_fort_becomes_a_concrete_fuel_hub_build():
         for order in orders.orders
         if order.kind == "set_planet_queue" and order.payload["planet_id"] == 1
     )
-    assert queue[0]["item"] == "starbase_design"
-    assert queue[0]["design_slot"] == 0
+    # Development comes first; the ready support base remains in the same
+    # queue rather than starving mines/factories on its host world.
+    assert queue[0]["item"] in {"mine", "factory"}
+    base = next(item for item in queue if item["item"] == "starbase_design")
+    assert base["design_slot"] == 0
 
 
 def test_native_starbase_queue_uses_offset_slot_and_preserves_completion():

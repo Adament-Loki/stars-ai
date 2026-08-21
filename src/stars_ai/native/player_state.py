@@ -13,6 +13,7 @@ from .production import QueueItem, parse_queue
 from .battle_plan import BattlePlanRecord, parse_battle_plan
 from .objects import MapObjectRecord, parse_object
 from .orders import ProductionQueueChange, PlanetChange, ResearchChange, parse_production_change, parse_planet_change, parse_research_change
+from .player_scores import PlayerScoreRecord, parse_player_score
 
 @dataclass
 class PlayerState:
@@ -29,6 +30,7 @@ class PlayerState:
     research_changes:list[ResearchChange]=field(default_factory=list)
     planet_changes:list[PlanetChange]=field(default_factory=list)
     production_changes:list[ProductionQueueChange]=field(default_factory=list)
+    player_scores:list[PlayerScoreRecord]=field(default_factory=list)
     block_inventory:list[dict]=field(default_factory=list)
     planet_metadata:dict[int,dict]=field(default_factory=dict)
 
@@ -64,6 +66,7 @@ class PlayerState:
                 elif b.type_id==34: state.research_changes.append(parse_research_change(b.data))
                 elif b.type_id==35: state.planet_changes.append(parse_planet_change(b.data))
                 elif b.type_id==29: state.production_changes.append(parse_production_change(b.data))
+                elif b.type_id==45: state.player_scores.append(parse_player_score(b.data))
             except Exception as exc:
                 # Faithful reverse-engineering behavior: don't lose the file because one specialized decoder is incomplete.
                 state.block_inventory[-1]['decode_error']=f'{type(exc).__name__}: {exc}'

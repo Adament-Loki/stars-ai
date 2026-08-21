@@ -12,7 +12,7 @@ def test_type27_medium_freighter_fixture_matches_controlled_gui_bytes():
     d=EncodedShipDesign(4,1,4,50,0,(
         ComponentRef(1,2,1),ComponentRef(4096,5,1),ComponentRef(4,0,1)
     ),"Medium Freighter")
-    staging,final=create_ship_design_blocks(d)
+    staging,final=create_ship_design_blocks(d,final_control=0x64)
     assert staging.data==bytes.fromhex(
         "11 A4 07 10 01 04 32 00 03 00 00 00 00 00 00 00 00 00 00 00 "
         "00 00 00 00 00 00 00 00 00 00 00 0B BC 2D 64 DE DB 0B 58 24 D8 3A 28"

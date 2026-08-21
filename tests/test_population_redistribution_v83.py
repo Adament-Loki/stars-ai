@@ -4,7 +4,7 @@ from stars_ai.population_redistribution import (
     plan_empty_freighter_returns,
     add_population_redistribution_orders,
 )
-from stars_ai.logistics_capacity import POPULATION_PULSE_COLONISTS, POPULATION_PULSE_KT
+from stars_ai.logistics_capacity import HOMEWORLD_EARLY_EXPORT_COLONISTS, HOMEWORLD_EARLY_EXPORT_KT
 
 
 def _fleet(fid, x=0, planet_id=0):
@@ -29,40 +29,42 @@ def _state(home_pop=100_000, two_freighters=False):
     return GameState("pop",2415,1,race,Tech(construction=4,propulsion=2),[home,child,*frontier],fleets,native={"design_profiles":[]})
 
 
-def test_100k_homeworld_dispatches_exactly_one_20k_pulse_and_keeps_80k():
+def test_100k_homeworld_dispatches_one_gentle_8k_pulse_and_keeps_92k():
     state=_state(two_freighters=True)
     intents=plan_population_redistribution(state)
     assert len(intents)==1
     x=intents[0]
-    assert x.population_kt==POPULATION_PULSE_KT==200
-    assert x.population_colonists==POPULATION_PULSE_COLONISTS==20_000
+    assert x.population_kt==HOMEWORLD_EARLY_EXPORT_KT==80
+    assert x.population_colonists==HOMEWORLD_EARLY_EXPORT_COLONISTS==8_000
     assert x.source_population_before==100_000
-    assert x.source_population_after==80_000
+    assert x.source_population_after==92_000
     assert x.source_protected_floor==80_000
     assert "only population departure" in x.reason
 
 
-def test_source_below_100k_does_not_dispatch():
-    assert plan_population_redistribution(_state(home_pop=99_900))==[]
+def test_homeworld_below_88k_does_not_dispatch():
+    assert plan_population_redistribution(_state(home_pop=87_900))==[]
 
 
 def test_two_waiting_transports_do_not_double_strip_one_source():
     state=_state(home_pop=140_000,two_freighters=True)
     intents=plan_population_redistribution(state,max_transfers=4)
     assert len(intents)==1
-    assert intents[0].population_colonists==20_000
+    assert intents[0].population_colonists==8_000
 
 
-def test_empty_transport_returns_to_exporter_even_while_source_replenishes():
+def test_empty_transport_returns_only_when_exporter_has_a_current_loadable_payload():
     state=_state(home_pop=85_000)
-    # Move empty ship to the child world. Home is not ready for another pulse yet,
-    # but it still has downstream backlog and should remain the designated exporter.
+    # Move the empty ship to the child world. Home is still replenishing and
+    # cannot load a legal pulse this turn, so there is no reason to fly empty.
     f=state.fleets[0]
     f.position=Position(120,0)
     f.native["position_object_id"]=1
+    assert plan_empty_freighter_returns(state)==[]
+
+    state.planets[0].population=100_000
     returns=plan_empty_freighter_returns(state)
-    assert returns
-    assert returns[0].export_planet_id==0
+    assert returns and returns[0].export_planet_id==0
     assert returns[0].current_planet_id==1
 
 
@@ -89,6 +91,7 @@ def test_order_payload_never_credits_stargate_for_loaded_population():
     intents=add_population_redistribution_orders(state,orders)
     assert intents
     order=next(o for o in orders.orders if o.kind=="transport_population")
-    assert order.payload["population_kt"]==200
+    assert order.payload["population_kt"]==80
     assert order.payload["gate_allowed_while_loaded"] is False
-    assert order.payload["population_dispatch_policy"]=="one_20k_pulse_per_source_per_turn"
+    assert order.payload["population_dispatch_policy"]=="one_capped_export_per_source_per_turn"
+    assert order.payload["native_experiment"]["trust_level"]=="EXPERIMENTAL"

@@ -1,7 +1,7 @@
 
 from stars_ai.models import GameState,RaceProfile,Tech,Planet,Fleet,Position,OrderSet
 from stars_ai.memory import AgentMemory
-from stars_ai.exploration_router import build_probe_route
+from stars_ai.exploration_router import build_probe_route, exploration_promotion_target
 from stars_ai.fuel_planner import (
     highest_zero_fuel_warp,
     scout_one_way_warp,
@@ -92,7 +92,7 @@ def test_low_fuel_mizer_scan_is_not_sent_home_to_refuel():
     assert move.payload["mission"]=="scan"
     assert move.payload["destination_planet_id"]==2
     assert move.payload["warp"]==4
-    assert move.payload["fuel_plan"]["policy"]=="one_way_probe"
+    assert move.payload["fuel_plan"]["policy"]=="fastest_fuel_safe_mizer_recon"
 
 
 def test_probe_route_can_plan_twelve_unique_forward_worlds():
@@ -114,6 +114,27 @@ def test_probe_route_can_plan_twelve_unique_forward_worlds():
     assert len(set(route.planet_ids))==12
     assert route.expected_discoveries==12
     assert route.terminal is True
+
+
+def test_probe_route_stays_with_the_previous_waypoints_local_unexplored_cluster():
+    home=Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=80)
+    local=[
+        Planet(1,"Local A",Position(20,0),observed=False),
+        Planet(2,"Local B",Position(45,0),observed=False),
+    ]
+    # A dense distant group has a larger aggregate cluster score, but it must
+    # not make the scout skip the two nearby unknowns.
+    distant=[
+        Planet(10+i,f"Distant {i}",Position(200+i*4,(i%2)*4),observed=False)
+        for i in range(8)
+    ]
+    scout=Fleet(0,"Probe",1,Position(0,0),role="scout")
+    state=GameState("g",2410,1,RaceProfile(),Tech(),[home,*local,*distant],[scout])
+
+    route=build_probe_route(state,scout,[*local,*distant],max_stops=2)
+
+    assert route is not None
+    assert route.planet_ids == [1,2]
 
 
 def test_persistent_route_is_reused_next_turn_instead_of_replanned():
@@ -151,7 +172,7 @@ def test_milestone_deficit_can_raise_scout_force_above_old_cap():
     }
     desired,reason=_desired_scout_force(s,None,current_scout_assets=3)
     assert desired>6
-    assert desired<=12
+    assert desired<=24
     assert "target scout force" in reason
 
 
@@ -189,3 +210,26 @@ def test_exploration_order_contains_route_diagnostics():
     assert scan.payload["route_expected_discoveries"]>=1
     assert scan.payload["route_terminal"] is True
     assert scan.payload["free_cruise_warp"]==4
+    assert scan.payload["promotion_target"]["label"].startswith("P")
+
+
+def test_promotion_targets_identify_successive_p1_to_p4_relay_rings():
+    """Unknown systems receive a ring purpose before their value is known."""
+    home=Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=100,
+                population=500_000,native={"is_homeworld":True})
+    p1=Planet(1,"P1",Position(130,0),owner=1,observed=True,habitability=85,population=80_000)
+    p2=Planet(2,"P2",Position(260,0),owner=1,observed=True,habitability=80,population=20_000)
+    p3=Planet(3,"P3",Position(390,0),owner=1,observed=True,habitability=75,population=10_000)
+    p1_candidate=Planet(10,"P1 Candidate",Position(115,30),observed=False)
+    p2_candidate=Planet(11,"P2 Candidate",Position(250,30),observed=False)
+    p3_candidate=Planet(12,"P3 Candidate",Position(385,30),observed=False)
+    p4_candidate=Planet(13,"P4 Candidate",Position(520,30),observed=False)
+    state=GameState(
+        "rings",2410,1,RaceProfile(),Tech(),
+        [home,p1,p2,p3,p1_candidate,p2_candidate,p3_candidate,p4_candidate],[],
+    )
+
+    assert exploration_promotion_target(state,p1_candidate)["label"]=="P1"
+    assert exploration_promotion_target(state,p2_candidate)["label"]=="P2"
+    assert exploration_promotion_target(state,p3_candidate)["label"]=="P3"
+    assert exploration_promotion_target(state,p4_candidate)["label"]=="P4"

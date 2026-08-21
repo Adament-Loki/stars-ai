@@ -19,7 +19,7 @@ def test_turn3_client_fresh_colony_ship_fixture_matches_exact_create_pair():
         name="Colony Ship",
         staging_name="Colony Ship",
     )
-    staging, final = create_ship_design_blocks(d)
+    staging, final = create_ship_design_blocks(d, final_control=0x64)
     assert staging.data == bytes.fromhex(
         "11 a4 07 10 0f 3c 14 00 02 02 00 00 00 00 00 00 00 00 00 "
         "00 00 00 00 00 00 00 00 08 b2 75 76 e2 0c 23 4d cf"

@@ -32,7 +32,9 @@ def test_transport_sequence():
         "00 20 00 20 00 20 00 20 00 70"
     )
 
-def test_strategy_emits_both_operations():
+def test_strategy_emits_colony_and_shared_transport_operations():
     s=_state(); o=OrderSet("g",2400,1); add_economic_orders(s,o,None)
     assert any(x.kind=="colony_operation" for x in o.orders)
-    assert any(x.kind=="transport_minerals" for x in o.orders)
+    # The shared scheduler may correctly choose P1 population before a lower
+    # ranked mineral manifest; either form is one native transport operation.
+    assert any(x.kind in {"transport_population","transport_minerals"} for x in o.orders)

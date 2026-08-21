@@ -1,3 +1,10 @@
+"""Stable, serializer-friendly data contracts shared by every AI subsystem.
+
+These dataclasses intentionally contain no strategy.  Adapters translate JSON
+or native Stars! records into ``GameState``; planners create ``OrderSet``;
+writers then choose how to serialize those semantic orders.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
@@ -6,12 +13,14 @@ from typing import Any
 
 @dataclass
 class Position:
+    """A Stars! map coordinate in light years."""
     x: float
     y: float
 
 
 @dataclass
 class Planet:
+    """The AI's observed state for one planet, in normalized game units."""
     id: int
     name: str
     position: Position
@@ -31,6 +40,7 @@ class Planet:
 
 @dataclass
 class Fleet:
+    """A fleet visible to the current player, including its decoded route head."""
     id: int
     name: str
     owner: int
@@ -52,6 +62,7 @@ class Fleet:
 
 @dataclass
 class Tech:
+    """The six Stars! research field levels for the current player."""
     energy: int = 0
     weapons: int = 0
     propulsion: int = 0
@@ -62,6 +73,7 @@ class Tech:
 
 @dataclass
 class RaceProfile:
+    """Race traits and planning preferences that affect legal strategic choices."""
     name: str = "AI Race"
     growth_rate: float = 0.15
     primary_trait: str = "unknown"
@@ -78,6 +90,7 @@ class RaceProfile:
 
 @dataclass
 class GameState:
+    """Complete normalized input required to make one player's turn decision."""
     game_name: str
     year: int
     player_id: int
@@ -90,6 +103,7 @@ class GameState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GameState":
+        """Build a normalized state from the public JSON representation."""
         planets = [
             Planet(
                 id=p["id"],
@@ -142,11 +156,13 @@ class GameState:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-ready deep representation of this state."""
         return asdict(self)
 
 
 @dataclass
 class Order:
+    """One semantic AI request; a writer decides its concrete file encoding."""
     kind: str
     payload: dict[str, Any]
     reason: str
@@ -155,6 +171,7 @@ class Order:
 
 @dataclass
 class OrderSet:
+    """All semantic requests and human-readable planning notes for one turn."""
     game_name: str
     year: int
     player_id: int
@@ -162,7 +179,9 @@ class OrderSet:
     notes: list[str] = field(default_factory=list)
 
     def add(self, kind: str, payload: dict[str, Any], reason: str, priority: int = 50):
+        """Append an order with its evidence trail and conflict-resolution priority."""
         self.orders.append(Order(kind, payload, reason, priority))
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-ready representation suitable for traces and adapters."""
         return asdict(self)

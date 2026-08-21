@@ -2,8 +2,9 @@
 
 Population logistics and industrial bulk logistics are deliberately separate:
 
-* Opening population movement uses frequent 20,000-colonist / 200-kT pulses on
-  Privateer/Medium-Freighter-class ships. A source may dispatch at most one
+* Opening population movement uses a deliberately gentle 8,000-colonist /
+  80-kT homeworld pulse until the homeworld reaches 200,000 colonists. It then
+  uses 20,000-colonist / 200-kT pulses. A source may dispatch at most one
   population transport per turn and must remain above its protected breeder
   floor.
 * Large Freighters are valued primarily for bulk mineral concentration at
@@ -22,10 +23,14 @@ from typing import Any
 
 from .expansion_network import evaluate_expansion_network
 from .planet_economy import planet_population_capacity, projected_population_growth
+from .starbase_planner import plan_support_base_material_demands
 from .util import distance
 
 POPULATION_PULSE_COLONISTS = 20_000
 POPULATION_PULSE_KT = 200
+HOMEWORLD_EARLY_EXPORT_COLONISTS = 8_000
+HOMEWORLD_EARLY_EXPORT_KT = 80
+HOMEWORLD_STABLE_POPULATION = 200_000
 POPULATION_EXPORT_TRIGGER = 100_000
 HOMEWORLD_POST_EXPORT_FLOOR = 80_000
 OPENING_HUB_HOLD_FRACTION = 0.25
@@ -53,6 +58,8 @@ class ExportSourceStatus:
     downstream_backlog: int
     projected_growth: int
     exportable_population: int
+    max_export_colonists: int
+    max_export_kt: int
     stored_pulses: int
     sustainable_pulses_per_turn: float
     ready_now: bool
@@ -69,6 +76,9 @@ class LogisticsCapacitySnapshot:
     sustainable_population_pulses_per_turn: float
     average_population_round_trip_turns: float
     desired_population_freighters: int
+    live_freighter_count: int
+    population_committed_freighters: int
+    industrial_freighters_available: int
     bulk_shipyard_deficit_kt: int
     bulk_donor_surplus_kt: int
     bulk_transferable_kt: int
@@ -84,9 +94,9 @@ class LogisticsCapacitySnapshot:
 def population_export_floor(state: Any, hub, network=None) -> int:
     """Protected population after an economic population-freight departure.
 
-    Opening homeworld doctrine is the explicit pulse rule requested for this AI:
-    at ~100k population, one 20k packet may leave and ~80k remains. This is
-    intentionally more aggressive than a literal 25%-of-HW-capacity floor.
+    Opening homeworld doctrine keeps an 80k protected breeder floor. Before
+    200k population it exports only 8k at a time, so the homeworld continues to
+    stabilize rather than repeatedly falling back to its floor.
 
     A graduated child hub is different: it may export only while remaining at
     or above its onion graduation/breeder floor (~25% capacity through T30).
@@ -127,15 +137,29 @@ def export_source_statuses(state: Any, network=None) -> list[ExportSourceStatus]
             continue
         backlog = sum(int(x.import_population_to_25 or 0) for x in child_hubs)
         floor = population_export_floor(state, hub, network)
-        trigger = max(POPULATION_EXPORT_TRIGGER, floor + POPULATION_PULSE_COLONISTS)
         pop = int(planet.population or 0)
+        is_homeworld = network.homeworld_id is not None and int(parent_id) == int(network.homeworld_id)
+        early_homeworld = bool(is_homeworld and pop < HOMEWORLD_STABLE_POPULATION)
+        max_export = (
+            HOMEWORLD_EARLY_EXPORT_COLONISTS
+            if early_homeworld
+            else POPULATION_PULSE_COLONISTS
+        )
+        max_export_kt = max_export // 100
+        # A homeworld is permitted to start its gentle staging pulse at 88k.
+        # Other exporters retain the normal 100k / 20k staging rule.
+        trigger = (
+            floor + max_export
+            if is_homeworld
+            else max(POPULATION_EXPORT_TRIGGER, floor + POPULATION_PULSE_COLONISTS)
+        )
         exportable = max(0, pop - floor)
-        stored = max(0, exportable // POPULATION_PULSE_COLONISTS)
+        stored = max(0, exportable // max_export)
         growth = max(0, int(projected_population_growth(planet, state.race)))
         # Long-run source replenishment is the primary rate. Existing stored
         # surplus is allowed to raise the near-term rate, but never above the
         # one-departure-per-source-per-turn phasing invariant.
-        growth_rate = growth / float(POPULATION_PULSE_COLONISTS)
+        growth_rate = growth / float(max_export)
         stored_rate = min(1.0, stored / 5.0)
         sustainable = min(1.0, max(growth_rate, stored_rate))
         ready = bool(pop >= trigger and backlog >= 10_000)
@@ -148,6 +172,8 @@ def export_source_statuses(state: Any, network=None) -> list[ExportSourceStatus]
             downstream_backlog=int(backlog),
             projected_growth=int(growth),
             exportable_population=int(exportable),
+            max_export_colonists=int(max_export),
+            max_export_kt=int(max_export_kt),
             stored_pulses=int(stored),
             sustainable_pulses_per_turn=round(float(sustainable), 4),
             ready_now=ready,
@@ -188,6 +214,34 @@ def _round_trip_turns(state: Any, network, statuses: list[ExportSourceStatus]) -
 def _production_queue(state: Any, planet_id: int) -> list[dict]:
     raw = (state.native or {}).get("production_by_planet", {}) or {}
     return list(raw.get(str(int(planet_id)), raw.get(int(planet_id), [])) or [])
+
+
+def _live_freighter_commitment(state: Any) -> tuple[int,int]:
+    """Return (live freighters, hulls currently carrying colonists).
+
+    A loaded population carrier cannot also haul the minerals required by an
+    outer onion-layer base.  We use current native cargo, rather than a
+    persona's preferred playstyle, as the evidence that a hull is committed.
+    """
+    live=0
+    population_committed=0
+    for fleet in getattr(state,"fleets",[]) or []:
+        if fleet.owner != state.player_id or str(fleet.role) != "freighter":
+            continue
+        ship_count=sum(
+            max(0,int(n or 0))
+            for n in ((getattr(fleet,"native",{}) or {}).get("ship_count",[]) or [])
+        )
+        hulls=max(1,ship_count)
+        live += hulls
+        cargo=(getattr(fleet,"native",{}) or {}).get("cargo",{}) or {}
+        population=max(
+            int(getattr(fleet,"cargo_population",0) or 0),
+            int(cargo.get("population",0) or 0)*100,
+        )
+        if population>0:
+            population_committed += hulls
+    return int(live),int(population_committed)
 
 
 def _bulk_industrial_demand(state: Any, network) -> tuple[int, int, int, int]:
@@ -237,6 +291,17 @@ def _bulk_industrial_demand(state: Any, network) -> tuple[int, int, int, int]:
         deficit += max(0, targets[1] - int(p.boranium or 0))
         deficit += max(0, targets[2] - int(p.germanium or 0))
 
+    # Exact remaining support-base bills are more meaningful than the old
+    # generic bootstrap allowance.  A stalled Space Station now contributes its
+    # actual I/B/G deficit, which is precisely the use case for a Large
+    # Freighter once compact population carriers are occupied.
+    material_demands=plan_support_base_material_demands(state)
+    deficit += sum(
+        sum(int(amount) for amount in demand.mineral_deficit.values())
+        for demand in material_demands
+        if not demand.ready
+    )
+
     # Hub/base bootstrap shortages contribute, but alone are normally too small
     # to cross the Large-Freighter threshold.
     deficit += int(network.bootstrap_ironium_deficit or 0)
@@ -267,6 +332,7 @@ def evaluate_logistics_capacity(state: Any) -> LogisticsCapacitySnapshot:
     turn = int(network.turn)
     cap = OPENING_POPULATION_FREIGHTER_CAP if turn <= 20 else T30_POPULATION_FREIGHTER_CAP if turn <= 30 else LATE_POPULATION_FREIGHTER_CAP
     desired_pop = min(cap, max(0, desired_pop))
+    live_freighters,population_committed=_live_freighter_commitment(state)
 
     bulk_deficit, donor_surplus, transferable, active_builds = _bulk_industrial_demand(state, network)
     large_value = bool(
@@ -291,6 +357,9 @@ def evaluate_logistics_capacity(state: Any) -> LogisticsCapacitySnapshot:
         sustainable_population_pulses_per_turn=round(pulse_rate, 4),
         average_population_round_trip_turns=round(cycle, 3),
         desired_population_freighters=int(desired_pop),
+        live_freighter_count=int(live_freighters),
+        population_committed_freighters=int(population_committed),
+        industrial_freighters_available=max(0,int(live_freighters)-int(population_committed)),
         bulk_shipyard_deficit_kt=int(bulk_deficit),
         bulk_donor_surplus_kt=int(donor_surplus),
         bulk_transferable_kt=int(transferable),

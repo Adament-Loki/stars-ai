@@ -1,8 +1,9 @@
 from stars_ai.adapters.native_core_adapter import _normalize_active_waypoint
 from stars_ai.memory import AgentMemory
-from stars_ai.models import Fleet,GameState,Planet,Position,RaceProfile,Tech
+from stars_ai.models import Fleet,GameState,OrderSet,Planet,Position,RaceProfile,Tech
 from stars_ai.native.waypoint import WaypointRecord
-from stars_ai.native.x_writer import _native_waypoint_decision
+from stars_ai.native.x_writer import _movement_route_blocks, _native_waypoint_decision
+from stars_ai.warp_policy import optimize_active_route_warps
 
 
 def _waypoint(*, destination, warp, task, object_type=0x91):
@@ -74,6 +75,35 @@ def test_identical_native_mission_is_continue():
     assert decision["native_waypoint_destination"]==1
     assert decision["native_waypoint_warp"]==7
     assert decision["native_waypoint_task"]==0
+
+
+def test_same_destination_task_with_new_warp_emits_type5_update():
+    state=_state(warp=7)
+    payload={"fleet_id":0,"destination_planet_id":1,"warp":9,"mission":"recon"}
+    decision=_native_waypoint_decision(state,payload,operation_kind="move_fleet")
+    assert decision["result"]=="UPDATE WARP"
+    blocks=_movement_route_blocks(state,payload)
+    assert len(blocks)==1
+    assert blocks[0].type_id==5
+    assert int.from_bytes(blocks[0].data[2:4],"little")==1
+    assert blocks[0].data[10]>>4==9
+    assert blocks[0].data[11]==0x91
+
+
+def test_active_native_waypoint_is_reoptimized_each_turn():
+    state=_state(warp=5)
+    fleet=state.fleets[0]
+    fleet.native["fuel_profile"]={
+        "fuel":100,"effective_fuel":100,"fuel_capacity":100,
+        "groups":[{"engine_id":2,"mass":6,"engine_name":"Fuel Mizer"}],
+    }
+    fleet.native["race_fuel_flags"]={"ife":True,"ce":False}
+    orders=OrderSet("g",2400,1)
+    assert optimize_active_route_warps(state,orders)==1
+    update=orders.orders[0]
+    assert update.kind=="move_fleet"
+    assert update.payload["warp_reoptimization"] is True
+    assert update.payload["warp"]==9
 
 
 def test_different_native_destination_is_blocked_retarget():

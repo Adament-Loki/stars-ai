@@ -2,7 +2,13 @@
 from __future__ import annotations
 import argparse, json
 from pathlib import Path
-from .windows_autohost import WindowsAutoHostConfig, IntegratedNativeOrderBridge, ExternalCommandOrderBridge, NoopOrderBridge, run_50_turn_game
+from .autohost import (
+    ExternalCommandOrderBridge,
+    IntegratedNativeOrderBridge,
+    NoopOrderBridge,
+    WindowsAutoHostConfig,
+)
+from .windows_autohost import run_50_turn_game
 
 def main():
     ap=argparse.ArgumentParser(description="Automate a 4-AI Stars! host game for up to 50 turns.")

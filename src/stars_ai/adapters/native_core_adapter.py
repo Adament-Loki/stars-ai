@@ -1,3 +1,10 @@
+"""Translate decoded Stars! records into the AI's stable, native-free model.
+
+This adapter is the read-side boundary: it preserves native details under each
+model object's ``native`` dictionary while exposing only planner-safe fields as
+first-class attributes. Native X-file writing belongs in ``native.x_writer``.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -11,9 +18,11 @@ from ..native.player_state import PlayerState
 from ..fuel_planner import design_fuel_profile, fleet_fuel_profile, has_ife, has_ce
 from ..starbase_capabilities import starbase_capabilities
 from ..population_units import colonists_from_cargo_kt
+from ..starsapi_items import MINE_LAYER
 
 
 def _infer_xy(m_path: Path) -> Path | None:
+    """Find the sibling XY map for an M/H turn file when one exists."""
     # Stars! convention: GAME.m1 -> GAME.xy
     name = m_path.name
     if '.m' in name.lower():
@@ -26,6 +35,7 @@ def _infer_xy(m_path: Path) -> Path | None:
 
 
 def _pick_current_player(native: PlayerState, player_id: int):
+    """Select the decoded player record that owns the requested AI seat."""
     for p in native.players:
         if p.player_number == player_id and p.full_data_flag:
             return p
@@ -36,21 +46,27 @@ def _pick_current_player(native: PlayerState, player_id: int):
 
 
 def _role_for_design(d) -> str:
+    """Classify a design from fitted components for high-level planning."""
     armed=any(s.count>0 and s.category in (16,32,64) for s in d.slots)
+    has_mine_layer=any(s.count>0 and s.category==MINE_LAYER for s in d.slots)
     if d.hull_id in (14,15): return 'colony'
     if d.hull_id==4: return 'scout'
     if d.hull_id in (20,21,22,23,24): return 'miner'
-    if d.hull_id in (27,28): return 'minelayer'
+    # Dedicated SD hulls and compatible general-purpose hulls both need an
+    # actual Mine Layer component before they can establish a field.
+    if has_mine_layer: return 'minelayer'
     if d.hull_id in (0,1,2,3,11,12,13,25,26): return 'freighter'
     if armed: return 'combat'
     return 'unknown'
 
 def _design_roles(native: PlayerState, player_id: int) -> dict[int,str]:
+    """Build a design-slot to strategic-role map for the controlled player."""
     return {d.design_number:_role_for_design(d) for d in native.designs_for_player(player_id) if not d.is_starbase}
 
 def _fleet_role(ship_count: list[int], roles: dict[int, str]) -> str:
+    """Choose the dominant strategic role represented in a mixed fleet."""
     present = {roles.get(i, 'unknown') for i, count in enumerate(ship_count) if count}
-    for preferred in ('colony', 'combat', 'miner', 'scout', 'freighter'):
+    for preferred in ('colony', 'combat', 'minelayer', 'miner', 'scout', 'freighter'):
         if preferred in present:
             return preferred
     return 'unknown'
@@ -74,6 +90,7 @@ _RESEARCH_FIELD_BY_CODE = {
 
 
 def _current_research_field(native: PlayerState) -> str | None:
+    """Decode the most recently declared active research field, if known."""
     for change in reversed(native.research_changes):
         code=change.current_field_code
         if code is not None and int(code) in _RESEARCH_FIELD_BY_CODE:
@@ -82,6 +99,7 @@ def _current_research_field(native: PlayerState) -> str | None:
 
 
 def _next_research_field(native: PlayerState) -> str | None:
+    """Decode the next queued research field from the latest native change."""
     for change in reversed(native.research_changes):
         code=change.next_field_code
         if code is not None and int(code) in _RESEARCH_FIELD_BY_CODE:
@@ -90,10 +108,12 @@ def _next_research_field(native: PlayerState) -> str | None:
 
 
 def _research_percent(native: PlayerState) -> int | None:
+    """Return the latest native research allocation percentage, if recorded."""
     return next((int(x.percent) for x in reversed(native.research_changes) if x.percent is not None),None)
 
 
 def _planet_research_modes(native: PlayerState) -> dict[str,int]:
+    """Expose native leftover-only production flags by planet ID."""
     result={}
     for change in native.planet_changes:
         if change.leftover_only_raw is not None:
@@ -105,6 +125,7 @@ def _normalize_active_waypoint(waypoints) -> dict:
     """Normalize native waypoint #1 without guessing undocumented task values."""
     result={
         'destination_planet_id':None,
+        'destination_fleet_id':None,
         'destination_warp':None,
         'destination_task':None,
         'destination_mission':None,
@@ -115,11 +136,18 @@ def _normalize_active_waypoint(waypoints) -> dict:
     object_type=int(waypoint.position_object_type)
     # Controlled native samples use 0x11/0x51/0x91 for planet targets. The
     # upper bits carry state we preserve; low nibble 1 identifies the planet.
-    if (object_type & 0x0f) != 1:
-        return result
     task=int(waypoint.waypoint_task)
+    target_type=object_type & 0x0f
+    if target_type==1:
+        result['destination_planet_id']=int(waypoint.position_object) & 0x7ff
+    elif target_type==2:
+        # StarsAPI WaypointChangeTaskBlock defines target type 2 as a fleet.
+        # Owner identity is not present in the compact M-waypoint target, so
+        # retain only the local fleet number and preserve the raw byte below.
+        result['destination_fleet_id']=int(waypoint.position_object) & 0x1ff
+    else:
+        return result
     result.update({
-        'destination_planet_id':int(waypoint.position_object) & 0x7ff,
         'destination_warp':int(waypoint.warp),
         'destination_task':task,
         'destination_mission':_SAFE_WAYPOINT_TASK_MISSIONS.get(task),
@@ -128,6 +156,7 @@ def _normalize_active_waypoint(waypoints) -> dict:
 
 
 def _environment_tuple(p):
+    """Return complete gravity/temperature/radiation data, otherwise ``None``."""
     vals=(getattr(p,"gravity",None),getattr(p,"temperature",None),getattr(p,"radiation",None))
     if any(v is None for v in vals):
         return None
@@ -202,11 +231,13 @@ class NativeCoreTurnAdapter(TurnAdapter):
     """
 
     def __init__(self, xy_path: str | Path | None = None, x_path: str | Path | None = None):
+        """Optionally pin the companion XY map and X order paths for each read."""
         self.xy_path = Path(xy_path) if xy_path else None
         self.x_path = Path(x_path) if x_path else None
         self.last_native_state: PlayerState | None = None
 
     def read_state(self, path: Path, player_id: int) -> GameState:
+        """Decode one native player turn into a planner-ready ``GameState``."""
         m_path = Path(path)
         xy = self.xy_path or _infer_xy(m_path)
         native = PlayerState.from_files(m_path, xy, self.x_path)
@@ -282,6 +313,14 @@ class NativeCoreTurnAdapter(TurnAdapter):
                 germanium=int(p.germanium or 0),
                 observed=observed,
                 native={
+                    # A planet present in this M file is the only source of
+                    # execution authority. Persistent memory may enrich an
+                    # older observation for strategy, but it must never turn
+                    # an absent or unowned current record back into a local
+                    # production target.
+                    'current_m_record': True,
+                    'current_m_owner': p.owner,
+                    'current_m_owned_by_player': bool(p.owner == player_id),
                     'is_homeworld': p.is_homeworld,
                     'environment': [p.gravity, p.temperature, p.radiation],
                     'original_environment': [p.orig_gravity, p.orig_temperature, p.orig_radiation],
@@ -331,7 +370,13 @@ class NativeCoreTurnAdapter(TurnAdapter):
                 name=meta.get('name', f'Planet #{pid + 1}'),
                 position=Position(float(meta.get('x', 0)), float(meta.get('y', 0))),
                 owner=None, habitability=None, observed=False,
-                native={'observed_turn': None, 'map_only': True},
+                native={
+                    'observed_turn': None,
+                    'map_only': True,
+                    'current_m_record': False,
+                    'current_m_owner': None,
+                    'current_m_owned_by_player': False,
+                },
             ))
         planets.sort(key=lambda p: p.id)
 
@@ -346,11 +391,21 @@ class NativeCoreTurnAdapter(TurnAdapter):
                     'name':d.name or d.hull_name,
                     'hull_id':int(d.hull_id),
                     'hull_name':d.hull_name,
+                    # Preserve exact fitted components so economic planning can
+                    # fund the real base bill rather than a guessed allowance.
+                    'slots':[asdict(slot) for slot in d.slots],
                     'capabilities':starbase_capabilities(int(d.hull_id)),
                 })
                 continue
             fp=design_fuel_profile(d,role=design_roles.get(d.design_number,'unknown')).to_dict()
             fp['is_starbase']=False
+            # Production policy needs more than fuel geometry: carry native
+            # generation metadata forward so a newly researched design can be
+            # built instead of being masked by old hulls of the same role.
+            fp['turn_designed']=int(d.turn_designed)
+            fp['total_built']=int(d.total_built)
+            fp['total_remaining']=int(d.total_remaining)
+            fp['armor']=int(d.armor)
             design_profiles[int(d.design_number)]=fp
             design_profile_list.append(fp)
         best_fleets = native.best_fleets()
@@ -363,9 +418,11 @@ class NativeCoreTurnAdapter(TurnAdapter):
             # the fleet's maximum useful movement speed. Using it as a capability
             # ceiling caused fleets ordered at low warp once to remain permanently
             # slow. Preserve observed warp only as diagnostic state and give the
-            # planner a normal mission-speed baseline.
+            # planner a normal mission-speed baseline. Warp 9 is the fastest
+            # non-hazardous Stars! travel speed; Warp 10 is intentionally not
+            # used for routine AI routing.
             observed_warp = int(f.warp or 0)
-            speed = 8
+            speed = 9
             if len(waypoints) >= 2:
                 wp = waypoints[1]
                 observed_warp = int(wp.warp or observed_warp)
@@ -426,6 +483,7 @@ class NativeCoreTurnAdapter(TurnAdapter):
                     'population_raw_kt': int(f.population or 0),
                     'observed_warp': observed_warp,
                     'native_destination_planet_id':active_waypoint['destination_planet_id'],
+                    'native_destination_fleet_id':active_waypoint['destination_fleet_id'],
                     'native_destination_warp':active_waypoint['destination_warp'],
                     'native_destination_task':active_waypoint['destination_task'],
                     'native_destination_mission':active_waypoint['destination_mission'],
@@ -437,6 +495,14 @@ class NativeCoreTurnAdapter(TurnAdapter):
                     'at_starbase': at_starbase,
                 },
             ))
+
+        score_records=[record.to_dict() for record in native.player_scores]
+        visible_score_players={int(record.player_id) for record in native.player_scores}
+        public_scores=len(visible_score_players)>1
+        own_score=next(
+            (record.to_dict() for record in native.player_scores if int(record.player_id)==player_id),
+            None,
+        )
 
         return GameState(
             game_name=native.game_name or m_path.stem,
@@ -462,11 +528,25 @@ class NativeCoreTurnAdapter(TurnAdapter):
                 'starbase_profiles': starbase_profile_list,
                 'population_source_m_file': str(m_path),
                 'population_source_year': int(native.header.get('year',2400)),
+                # This allow-list is captured before persistent memory can
+                # enrich sparse observations. Native planet mutations must
+                # target only worlds the current M file still says we own.
+                'current_m_owned_planet_ids': sorted(
+                    int(planet.id) for planet in planets
+                    if bool((planet.native or {}).get('current_m_owned_by_player'))
+                ),
                 'block_inventory': list(native.block_inventory),
+                # Every M-file exposes its own current score.  Multiple score
+                # records are the public-score form, so only then may strategy
+                # use rival score totals.
+                'player_scores': score_records,
+                'current_player_score': own_score,
+                'score_visibility': 'public' if public_scores else 'private',
             },
         )
 
     def write_orders(self, orders: OrderSet, path: Path) -> None:
+        """Write semantic orders as JSON for adapter-level tests and inspection."""
         import json
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(orders.to_dict(), indent=2), encoding='utf-8')

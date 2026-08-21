@@ -22,7 +22,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from .planet_economy import planet_population_capacity
+from .planet_economy import planet_population_capacity, theoretical_max_population
 from .standard_mod import ComponentCategory, parse_mod_file
 from .util import distance
 
@@ -35,8 +35,10 @@ HUB_SEED_FRACTION = 0.10
 HUB_PARENT_READY_FRACTION = 0.25
 HUB_GROWTH_FRACTION = 0.33
 HUB_PRODUCTION_FRACTION = 0.50
-LAYER1_MIN_HUBS = 4
+LAYER1_MIN_HUBS = 3
 LAYER1_TARGET_HUBS = 5
+LAYER2_MIN_CHILDREN_PER_PARENT = 2
+LAYER2_TARGET_CHILDREN_PER_PARENT = 3
 
 PRT_HE = 0
 
@@ -64,6 +66,12 @@ class ExpansionHub:
     import_population_to_25: int
     export_population: int
     bootstrap_mineral_deficit: dict[str, int]
+    economic_value: float
+    strategic_value: float
+    overall_value: float
+    promotion_tier: int
+    promotion_rank: int | None
+    promotion_parent_id: int | None
 
 
 @dataclass(frozen=True)
@@ -83,6 +91,9 @@ class ExpansionNetworkSnapshot:
     layer1_hub_ids: tuple[int, ...]
     layer1_graduated_ids: tuple[int, ...]
     layer1_pending_ids: tuple[int, ...]
+    layer2_min_children_per_parent: int
+    layer2_target_children_per_parent: int
+    layer2_hub_ids: tuple[int, ...]
     active_export_hub_ids: tuple[int, ...]
     population_export_backlog: int
     population_import_backlog: int
@@ -160,6 +171,12 @@ class ExpansionNetworkSnapshot:
                 "graduated": list(self.layer1_graduated_ids),
                 "pending": list(self.layer1_pending_ids),
                 "graduation_rule": "population >= 25% capacity and shipyard+refuel starbase operational",
+            },
+            "layer2_program": {
+                "minimum_children_per_p1": self.layer2_min_children_per_parent,
+                "target_children_per_p1": self.layer2_target_children_per_parent,
+                "designated": list(self.layer2_hub_ids),
+                "promotion_rule": "each P1 ranks up to three nearby P2 upgrades by economic and strategic value",
             },
         }
 
@@ -293,6 +310,64 @@ def _capacity_fraction(planet, race) -> tuple[int, float]:
     return capacity, max(0.0, float(int(planet.population or 0)) / capacity)
 
 
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _planet_economic_value(planet, race, capacity: int, capacity_fraction: float) -> float:
+    """Score a world's production potential, not just its present output.
+
+    New colonies need a ranking before they have factories or mines, so
+    habitability, population capacity and mineral quality deliberately outweigh
+    current installations. Existing resources and industry still provide a
+    modest readiness bonus when two candidates have similar potential.
+    """
+    native = planet.native or {}
+    habitability = _clamp01(float(planet.habitability if planet.habitability is not None else 35) / 100.0)
+    race_max = max(1, int(theoretical_max_population(race)))
+    capacity_value = _clamp01(float(capacity) / race_max)
+    concentrations = list(native.get("mineral_concentrations", []) or [])
+    known = [max(0, min(100, int(x))) for x in concentrations[:3] if x is not None]
+    if known:
+        minerals = sum(known) / (100.0 * len(known))
+    else:
+        minerals = _clamp01(
+            sum(max(0, int(getattr(planet, mineral, 0) or 0)) for mineral in ("ironium", "boranium", "germanium"))
+            / 600.0
+        )
+    industry = _clamp01((int(planet.factories or 0) + int(planet.mines or 0)) / 250.0)
+    resources = _clamp01(int(planet.resources or 0) / 500.0)
+    established = max(industry, resources, _clamp01(capacity_fraction * 2.0))
+    return _clamp01(
+        0.42 * habitability
+        + 0.23 * capacity_value
+        + 0.25 * minerals
+        + 0.10 * established
+    )
+
+
+def _planet_strategic_value(
+    planet,
+    *,
+    frontier_count: int,
+    anchor_distance: float,
+    preferred_distance: float,
+) -> float:
+    """Score position in the onion network and expansion reach."""
+    native = planet.native or {}
+    explicit = _clamp01(float(native.get("strategic_value", 0.5) or 0.5))
+    frontier = _clamp01(float(frontier_count) / 6.0)
+    anchor_fit = _clamp01(1.0 - abs(float(anchor_distance) - preferred_distance) / max(1.0, preferred_distance))
+    base = native.get("starbase_capabilities") or {}
+    support = 1.0 if bool(base.get("can_build_ships") or base.get("can_refuel")) else 0.0
+    return _clamp01(
+        0.35 * explicit
+        + 0.30 * frontier
+        + 0.25 * anchor_fit
+        + 0.10 * support
+    )
+
+
 def _stage(fraction: float, *, can_refuel: bool, can_build_ships: bool) -> str:
     if fraction < HUB_SEED_FRACTION:
         return "SEED"
@@ -345,6 +420,9 @@ def evaluate_expansion_network(
             layer1_hub_ids=(),
             layer1_graduated_ids=(),
             layer1_pending_ids=(),
+            layer2_min_children_per_parent=LAYER2_MIN_CHILDREN_PER_PARENT,
+            layer2_target_children_per_parent=LAYER2_TARGET_CHILDREN_PER_PARENT,
+            layer2_hub_ids=(),
             active_export_hub_ids=(),
             population_export_backlog=0,
             population_import_backlog=0,
@@ -402,34 +480,90 @@ def evaluate_expansion_network(
         support_ready = bool(can_build and can_refuel)
         prelim.append((p, cap, frac, can_build, can_refuel, ring, parent_ready, support_ready))
 
-    # Formal opening program: designate the best 4-5 owned Ring-1 worlds as the
-    # homeworld's children. Existing support bases and nearly mature breeders are
-    # sticky by score so the designation does not thrash as new colonies appear.
-    layer1_ranked = []
+    # Promotion program. The homeworld classifies every owned world by an
+    # economic potential score, a positional/expansion score, and their overall
+    # value. It promotes up to five Ring-1 P1 hubs, then each P1 independently
+    # selects up to three Ring-2 P2 upgrades. The small separation bonus stops
+    # all P1s clustering on one side of the homeworld when comparable worlds
+    # exist elsewhere.
+    prelim_by_id = {int(row[0].id): row for row in prelim}
+    promotion_values: dict[int, tuple[float, float, float]] = {}
+    layer1_candidates: list[tuple[int, float]] = []
     for p, cap, frac, can_build, can_refuel, ring, parent_ready, support_ready in prelim:
-        if int(p.id) == int(home.id) or ring != 1:
+        pid = int(p.id)
+        f160 = sum(1 for q in frontier if distance(p.position, q.position) <= ring_hop_ly)
+        economic = _planet_economic_value(p, state.race, cap, frac)
+        strategic = _planet_strategic_value(
+            p,
+            frontier_count=f160,
+            anchor_distance=home_dist[pid],
+            preferred_distance=130.0,
+        )
+        overall = _clamp01(0.62 * economic + 0.38 * strategic)
+        promotion_values[pid] = (economic, strategic, overall)
+        if pid == int(home.id) or ring != 1:
             continue
         if p.habitability is not None and int(p.habitability) <= 0:
             continue
-        f160 = sum(1 for q in frontier if distance(p.position, q.position) <= ring_hop_ly)
-        strategic = float((p.native or {}).get("strategic_value", 0.5) or 0.5)
-        hab = float(p.habitability if p.habitability is not None else 35)
-        radial = max(0.0, 1.0 - abs(home_dist[int(p.id)] - 130.0) / 130.0)
-        score = (
-            (3.0 if support_ready else 0.0)
-            + 2.2 * min(1.0, frac / HUB_PARENT_READY_FRACTION)
-            + 0.018 * max(0.0, hab)
-            + 0.32 * min(6, f160)
-            + 0.45 * strategic
-            + 0.55 * radial
-            + 0.25 * min(2.0, (int(p.factories or 0) + int(p.mines or 0)) / 120.0)
-        )
-        layer1_ranked.append((score, int(p.id)))
-    layer1_ranked.sort(key=lambda row: (-row[0], row[1]))
-    layer1_ids = tuple(pid for _, pid in layer1_ranked[:LAYER1_TARGET_HUBS])
-    layer1_set = set(layer1_ids)
+        readiness = 0.10 if support_ready else 0.0
+        breeder_progress = 0.08 * min(1.0, frac / HUB_PARENT_READY_FRACTION)
+        layer1_candidates.append((pid, overall + readiness + breeder_progress))
 
-    prelim_by_id = {int(row[0].id): row for row in prelim}
+    selected_layer1: list[int] = []
+    remaining_layer1 = dict(layer1_candidates)
+    while remaining_layer1 and len(selected_layer1) < LAYER1_TARGET_HUBS:
+        def p1_pick_score(pid: int) -> tuple[float, float, int]:
+            score = remaining_layer1[pid]
+            if selected_layer1:
+                separation = min(
+                    distance(prelim_by_id[pid][0].position, prelim_by_id[other][0].position)
+                    for other in selected_layer1
+                )
+                score += 0.12 * _clamp01(separation / ring_hop_ly)
+            return score, promotion_values[pid][2], -pid
+        picked = max(remaining_layer1, key=p1_pick_score)
+        selected_layer1.append(int(picked))
+        del remaining_layer1[picked]
+
+    layer1_ids = tuple(selected_layer1)
+    layer1_set = set(layer1_ids)
+    layer1_rank = {pid: rank for rank, pid in enumerate(layer1_ids, 1)}
+
+    p2_parent_by_id: dict[int, int] = {}
+    p2_rank_by_id: dict[int, int] = {}
+    available_p2 = {
+        int(p.id)
+        for p, _cap, _frac, _build, _refuel, ring, _ready, _support in prelim
+        if ring == 2 and (p.habitability is None or int(p.habitability) > 0)
+    }
+    for parent_id in layer1_ids:
+        parent = prelim_by_id[parent_id][0]
+        candidates: list[tuple[float, int, tuple[float, float, float]]] = []
+        for child_id in sorted(available_p2):
+            child, cap, frac, _build, _refuel, _ring, _ready, _support = prelim_by_id[child_id]
+            parent_distance = float(distance(parent.position, child.position))
+            # A far-away Ring-2 world belongs to another relay. Keep the P1
+            # selection local unless no local P2 exists for this parent.
+            if parent_distance > ring_hop_ly * 1.5:
+                continue
+            f160 = sum(1 for q in frontier if distance(child.position, q.position) <= ring_hop_ly)
+            economic = _planet_economic_value(child, state.race, cap, frac)
+            strategic = _planet_strategic_value(
+                child,
+                frontier_count=f160,
+                anchor_distance=parent_distance,
+                preferred_distance=130.0,
+            )
+            overall = _clamp01(0.62 * economic + 0.38 * strategic)
+            candidates.append((overall, child_id, (economic, strategic, overall)))
+        candidates.sort(key=lambda row: (-row[0], row[1]))
+        for rank, (_score, child_id, values) in enumerate(candidates[:LAYER2_TARGET_CHILDREN_PER_PARENT], 1):
+            p2_parent_by_id[child_id] = parent_id
+            p2_rank_by_id[child_id] = rank
+            promotion_values[child_id] = values
+            available_p2.remove(child_id)
+
+    layer2_ids = tuple(sorted(p2_parent_by_id))
     layer1_graduated_ids = tuple(sorted(
         pid for pid in layer1_ids
         if prelim_by_id[pid][6] and prelim_by_id[pid][7]
@@ -460,11 +594,20 @@ def evaluate_expansion_network(
 
         is_home = int(p.id) == int(home.id)
         designated_layer1 = int(p.id) in layer1_set
+        designated_layer2 = int(p.id) in p2_parent_by_id
         graduated = bool(parent_ready and support_ready and (ring != 1 or designated_layer1))
 
         parent_exporter_id = None
         if designated_layer1:
             parent_exporter_id = int(home.id)
+        elif designated_layer2:
+            # P2 classification is visible immediately, but its parent lane is
+            # held until the owning P1 has actually graduated. This enforces
+            # HW -> P1 -> P2 promotion instead of creating a premature bulk or
+            # population obligation on an immature relay.
+            candidate_parent = int(p2_parent_by_id[int(p.id)])
+            if candidate_parent in layer1_graduated_set:
+                parent_exporter_id = candidate_parent
         elif ring >= 2:
             parents = graduated_by_ring.get(ring - 1, [])
             if parents:
@@ -499,6 +642,7 @@ def evaluate_expansion_network(
 
         strategic_hub = bool(
             designated_layer1
+            or (designated_layer2 and parent_exporter_id is not None)
             or parent_exporter_id is not None
             or (not is_home and ring >= max(1, deepest - 1) and f160 >= 2)
         )
@@ -513,6 +657,18 @@ def evaluate_expansion_network(
                         "germanium": "base_germanium",
                     }[key]]) - int(getattr(p, key, 0) or 0),
                 )
+
+        economic_value, strategic_value, overall_value = promotion_values[int(p.id)]
+        promotion_tier = 0 if is_home else 1 if designated_layer1 else 2 if designated_layer2 else max(3, int(ring))
+        promotion_rank = (
+            1 if is_home
+            else layer1_rank.get(int(p.id))
+            if designated_layer1 else p2_rank_by_id.get(int(p.id))
+        )
+        promotion_parent_id = (
+            None if is_home else int(home.id) if designated_layer1
+            else p2_parent_by_id.get(int(p.id))
+        )
 
         hubs.append(ExpansionHub(
             planet_id=int(p.id),
@@ -536,6 +692,12 @@ def evaluate_expansion_network(
             import_population_to_25=import_pop,
             export_population=export_pop,
             bootstrap_mineral_deficit=mineral_deficit,
+            economic_value=round(float(economic_value), 4),
+            strategic_value=round(float(strategic_value), 4),
+            overall_value=round(float(overall_value), 4),
+            promotion_tier=int(promotion_tier),
+            promotion_rank=promotion_rank,
+            promotion_parent_id=promotion_parent_id,
         ))
 
     outer_threshold = max(1, deepest)
@@ -611,6 +773,9 @@ def evaluate_expansion_network(
         layer1_hub_ids=tuple(sorted(layer1_ids)),
         layer1_graduated_ids=tuple(sorted(layer1_graduated_ids)),
         layer1_pending_ids=tuple(sorted(layer1_pending_ids)),
+        layer2_min_children_per_parent=LAYER2_MIN_CHILDREN_PER_PARENT,
+        layer2_target_children_per_parent=LAYER2_TARGET_CHILDREN_PER_PARENT,
+        layer2_hub_ids=layer2_ids,
         active_export_hub_ids=tuple(sorted(active_export_ids)),
         population_export_backlog=pop_export,
         population_import_backlog=pop_import,

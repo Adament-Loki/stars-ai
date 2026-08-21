@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from .planet_economy import installation_status
+from .planet_economy import working_mineral_reserve
 
 SMALL_LOAD_MAX_PER_MINERAL = 255
 
@@ -40,58 +40,12 @@ def _planned_queue_for(orders, planet_id: int) -> list[dict]:
 
 
 def _working_stock(planet, economy, orders) -> dict:
-    """
-    Estimate minerals that should remain on the planet for near-term work.
-
-    Germanium is tied directly to factory demand. Ship mineral costs are not yet
-    reconstructed design-by-design, so ship construction gets a conservative
-    mineral reserve rather than a fake exact cost.
-    """
-    queue = _planned_queue_for(orders, planet.id)
-    factories_queued = sum(
-        int(q.get("quantity", 0) or 0)
-        for q in queue
-        if q.get("item") == "factory"
+    """Shared planet-reserve policy used by both production and freight."""
+    return working_mineral_reserve(
+        planet,
+        economy,
+        _planned_queue_for(orders,planet.id),
     )
-    defenses_queued = sum(
-        int(q.get("quantity", 0) or 0)
-        for q in queue
-        if q.get("item") == "defense"
-    )
-    ships_queued = sum(
-        int(q.get("quantity", 0) or 0)
-        for q in queue
-        if q.get("item") == "ship_design"
-    )
-
-    status = installation_status(planet, economy)
-    g_per_factory = 3 if economy.factory_germanium_discount else 4
-
-    # Even when factories could not be queued this year because Germanium was
-    # missing, carry enough target stock to unlock a useful near-term batch.
-    near_term_factory_demand = max(
-        factories_queued,
-        min(10, int(status["factory_headroom"])),
-    )
-    factory_germanium = near_term_factory_demand * g_per_factory
-
-    defense_minerals = defenses_queued * 5
-
-    # A design-aware exact ship bill will replace this later. This is only a
-    # reserve to prevent logistics from draining a shipyard before a build.
-    ship_reserve = ships_queued * 30
-
-    pop_band = max(1, int(planet.population or 0) // 100000)
-    baseline = min(60, 15 + 5 * pop_band)
-
-    return {
-        "ironium": baseline + defense_minerals + ship_reserve,
-        "boranium": baseline + defense_minerals + ship_reserve,
-        "germanium": baseline + factory_germanium + defense_minerals + ship_reserve,
-        "factory_germanium": factory_germanium,
-        "queued_factories": factories_queued,
-        "queued_ships": ships_queued,
-    }
 
 
 def _allocate(deficit: dict, surplus: dict, capacity: int) -> dict:
@@ -146,7 +100,25 @@ def _allocate(deficit: dict, surplus: dict, capacity: int) -> dict:
     return out
 
 
-def derive_cargo_plan(source, target, fleet, economy, orders) -> CargoPlan | None:
+def derive_cargo_plan(
+    source,
+    target,
+    fleet,
+    economy,
+    orders,
+    *,
+    destination_minimum_stock: dict | None = None,
+    source_committed: dict | None = None,
+    target_inbound: dict | None = None,
+) -> CargoPlan | None:
+    """Plan one safe shipment without double-spending a planet's minerals.
+
+    ``destination_minimum_stock`` is used by high-value projects such as a
+    support starbase.  It is a stock target, not a guessed native order: the
+    normal working reserve remains the floor for every other destination.
+    Callers can pass per-turn source and inbound commitments while assigning
+    several freighters so two ships never claim the same surface minerals.
+    """
     capacity = int(
         getattr(fleet, "cargo_capacity", 0)
         or (getattr(fleet, "native", {}) or {}).get("cargo_capacity", 0)
@@ -157,16 +129,19 @@ def derive_cargo_plan(source, target, fleet, economy, orders) -> CargoPlan | Non
 
     source_need = _working_stock(source, economy, orders)
     target_need = _working_stock(target, economy, orders)
+    for mineral, required in (destination_minimum_stock or {}).items():
+        if mineral in target_need:
+            target_need[mineral] = max(int(target_need[mineral]), max(0, int(required or 0)))
 
     source_surface = {
-        "ironium": int(source.ironium),
-        "boranium": int(source.boranium),
-        "germanium": int(source.germanium),
+        "ironium": max(0, int(source.ironium) - int((source_committed or {}).get("ironium", 0) or 0)),
+        "boranium": max(0, int(source.boranium) - int((source_committed or {}).get("boranium", 0) or 0)),
+        "germanium": max(0, int(source.germanium) - int((source_committed or {}).get("germanium", 0) or 0)),
     }
     target_surface = {
-        "ironium": int(target.ironium),
-        "boranium": int(target.boranium),
-        "germanium": int(target.germanium),
+        "ironium": int(target.ironium) + int((target_inbound or {}).get("ironium", 0) or 0),
+        "boranium": int(target.boranium) + int((target_inbound or {}).get("boranium", 0) or 0),
+        "germanium": int(target.germanium) + int((target_inbound or {}).get("germanium", 0) or 0),
     }
 
     surplus = {

@@ -1,19 +1,36 @@
-
 {
   "stars_exe": "C:\\Dev\\repos\\stars-ai\\sandbox\\starsjrc4.exe",
-  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\maxmineralaccel2",
+  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5small",
   "output_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\runs\\latestdemo",
   "game_name": "GAME",
   "player_ids": [
     1,
     2
   ],
-  "turns": 25,
+  "turns": 100,
   "play_on": false,
   "checkpoints": [
+    3,
+    5,
     10,
+    15,
+    20,
     25,
-    50
+    30,
+    35,
+    40,
+    45,
+    50,
+    55,
+    60,
+    65,
+    70,
+    75,
+    80,
+    85,
+    90,
+    95,
+    100
   ],
   "host_password": null,
   "keep_every_turn": true,
@@ -23,7 +40,7 @@
   "host_timeout_seconds": 180,
   "personas": {
     "1": "Balanced",
-    "2": "Expansionist"
+    "2": "Balanced"
   },
   "host_poll_seconds": 0.5,
   "host_settle_seconds": 1.5,
@@ -32,8 +49,11 @@
   "pre_host_audit": true,
   "print_observer_each_turn": true,
   "cleanup_output_on_start": true,
-  "console_player_logs": [1],
+  "console_player_logs": [],
   "allied_pairs": [],
   "x_template_dir": null,
-  "ai_state_dir": null
+  "ai_state_dir": null,
+  "turn_archive_enabled": true,
+  "turn_archive_include_logs": true,
+  "turn_archive_json_index": true
 }

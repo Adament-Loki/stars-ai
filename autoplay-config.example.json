@@ -37,5 +37,8 @@
   "console_player_logs": null,
   "allied_pairs": [],
   "x_template_dir": null,
-  "ai_state_dir": null
+  "ai_state_dir": null,
+  "turn_archive_enabled": true,
+  "turn_archive_include_logs": true,
+  "turn_archive_json_index": true
 }

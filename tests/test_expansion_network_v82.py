@@ -165,3 +165,43 @@ def test_gate_model_never_counts_loaded_cargo_as_gate_throughput():
     # Gate cost is separate from the mineral debt needed to make the child a hub.
     assert snap.bootstrap_resources == 1200
     assert snap.gate_resources == 400
+
+
+def test_promotion_program_classifies_and_ranks_home_p1_and_p2_worlds():
+    snap=evaluate_expansion_network(_state())
+    hubs={h.planet_id:h for h in snap.hubs}
+    home=hubs[0]
+    p1=hubs[1]
+    p2=hubs[2]
+
+    assert home.promotion_tier==0 and home.promotion_rank==1
+    assert p1.promotion_tier==1 and p1.promotion_rank==1
+    assert p2.promotion_tier==2 and p2.promotion_rank==1
+    assert p2.promotion_parent_id==p1.planet_id
+    assert p2.planet_id in snap.layer2_hub_ids
+    for hub in (home,p1,p2):
+        assert 0.0 <= hub.economic_value <= 1.0
+        assert 0.0 <= hub.strategic_value <= 1.0
+        assert 0.0 <= hub.overall_value <= 1.0
+
+
+def test_homeworld_promotes_at_most_five_p1_worlds_and_each_p1_gets_up_to_three_p2s():
+    state=_state()
+    # Six viable Ring-1 worlds: only the five best are promotion candidates.
+    for pid, x, hab, minerals in (
+        (3,70,95,(400,300,250)),(4,90,85,(250,250,250)),
+        (5,110,75,(150,150,150)),(6,130,65,(100,100,100)),
+        (7,150,55,(40,40,40)),
+    ):
+        state.planets.append(_planet(pid,f"P1-{pid}",x,pop=60_000,hab=hab,minerals=minerals))
+    # These are each within one relay hop of P1 #1 and in the second home ring.
+    for pid, x in ((20,230),(21,250),(22,270),(23,290)):
+        state.planets.append(_planet(pid,f"P2-{pid}",x,pop=20_000,hab=80,minerals=(150,150,150)))
+
+    snap=evaluate_expansion_network(state)
+    p1_ids=set(snap.layer1_hub_ids)
+    assert len(p1_ids)==5
+    assert len(snap.layer2_hub_ids)<=len(p1_ids)*3
+    hubs={h.planet_id:h for h in snap.hubs}
+    assert all(hubs[pid].promotion_tier==1 for pid in p1_ids)
+    assert all(hubs[pid].promotion_rank in range(1,6) for pid in p1_ids)

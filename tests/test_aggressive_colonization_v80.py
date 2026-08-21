@@ -151,7 +151,10 @@ def test_max_terraform_is_a_native_supported_production_item():
     orders = OrderSet("g", state.year, 1)
     add_economic_orders(state, orders)
     queue = next(o.payload["queue"] for o in orders.orders if o.kind == "set_planet_queue")
-    assert queue[0]["item"] == "max_terraform"
+    # Terraforming remains native-supported, but starts after useful current
+    # mine/factory capacity rather than displacing economic development.
+    assert queue[0]["item"] in {"mine", "factory"}
+    assert any(item["item"] == "max_terraform" for item in queue)
 
 
 def test_completed_terraforming_satisfies_production_command_status():

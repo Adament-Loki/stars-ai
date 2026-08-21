@@ -9,8 +9,79 @@ from .fuel_planner import has_ife
 from .colony_planner import colony_planet_is_eligible
 from .ship_design_synth import plan_native_ship_design, synthesize_scout_upgrade
 from .logistics_capacity import evaluate_logistics_capacity, POPULATION_PULSE_KT
+from .starsapi_items import MINE_LAYER, hull_unlocked as race_hull_unlocked, stock_hulls as race_stock_hulls
+from .territorial_defense import assess_territorial_defense
 
 TECH_FIELDS=("energy","weapons","propulsion","construction","electronics","biotechnology")
+
+
+def _unbuilt_superseded_combat_design(state) -> dict | None:
+    """Return one safe obsolete military-design deletion, if any.
+
+    Combat and escort are one shared design family.  A design that has neither
+    a live hull nor a queue is superseded as soon as another family member is
+    actually being built/used.  If none has reached production yet, retain only
+    the newest candidate so a newly created design gets one turn of read-back
+    before it is judged obsolete.
+    """
+    designs={
+        int(d.get("design_number", -1)): d
+        for d in (state.native or {}).get("designs", []) or []
+        if not bool(d.get("is_starbase", False))
+    }
+    profiles={
+        int(d.get("design_number", -1)): d
+        for d in (state.native or {}).get("design_profiles", []) or []
+        if str(d.get("role", "")) == "combat"
+    }
+    military_slots=sorted(slot for slot in profiles if slot in designs)
+    if len(military_slots) < 2:
+        return None
+
+    live={slot:0 for slot in military_slots}
+    for fleet in state.fleets:
+        if fleet.owner != state.player_id:
+            continue
+        for slot,count in enumerate((fleet.native or {}).get("ship_count", []) or []):
+            if slot in live:
+                live[slot] += max(0, int(count or 0))
+    queued={slot:0 for slot in military_slots}
+    for queue in ((state.native or {}).get("production_by_planet", {}) or {}).values():
+        for item in queue or []:
+            if int(item.get("item_type", 0) or 0) != 4:
+                continue
+            slot=int(item.get("item_id", -1) or -1)
+            if slot in queued:
+                queued[slot] += max(0, int(item.get("count", 0) or 0))
+
+    active={slot for slot in military_slots if live[slot] or queued[slot]}
+    keep=set(active)
+    if not keep:
+        # No production evidence yet: retain exactly the most recently designed
+        # candidate and reclaim older unbuilt variants one per native turn.
+        keep.add(max(
+            military_slots,
+            key=lambda slot:(int(designs[slot].get("turn_designed", 0) or 0), slot),
+        ))
+    candidates=[
+        slot for slot in military_slots
+        if slot not in keep and live[slot] == 0 and queued[slot] == 0
+        and int(designs[slot].get("total_remaining", 0) or 0) == 0
+    ]
+    if not candidates:
+        return None
+    slot=min(candidates,key=lambda candidate:(
+        int(designs[candidate].get("turn_designed", 0) or 0), candidate,
+    ))
+    return {
+        "target_slot":int(slot),
+        "role":"combat",
+        "design_name":str(profiles[slot].get("name") or designs[slot].get("name") or f"Design #{slot + 1}"),
+        "reason":(
+            "Delete unbuilt superseded shared combat/escort design: no live hulls, no queued builds, "
+            "and a current family design is retained for both missions."
+        ),
+    }
 
 
 @dataclass
@@ -60,11 +131,14 @@ def stock_hulls()->dict[int,HullOption]:
 
 
 def _unlocked(state,h:HullOption)->bool:
-    levels=(
-        state.tech.energy,state.tech.weapons,state.tech.propulsion,
-        state.tech.construction,state.tech.electronics,state.tech.biotechnology,
-    )
-    return all(int(levels[i])>=int(h.requirements[i]) for i in range(6))
+    """Whether the hull is researched *and* legal for this race's traits.
+
+    The compact development view intentionally omits trait metadata.  Defer to
+    the canonical StarsAPI-derived hull model here so PRT-only hulls such as
+    the Mini Mine Layer are never proposed to an ineligible race.
+    """
+    canonical = race_stock_hulls().get(int(h.hull_id))
+    return canonical is not None and race_hull_unlocked(canonical, state)
 
 
 def _designs(state,role=None):
@@ -180,15 +254,34 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
     owned=[p for p in state.planets if p.owner==state.player_id]
     operational=sum(1 for p in owned if bool(((p.native or {}).get("starbase_capabilities") or {}).get("can_build_ships")))
     orbital_forts=sum(1 for p in owned if bool(((p.native or {}).get("starbase_capabilities") or {}).get("is_orbital_fort")))
-    if has_isb and operational==0 and orbital_forts>0:
-        dock=stock_hulls().get(33)
-        if dock is not None and _unlocked(state,dock):
+    support_design_exists=any(
+        bool((profile.get("capabilities") or {}).get("can_build_ships"))
+        and bool((profile.get("capabilities") or {}).get("can_refuel"))
+        for profile in (state.native or {}).get("starbase_profiles", []) or []
+    )
+    if not support_design_exists:
+        # Every empire needs a custom support-base blueprint before the onion
+        # network can promote P1/P2 worlds. ISB prefers Space Dock; all other
+        # races use the universally legal Space Station. The compiler selects
+        # only researched PRT/LRT-legal fittings and a free base-design slot.
+        preferred_hull=33 if has_isb else 34
+        support_hull=stock_hulls().get(preferred_hull)
+        if support_hull is not None and _unlocked(state,support_hull):
+            support_name="Fleet Support Space Dock" if preferred_hull==33 else "Fleet Support Space Station"
             proposals.append(DesignProposal(
-                role="starbase", name="Fleet Support Space Dock", is_starbase=True,
-                desired_hull_id=33, desired_hull_name="Space Dock", desired_engine=None,
-                objectives=["provide real ship construction","provide orbital refueling","retain useful defenses without sacrificing support function"],
-                reason=f"ISB empire has {orbital_forts} Orbital Fort(s) but no operational shipyard/refuel starbase; Construction tech unlocks Space Dock.",
-                priority=140,
+                role="starbase", name=support_name, is_starbase=True,
+                desired_hull_id=preferred_hull, desired_hull_name=support_hull.name, desired_engine=None,
+                objectives=[
+                    "provide real ship construction",
+                    "provide orbital refueling",
+                    "use an economical custom fitting so frontier P1/P2 worlds can fund it",
+                    "leave later defensive or specialist starbase designs available when strategic need changes",
+                ],
+                reason=(
+                    f"Empire has {operational} operational shipyard/refuel base(s), {orbital_forts} Orbital Fort(s), "
+                    f"and no custom support-base blueprint. {support_hull.name} is the current legal support hull."
+                ),
+                priority=210 if operational==0 else 150,
             ))
 
     if has_isb and operational>0 and int(state.tech.construction)>=12:
@@ -201,18 +294,57 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                 priority=95,
             ))
 
+    # A minefield is a territorial claim and should be backed by a real
+    # minelayer, not merely an advisory response. Design one when armed or
+    # transport traffic enters claimed space and no existing minelayer design
+    # can be built. Space Demolition gets the dedicated mine-layer hulls, but
+    # all other races may use a compatible general-purpose hull with a
+    # standard Mine Dispenser.
+    territorial = assess_territorial_defense(state, plan)
+    state.native["territorial_defense"] = territorial.to_dict()
+    minelayers = _designs(state, "minelayer")
+    if territorial.needs_minefield and not minelayers:
+        minelayer_hull = next(
+            (
+                stock_hulls().get(hull_id)
+                for hull_id in (28, 27, 5, 6, 7, 8, 10, 11, 13, 12, 29)
+                if (
+                    stock_hulls().get(hull_id) is not None
+                    and _unlocked(state, stock_hulls()[hull_id])
+                    and any(slot.allows(MINE_LAYER) for slot in race_stock_hulls()[hull_id].slots[1:])
+                )
+            ),
+            None,
+        )
+        if minelayer_hull is not None:
+            proposals.append(DesignProposal(
+                role="minelayer", name="Territory Mine Layer", is_starbase=False,
+                desired_hull_id=minelayer_hull.hull_id, desired_hull_name=minelayer_hull.name,
+                desired_engine=None,
+                objectives=[
+                    "mark and defend violated territory with a minefield",
+                    "fit a researched mine-laying component and an efficient legal engine",
+                    "support patrol fleets rather than replacing them",
+                ],
+                reason=(
+                    f"{territorial.reason} No minelayer design is available; create a legal "
+                    f"{minelayer_hull.name} to establish territorial minefield coverage."
+                ),
+                priority=188,
+            ))
+
     combat=_designs(state,"combat")
     if combat and max(int(state.tech.weapons),int(state.tech.energy))>=6:
-        newest_turn=max((int(d.get("turn_designed",0) or 0) for d in state.native.get("designs",[]) if not d.get("is_starbase")),default=0)
+        newest_turn=max((int(d.get("turn_designed",0) or 0) for d in combat),default=0)
         if state.year-2400-newest_turn>=5:
             proposals.append(DesignProposal(
-                role="combat", name="Fleet Escort Mk II", is_starbase=False,
+                role="combat", name="Fleet Combat Mk II", is_starbase=False,
                 desired_hull_id=6 if 6 in stock_hulls() and _unlocked(state,stock_hulls()[6]) else 5,
                 desired_hull_name="Destroyer" if 6 in stock_hulls() and _unlocked(state,stock_hulls()[6]) else "Frigate",
                 desired_engine=preferred_engine,
-                objectives=["use newly unlocked Weapons/Energy technology","retain fuel-safe strategic mobility","balance weapons, shields/armor, and mass"],
+                objectives=["use newly unlocked Weapons/Energy technology","serve shared combat and escort duty","balance weapons, shields/armor, and mass"],
                 reason=f"Weapons={state.tech.weapons}, Energy={state.tech.energy}; existing combat architecture is at least five turns old.",
-                priority=90,
+                priority=190,
             ))
 
     proposals.sort(key=lambda x:x.priority,reverse=True)
@@ -239,9 +371,18 @@ def add_design_development_orders(state,orders,plan=None):
                 priority=native_plan.priority,
             )
 
+    cleanup=None if native_plan is not None else _unbuilt_superseded_combat_design(state)
+    if cleanup is not None:
+        orders.add(
+            "delete_ship_design",
+            {"target_slot":cleanup["target_slot"],"role":cleanup["role"],"design_name":cleanup["design_name"]},
+            cleanup["reason"] + " Native deletion is owner-aware and independently refuses any live, queued, or remaining hull.",
+            priority=150,
+        )
+
     for proposal in plan_design_development(state,plan):
         # Avoid duplicate advisory for the exact role already selected for this
         # turn's experimental native creation.
-        if native_plan is not None and proposal.role==native_plan.role:
+        if (native_plan is not None and proposal.role==native_plan.role) or cleanup is not None:
             continue
         orders.add("create_design",proposal.to_payload(),proposal.reason,priority=proposal.priority)

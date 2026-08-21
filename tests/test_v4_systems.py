@@ -54,7 +54,8 @@ def test_race_doctrine():
 
 def test_native_safety():
     assert may_emit_native("move_fleet")
-    assert not may_emit_native("create_design")
+    assert may_emit_native("create_design")
+    assert may_emit_native("transport_population")
     assert capability("player_relation_change").status=="PARTIAL"
 
 def test_lookahead_can_prefer_future():
