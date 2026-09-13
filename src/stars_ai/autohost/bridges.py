@@ -21,6 +21,7 @@ class NativeOrderBridge:
         existing_x_path: Path | None,
         output_x_path: Path,
         turn_dir: Path,
+        client_x_path: Path | None = None,
     ) -> Path:
         raise NotImplementedError
 
@@ -61,6 +62,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
 
     def create_x_file(
         self, *, player_id, m_path, xy_path, existing_x_path, output_x_path, turn_dir,
+        client_x_path=None,
     ):
         if existing_x_path is None or not existing_x_path.exists():
             raise RuntimeError(
@@ -80,6 +82,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             xy_path=xy_path,
             template_x_path=existing_x_path,
             output_x_path=output_x_path,
+            client_x_path=client_x_path,
             persona_name=self.personas.get(str(player_id), "Balanced"),
             trace_path=turn_dir / f"{getattr(self, 'turn_tag', 'current')}-player-{player_id:02d}-decision-native.json",
             friend_player_ids=self._friend_ids_for(int(player_id)),
@@ -137,6 +140,7 @@ class ExternalCommandOrderBridge(NativeOrderBridge):
 
     def create_x_file(
         self, *, player_id, m_path, xy_path, existing_x_path, output_x_path, turn_dir,
+        client_x_path=None,
     ):
         command = self.command_template.format(
             player_id=player_id,
@@ -172,6 +176,7 @@ class NoopOrderBridge(NativeOrderBridge):
 
     def create_x_file(
         self, *, player_id, m_path, xy_path, existing_x_path, output_x_path, turn_dir,
+        client_x_path=None,
     ):
         if existing_x_path is None or not existing_x_path.exists():
             raise RuntimeError(

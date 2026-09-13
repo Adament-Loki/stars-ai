@@ -8,11 +8,19 @@ from typing import Any
 
 from .expansion_network import ExpansionNetworkSnapshot, evaluate_expansion_network
 from .expansion_research import expansion_research_demands
+from .colony_planner import colony_planet_is_eligible
 from .models import GameState
 from .persona import StrategicPlan
 from .planet_economy import decode_race_economy, estimated_operating_resources
 from .research_capabilities import ResearchCapability, stock_capability_catalog
-from .starsapi_items import MINING_ROBOT, component_spec, stock_component_database
+from .starsapi_items import (
+    BEAM,
+    TORPEDO,
+    MINING_ROBOT,
+    component_spec,
+    proven_available_components,
+    stock_component_database,
+)
 from .terraforming import evaluate_terraforming
 from .util import distance
 
@@ -41,6 +49,10 @@ class ResearchDemand:
     value: float
     military_emergency: bool = False
     explanation: str = ""
+    production_readiness: float = 1.0
+    production_follow_through: str = ""
+    deadline_turns: int | None = None
+    fieldable_before_deadline: bool = True
 
 
 @dataclass(frozen=True)
@@ -64,6 +76,9 @@ class ResearchDecision:
     candidate_scores: tuple[dict[str, Any], ...] = ()
     recently_unlocked: tuple[str, ...] = ()
     sprint_stalled: bool = False
+    production_readiness: float = 1.0
+    production_follow_through: str = ""
+    expected_completion_year: int | None = None
 
     @property
     def field(self) -> str:
@@ -119,7 +134,13 @@ def _terraform_value(state: GameState, capability: ResearchCapability) -> tuple[
     gain = 0
     improved = 0
     for planet in state.planets:
-        if not planet.observed:
+        # Terraforming is an empire-growth investment.  Foreign worlds must
+        # never inflate it; visible unowned claims remain relevant only while
+        # the colony planner considers them attainable.
+        if not planet.observed or (
+            planet.owner != state.player_id
+            and not (planet.owner is None and colony_planet_is_eligible(state, planet))
+        ):
             continue
         before = evaluate_terraforming(state, planet).tech_habitability
         after = evaluate_terraforming(future, planet).tech_habitability
@@ -172,6 +193,10 @@ def _demand_from_raw(raw: dict, index: int, *, default_source: str) -> ResearchD
         source=str(raw.get("source") or default_source),
         executable=bool(raw.get("executable", True)),
         tags=tuple(raw.get("tags") or ()),
+        unlocks=tuple(str(value) for value in (raw.get("unlocks") or ())),
+        enables_roles=tuple(str(value) for value in (raw.get("enables_roles") or ())),
+        requires_production_plan=bool(raw.get("requires_production_plan", False)),
+        expiry_condition=str(raw.get("expiry_condition") or ""),
     )
     return ResearchDemand(
         capability=capability,
@@ -238,6 +263,9 @@ def _remote_miner_research_demand(state: GameState, designs: list[dict]) -> Rese
         post_unlock_action="Create and queue one race-legal remote miner for observed unowned mineral worlds.",
         source="bundled StarsAPI UNEDITED.MOD mining-robot requirement",
         tags=("remote_mining", "expansion_enabler"),
+        unlocks=(spec.name,),
+        enables_roles=("miner",),
+        requires_production_plan=True,
     )
     concentration=sum(
         sum(max(0,int(value)) for value in (planet.native or {}).get("mineral_concentrations", [])[:3])
@@ -252,6 +280,143 @@ def _remote_miner_research_demand(state: GameState, designs: list[dict]) -> Rese
         explanation=(
             f"{len(targets)} observed unowned remote-mining target(s), combined concentration={concentration}; "
             f"{spec.name} is the first component legal for this race, with remaining research {requirements}."
+        ),
+    )
+
+
+def _next_weapon_upgrade(state: GameState, current_weapon_tier: int) -> tuple[int, tuple[str, ...]] | None:
+    """Find the next race-legal weapon capability from current stock data.
+
+    This deliberately derives its target from component prerequisites instead
+    of treating a selected Weapons level as a universal fleet milestone.  A
+    component is useful only when every non-Weapons prerequisite is already
+    satisfied and the race may legally fit it after reaching that level.
+    """
+    database = stock_component_database()
+    candidate_levels = sorted({
+        int(spec.tech_required[1])
+        for spec in database.components.values()
+        if int(spec.category) in (BEAM, TORPEDO)
+        and int(spec.tech_required[1]) > int(current_weapon_tier)
+    })
+    for level in candidate_levels:
+        future = _tech_after(state, {"weapons": level})
+        available = proven_available_components(future)
+        upgrades = sorted(
+            spec.name
+            for spec in available.values()
+            if int(spec.category) in (BEAM, TORPEDO)
+            and int(spec.tech_required[1]) == level
+        )
+        if upgrades:
+            return level, tuple(upgrades)
+    return None
+
+
+def _combat_weapon_upgrade_demand(
+    state: GameState,
+    designs: list[dict],
+    threats: list,
+) -> ResearchDemand | None:
+    """Prefer the next usable weapon upgrade to a cosmetic same-gun refresh."""
+    enemy_contact=any(fleet.owner not in (None, state.player_id) for fleet in state.fleets)
+    if not enemy_contact:
+        return None
+    combat_slots={
+        int(design.get("design_number", -1))
+        for design in designs
+        if str(design.get("role", "")).casefold() == "combat"
+        and int(design.get("design_number", -1)) >= 0
+    }
+    raw_designs={
+        int(design.get("design_number", -1)): design
+        for design in ((state.native or {}).get("designs", []) or [])
+        if not bool(design.get("is_starbase", False))
+    }
+    # Native role decoding can lag one M-file after creation.  A fitted beam or
+    # torpedo is enough to identify a combat architecture for this purpose.
+    for slot,design in raw_designs.items():
+        if any(
+            int(component.get("category", 0) or 0) in (BEAM, TORPEDO)
+            and int(component.get("count", 0) or 0) > 0
+            for component in (design.get("slots", []) or [])
+        ):
+            combat_slots.add(slot)
+    if not combat_slots:
+        return None
+
+    combat_assets=0
+    for fleet in state.fleets:
+        if fleet.owner != state.player_id:
+            continue
+        combat_assets += sum(
+            max(0, int(count or 0))
+            for slot,count in enumerate((fleet.native or {}).get("ship_count", []) or [])
+            if slot in combat_slots
+        )
+    for queue in ((state.native or {}).get("production_by_planet", {}) or {}).values():
+        combat_assets += sum(
+            max(0, int(item.get("count", 0) or 0))
+            for item in queue or []
+            if int(item.get("item_type", 0) or 0) == 4
+            and int(item.get("item_id", -1) or -1) in combat_slots
+        )
+    # A nearby threat is sufficient evidence to prepare a new battle family;
+    # otherwise wait until there is a real fleet investment to improve.
+    if not threats and combat_assets < 3:
+        return None
+
+    fitted_tier=0
+    for slot in combat_slots:
+        for component in (raw_designs.get(slot, {}).get("slots", []) or []):
+            category=int(component.get("category", 0) or 0)
+            if category not in (BEAM, TORPEDO) or int(component.get("count", 0) or 0) <= 0:
+                continue
+            fitted_tier=max(fitted_tier, int(component_spec(
+                category, int(component.get("item_id", 0) or 0),
+            ).tech_required[1]))
+    current=max(int(state.tech.weapons or 0), fitted_tier)
+    next_upgrade = _next_weapon_upgrade(state, current)
+    if next_upgrade is None:
+        return None
+    target, weapon_names = next_upgrade
+    weapon_name = ", ".join(weapon_names)
+    capability=ResearchCapability(
+        capability_id=f"military:weapons_upgrade:{target}",
+        name=f"Weapons {target}: {weapon_name}",
+        category="military",
+        requirements={"weapons":target},
+        post_unlock_action=(
+            f"Re-evaluate combat designs around {weapon_name}; retire zero-ship "
+            "same-gun variants only after native fleet and queue read-back."
+        ),
+        source="race-legal stock-component fleet modernization doctrine",
+        # This is a demonstrated fleet-modernization breakpoint, not a
+        # speculative military project.  The scoring policy consequently
+        # preserves it through expansion debt in preference to investing in a
+        # larger hull that would retain the same guns.
+        tags=("military", "weapon_upgrade", "battlefield_breakthrough"),
+        unlocks=tuple(weapon_names),
+        enables_roles=("combat",),
+        requires_production_plan=True,
+        expiry_condition="A better race-legal weapon package is fielded or the threatened front is resolved.",
+    )
+    return ResearchDemand(
+        capability,
+        # A fielded combat family facing contact is a direct modernization
+        # investment.  Let the next usable weapon capability outrank a
+        # cosmetic same-gun hull refresh; expansion still wins when there is
+        # no fleet investment or no enemy contact.
+        need=3.0,
+        urgency=3.0 if threats else 2.2,
+        utilization=1.0,
+        value=3.0,
+        military_emergency=False,
+        explanation=(
+            f"Enemy contact confirmed; combat/escort hulls live or queued={combat_assets}. "
+            f"Current fleet armament is Weapons {fitted_tier or int(state.tech.weapons or 0)}. "
+            f"Prioritize the next race-legal weapon upgrade, Weapons {target} ({weapon_name}), "
+            "before another same-gun hull, shield, or engine variant."
         ),
     )
 
@@ -389,12 +554,15 @@ def _build_demands(
                 1.0,
                 value,
                 False,
-                f"This exact breakpoint improves {improved} observed world(s); aggregate habitability gain={round(value * 35)}.",
+                f"This exact breakpoint improves {improved} owned or attainable colony world(s); aggregate habitability gain={round(value * 35)}.",
             ))
 
     demands.extend(expansion_demands)
 
     threats = _nearby_threats(state, plan)
+    weapon_upgrade=_combat_weapon_upgrade_demand(state, designs, threats)
+    if weapon_upgrade is not None:
+        demands.append(weapon_upgrade)
     if threats:
         combat_slots={
             int(design.get("design_number", -1))
@@ -426,6 +594,9 @@ def _build_demands(
             post_unlock_action="Re-score combat designs and local defensive production against the nearby threat.",
             source="nearby hostile-fleet emergency breakpoint",
             tags=("military",),
+            enables_roles=("combat", "starbase_defense"),
+            requires_production_plan=True,
+            expiry_condition="The local defensive force is restored or the hostile fleet leaves the defense radius.",
         )
         demands.append(ResearchDemand(
             capability,
@@ -454,6 +625,124 @@ def expansion_pressure(state: GameState) -> float:
         network_pressure,
         float(watchdog.get("colonization_pressure", 1.0)),
         float(watchdog.get("exploration_pressure", 1.0)),
+    )
+
+
+def _threat_deadline_turns(state: GameState) -> int | None:
+    """Return the shortest verified arrival horizon for an observed threat.
+
+    Native fleet movement does not always expose a trustworthy ETA.  This
+    therefore consumes only explicitly decoded/planner-provided horizon data
+    and never invents a deadline from a guessed warp speed.
+    """
+    values=[]
+    root=(state.native or {})
+    for key in ("threat_eta_turns", "incoming_threat_eta_turns", "defense_deadline_turns"):
+        value=root.get(key)
+        if value is not None:
+            try:
+                values.append(max(0,int(value)))
+            except (TypeError,ValueError):
+                pass
+    for fleet in state.fleets:
+        if fleet.owner in (None,state.player_id):
+            continue
+        raw=fleet.native or {}
+        for key in ("eta_turns", "arrival_turns", "turns_to_target"):
+            value=raw.get(key)
+            if value is not None:
+                try:
+                    values.append(max(0,int(value)))
+                except (TypeError,ValueError):
+                    pass
+    return min(values) if values else None
+
+
+def _production_readiness(
+    state: GameState,
+    demand: ResearchDemand,
+) -> tuple[float, str, int | None, bool]:
+    """Assess whether a researched capability can become useful ships in time.
+
+    This is intentionally a conservative operational gate, not a fake exact
+    ship-cost calculator.  The stock catalog supplies equipment cost data, but
+    the native state does not yet expose verified per-player miniaturization
+    prices; we therefore use confirmed shipyard capacity and only apply a
+    mineral/resource rejection when an adapter explicitly marks its budget as
+    complete.  That prevents the planner from claiming a combat unlock can be
+    fielded at a dead empire while avoiding unverified price arithmetic.
+    """
+    capability=demand.capability
+    requires=bool(
+        capability.requires_production_plan
+        or capability.category == "military"
+        or "military" in capability.tags
+    )
+    if not requires:
+        return 1.0, "No immediate ship-production follow-through is required.", None, True
+
+    yards=[
+        planet for planet in state.planets
+        if planet.owner == state.player_id
+        and bool(((planet.native or {}).get("starbase_capabilities") or {}).get("can_build_ships"))
+    ]
+    deadline=_threat_deadline_turns(state)
+    if not yards:
+        return (
+            0.0,
+            "No verified shipyard can convert this unlock into a useful design and fleet.",
+            deadline,
+            False,
+        )
+
+    # A compact four-ship defensive packet is the minimum useful follow-up;
+    # multiple yards reduce its build horizon but do not pretend to guarantee
+    # exact completion without the native queue/cost serializer.
+    quantity=max(2, min(4, 2 * len(yards)))
+    build_turns=max(1, math.ceil(quantity / len(yards)))
+    research_turns=max(1, sum(capability.remaining(state.tech).values()))
+    fieldable=deadline is None or research_turns + build_turns <= deadline
+
+    confirmed=(state.native or {}).get("confirmed_production_budget")
+    if isinstance(confirmed,dict):
+        # This optional adapter contract represents real, complete stockpiles
+        # and queue reservations.  Do not infer it from partial M-file views.
+        required={
+            "resources": quantity * 20,
+            "ironium": quantity * 10,
+            "boranium": quantity * 6,
+            "germanium": quantity * 4,
+        }
+        if any(int(confirmed.get(key,0) or 0) < value for key,value in required.items()):
+            fieldable=False
+            budget_note=(
+                "confirmed stock/reservation is below the conservative four-ship packet floor "
+                f"R/I/B/G={required['resources']}/{required['ironium']}/"
+                f"{required['boranium']}/{required['germanium']}"
+            )
+        else:
+            budget_note="confirmed production stock can fund the initial packet"
+    else:
+        budget_note="native miniaturized queue cost is not yet decoded; capacity check uses verified yards only"
+
+    yard_names=", ".join(planet.name for planet in yards[:3])
+    action=(
+        f"Queue {quantity} {', '.join(capability.enables_roles) or 'capability'} hull(s) "
+        f"at {yard_names} after the design is confirmed in the next M-file"
+    )
+    note=f"{action}; estimated build horizon={build_turns} turn(s), {budget_note}."
+    readiness=1.0 if fieldable else 0.0
+    return readiness,note,deadline,fieldable
+
+
+def _with_production_readiness(state: GameState, demand: ResearchDemand) -> ResearchDemand:
+    readiness,follow,deadline,fieldable=_production_readiness(state,demand)
+    return replace(
+        demand,
+        production_readiness=readiness,
+        production_follow_through=follow,
+        deadline_turns=deadline,
+        fieldable_before_deadline=fieldable,
     )
 
 
@@ -494,13 +783,33 @@ def _score(
             score *= 0.55
         elif demand.capability.category in EXPANSION_CATEGORIES:
             score *= 1.20
+        elif "battlefield_breakthrough" in demand.capability.tags:
+            # Contact plus an actual fleet is a sufficiently concrete military
+            # investment to retain normal weighting during the opening.  It is
+            # still below a true nearby-fleet emergency.
+            score *= 1.0
         else:
             score *= 0.12
     elif expansion_debt:
-        score *= 1.35 if demand.capability.category in EXPANSION_CATEGORIES else 0.25
+        if "battlefield_breakthrough" in demand.capability.tags:
+            score *= 1.10
+        else:
+            score *= 1.35 if demand.capability.category in EXPANSION_CATEGORIES else 0.25
 
     if not demand.capability.executable:
         score *= 0.78
+    requires_production=(
+        demand.capability.requires_production_plan
+        or demand.capability.category == "military"
+        or "military" in demand.capability.tags
+    )
+    if requires_production:
+        # A research goal without a shipyard/arrival window is a potential
+        # future option, not an emergency answer.  The hard filter in
+        # ``plan_research`` handles verified imminent deadlines; this smooth
+        # factor also prevents speculative military tech from crowding out a
+        # usable economy/logistics capability.
+        score *= 0.20 + 0.80 * max(0.0,min(1.0,demand.production_readiness))
     return round(score, 3)
 
 
@@ -532,6 +841,19 @@ def _contributors(
     owned = [p for p in state.planets if p.owner == state.player_id]
     existing = (state.native or {}).get("production_by_planet", {}) or {}
     economy = decode_race_economy(state.race)
+    network = evaluate_expansion_network(state)
+    # A designated P1/P2 is an investment on its way to becoming a relay and
+    # breeder.  It is not a "mature lab" merely because its temporary resource
+    # estimate exceeds a young local colony.  Until it graduates, protect its
+    # installation queue and its population-import program from research
+    # sprints.  Graduation is capacity/support based, so this naturally scales
+    # by race and world quality instead of using a population magic number.
+    growth_hub_ids={
+        int(hub.planet_id)
+        for hub in network.hubs
+        if int(getattr(hub,"promotion_tier",3) or 3) in (1,2)
+        and not bool(getattr(hub,"graduated",False))
+    }
     protected: set[int] = set()
     candidates = []
     for planet in owned:
@@ -543,7 +865,12 @@ def _contributors(
         )
         shipyard = bool(((planet.native or {}).get("starbase_capabilities") or {}).get("can_build_ships"))
         fragile = int(planet.population or 0) < 50000
-        if custom or fragile or (shipyard and (expansion_debt or military_emergency)):
+        if (
+            custom
+            or fragile
+            or int(planet.id) in growth_hub_ids
+            or (shipyard and (expansion_debt or military_emergency))
+        ):
             protected.add(int(planet.id))
             continue
         resources = int(estimated_operating_resources(planet, economy)["estimated_resources"])
@@ -628,8 +955,22 @@ def plan_research(
         d for d in _build_demands(state, plan, network)
         if not d.capability.unlocked(state.tech)
     ]
+    demands=[_with_production_readiness(state,demand) for demand in demands]
+    # A verified arrival deadline is a hard operational constraint.  Do not
+    # select military research that cannot yield even its minimum fleet packet
+    # before contact when another actionable capability exists.
+    actionable=[
+        demand for demand in demands
+        if demand.fieldable_before_deadline
+        or not (
+            demand.capability.category == "military"
+            or "military" in demand.capability.tags
+        )
+    ]
+    if actionable:
+        demands=actionable
     if not demands:
-        demands = [_fallback_demand(state, network)]
+        demands = [_with_production_readiness(state,_fallback_demand(state, network))]
 
     watchdog = _watchdog(state)
     expansion_debt = bool(
@@ -730,6 +1071,13 @@ def plan_research(
         f"{chosen.explanation} Post-unlock: {chosen.capability.post_unlock_action}"
         f"{hysteresis_note}"
     )
+    if chosen.production_follow_through:
+        reason += f" Production follow-through: {chosen.production_follow_through}"
+    if chosen.deadline_turns is not None:
+        reason += (
+            f" Verified threat deadline={chosen.deadline_turns} turn(s); "
+            f"fieldable-before-deadline={'yes' if chosen.fieldable_before_deadline else 'no'}."
+        )
     if opening_network_debt:
         reason += (
             f" OPENING NETWORK: radius={network.owned_radius_ly:.0f}/{network.target_radius_ly:.0f} ly; "
@@ -766,9 +1114,16 @@ def plan_research(
             "name": demand.capability.name,
             "score": score,
             "remaining": demand.capability.remaining(state.tech),
+            "production_readiness": demand.production_readiness,
+            "production_follow_through": demand.production_follow_through,
+            "deadline_turns": demand.deadline_turns,
+            "fieldable_before_deadline": demand.fieldable_before_deadline,
         } for demand, score in candidates[:8]),
         recently_unlocked=tuple(recently_unlocked),
         sprint_stalled=sprint_stalled,
+        production_readiness=chosen.production_readiness,
+        production_follow_through=chosen.production_follow_through,
+        expected_completion_year=int(state.year) + estimated_turns,
     )
     if memory is not None:
         selected_year = (

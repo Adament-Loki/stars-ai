@@ -213,6 +213,20 @@ and `output_dir` holds reports, logs, archives, and copied native snapshots.
 | `turn_archive_include_logs` | boolean; `true` | Includes relevant generated logs in each turn-archive phase. |
 | `turn_archive_json_index` | boolean; `true` | Maintains `logs/turn-archive/index.json` and each turn’s `turn.json` index for programmatic archive lookup. |
 
+### Reviewing a native turn archive
+
+Each `logs/turn-archive/turn-###` directory is immutable. For normal gameplay
+review, open:
+
+`40-approved-next-turn-actions/END_OF_TURN_APPROVED_ACTIONS.txt`
+
+It contains every player decision report generated from that turn's committed
+state after pre-host validation, plus the exact staged `GAME.x#` files under
+the phase's `orders/` directory. The actions are approved for the next host;
+their effects become committed only when that host succeeds. The other phases
+remain available for system debugging: `00-pre-write`, `10-pre-host`,
+`20-post-host-attempt`, `30-committed`, and `99-failure` when applicable.
+
 `playtest-config.json` is a separate, lightweight configuration for the
 in-process playtest harness, not the Windows native host loop. Its fields are:
 

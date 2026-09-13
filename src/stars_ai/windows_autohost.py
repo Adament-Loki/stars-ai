@@ -42,7 +42,7 @@ from .native_observer import (
     read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn,
     build_human_report, build_running_game_report, build_turn_status_report,
 )
-from .turn_archive import archive_turn_phase
+from .turn_archive import archive_turn_phase, archive_approved_next_turn_actions
 
 def _persistent_x_template_root(cfg: WindowsAutoHostConfig, seed: Path) -> Path:
     if cfg.x_template_dir:
@@ -1437,9 +1437,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     )
 
                 out_x = game / f"{hst.stem}.x{player_id}"
+                client_x_snapshot = None
                 if out_x.exists():
                     # Keep old X only in logs, never in a Stars! game subfolder.
-                    shutil.copy2(out_x, logs_root / f"{turn_tag}-prewrite-{out_x.name}")
+                    client_x_snapshot = logs_root / f"{turn_tag}-prewrite-{out_x.name}"
+                    shutil.copy2(out_x, client_x_snapshot)
                     out_x.unlink()
 
                 generated = order_bridge.create_x_file(
@@ -1449,6 +1451,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     existing_x_path=template_x,
                     output_x_path=out_x,
                     turn_dir=turn_dir,
+                    client_x_path=client_x_snapshot,
                 )
                 order_files.append(str(generated))
                 shutil.copy2(
@@ -1485,6 +1488,29 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 raise RuntimeError(
                     f"Pre-host audit failed for turn {turn}. See "
                     f"{logs_root / f'{turn_tag}-PRE_HOST_AUDIT.txt'}"
+                )
+
+            # The current execution tag names the M files *after* the prior
+            # host cycle.  Mirror its reviewed-and-approved next-host orders
+            # into that prior cycle's archive so a user opening turn-010 can
+            # see the actions chosen from turn 10's committed state without
+            # needing to infer the one-cycle archive offset.
+            if cfg.turn_archive_enabled and turn > 1:
+                prior_turn_tag=f"turn-{turn - 1:03d}"
+                archive_approved_next_turn_actions(
+                    logs_root/"turn-archive", turn_tag=prior_turn_tag,
+                    decision_turn_tag=turn_tag,
+                    game_dir=game, basename=validated.basename,
+                    logs_root=logs_root, json_index=cfg.turn_archive_json_index,
+                    metadata={
+                        "execution_turn":turn,
+                        "state_turn_tag":prior_turn_tag,
+                        "decision_turn_tag":turn_tag,
+                        "native_year":year_before,
+                        "action_status":"APPROVED_FOR_NEXT_HOST",
+                        "pre_host_audit":True,
+                        "order_files":list(order_files),
+                    },
                 )
 
             tracked_outputs = [hst, xy] + [

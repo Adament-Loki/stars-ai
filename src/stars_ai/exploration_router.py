@@ -245,6 +245,7 @@ def build_probe_route(
     start_profile:dict[str,Any]|None=None,
     sector:tuple[int,int,float]|None=None,
     max_support_distance:float|None=None,
+    first_planet_id:int|None=None,
 ) -> ProbeRoute|None:
     """
     Build a fuel-safe exploration campaign.
@@ -288,6 +289,8 @@ def build_probe_route(
     for step in range(max(1,int(max_stops))):
         feasible=[]
         for p in remaining:
+            if step==0 and first_planet_id is not None and int(p.id)!=int(first_planet_id):
+                continue
             d=distance(pos,p.position)
             if profile:
                 w=reconnaissance_warp(
@@ -377,6 +380,24 @@ def build_probe_route(
     )
 
 
+def scout_refuel_route_allowed(fuel_profile: dict[str, Any] | None) -> bool:
+    """Whether a scout may spend a turn routing to a refueling starbase.
+
+    Fuel Mizer reconnaissance is intentionally self-sufficient; its scouts do
+    not consume route time returning to a base. Conventional scouts only make
+    that detour after their usable fuel has fallen below one quarter of tank.
+    """
+    profile = fuel_profile or {}
+    groups = list(profile.get("groups", []) or [])
+    if any(int(group.get("engine_id", -1) or -1) == 2 for group in groups):
+        return False
+    capacity = float(profile.get("fuel_capacity", 0) or 0)
+    if capacity <= 0:
+        return False
+    fuel = float(profile.get("effective_fuel", profile.get("fuel", 0)) or 0)
+    return fuel < capacity * 0.25
+
+
 def evaluate_recon_refuel(
     state,
     fleet,
@@ -390,16 +411,14 @@ def evaluate_recon_refuel(
     """
     Return a refuel plan only when the detour has a clear exploration payoff.
 
-    Fuel-Mizer/free-Warp-4 probes NEVER return just for fuel.
-    Conventional scouts may refuel only when:
+    Fuel-Mizer scouts NEVER return just for fuel. Conventional scouts may
+    refuel only when they are below 25% of tank and:
       - they currently cannot build a useful route;
       - a reachable refueling base is nearby enough;
       - a full tank from that base unlocks >= minimum_route_gain unknown worlds.
     """
     fp=(fleet.native or {}).get("fuel_profile")
-    if not fp:
-        return None
-    if highest_zero_fuel_warp(fp)>=4:
+    if not scout_refuel_route_allowed(fp):
         return None
 
     flags=(fleet.native or {}).get("race_fuel_flags",{})

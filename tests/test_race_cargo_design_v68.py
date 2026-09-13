@@ -212,7 +212,7 @@ def test_transport_writer_uses_order_specific_load_and_full_unload_policy():
     )
     assert bs[0].data.endswith(bytes([11,22,33]))
     assert bs[-1].data.endswith(bytes.fromhex(
-        "00 20 00 20 00 20 00 20 00 70"
+        "00 20 00 20 00 20 00 20"
     ))
 
 

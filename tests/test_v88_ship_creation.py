@@ -52,6 +52,18 @@ def test_general_combat_builder_remixes_only_proven_components():
     assert validate_design(plan.encoded.hull_id,plan.encoded.slots).ok
 
 
+def test_automatic_combat_refresh_rejects_a_same_gun_hull_variant():
+    state=_base_state()
+    state.native["designs"][0]["slots"][1]["item_id"]=5  # Phaser Bazooka, Weapons 8.
+
+    # The existing escort already fits the best W8 weapons currently known.
+    # A more expensive hull with those same weapons is not a fleet upgrade.
+    # The research planner supplies the next race-legal weapon capability;
+    # automatic design creation waits for it. An explicit desired hull remains
+    # available to the native legality compiler (the preceding test).
+    assert synthesize_role_design(state,"combat") is None
+
+
 def test_prt_restricted_hull_is_not_created_for_wrong_race():
     state=_base_state(prt_id=7)
     assert synthesize_role_design(state,"combat",desired_hull_id=10) is None  # Dreadnought is WM-only in StarsAPI

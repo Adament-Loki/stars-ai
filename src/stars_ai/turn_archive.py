@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Any
 import hashlib
 import json
+import os
 import re
 import shutil
 import time
+import uuid
 
 _NATIVE_SUFFIX_RE = re.compile(r"\.(?:hst|xy|m\d+|x\d+|h\d+)$", re.IGNORECASE)
 _SECRET_KEYS = ("password", "secret", "token", "credential", "api_key")
@@ -164,13 +166,109 @@ def _copy_directory_files(source_root: Path | None, dest: Path, patterns: tuple[
     return inventory
 
 
+def _write_approved_actions_summary(
+    dest: Path,
+    *,
+    archived_turn_tag: str,
+    decision_turn_tag: str,
+    metadata: dict[str, Any] | None,
+    report_directory: str = "reports",
+) -> dict[str, Any]:
+    """Create the single human-review file for an end-of-turn action bundle.
+
+    The source M files are the state produced by ``archived_turn_tag``.  The
+    accompanying X files and decision reports were generated from that state
+    during ``decision_turn_tag`` and have already passed the pre-host audit.
+    Combining the reports here makes the command review independent of the
+    host-loop implementation's one-based execution tags.
+    """
+    status = str((metadata or {}).get("action_status") or "APPROVED_FOR_NEXT_HOST")
+    reports = sorted((dest / report_directory).glob("*-DECISION_REPORT.txt"), key=lambda p: p.name.casefold())
+    lines = [
+        "STARS! AI END-OF-TURN APPROVED ACTIONS",
+        f"Committed state reviewed: {archived_turn_tag}",
+        f"Decision source cycle: {decision_turn_tag}",
+        f"Status: {status}",
+        "",
+        "These are the AI orders generated from the committed state above and accepted by the pre-host audit.",
+        "They are staged for the next host execution; game effects are committed only after that host succeeds.",
+        "Generated native order files are in orders/GAME.x#.",
+        "",
+    ]
+    if not reports:
+        lines.append("No player decision reports were captured in this action bundle.")
+    for report in reports:
+        lines.extend([
+            "=" * 88,
+            f"SOURCE REPORT: {report.name}",
+            "=" * 88,
+            report.read_text(encoding="utf-8", errors="replace").rstrip(),
+            "",
+        ])
+    summary = dest / "END_OF_TURN_APPROVED_ACTIONS.txt"
+    summary.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return {
+        "END_OF_TURN_APPROVED_ACTIONS.txt": {
+            "archive_path": str(summary),
+            "size": summary.stat().st_size,
+            "sha256": _sha256(summary),
+        }
+    }
+
+
+def _copy_order_files(game_dir: Path, basename: str, dest: Path) -> dict[str, Any]:
+    """Freeze only the staged X orders needed for action review.
+
+    An action bundle is deliberately not replayable: the committed native M/H
+    state already lives in the preceding ``30-committed`` phase. Keeping just
+    the X files prevents a reviewer from mistaking this convenience folder for
+    another complete game snapshot.
+    """
+    inventory: dict[str, Any] = {}
+    for source in _native_sources(game_dir, basename):
+        if not re.fullmatch(r"\.x\d+", source.suffix, re.IGNORECASE):
+            continue
+        inventory[source.name] = _copy_with_inventory(source, dest / source.name)
+    if not inventory:
+        raise FileNotFoundError(
+            f"No staged {basename}.x# order files found in {game_dir} for action archive"
+        )
+    return inventory
+
+
 
 
 def _atomic_json_write(path: Path, value: Any) -> None:
+    """Atomically replace an archive JSON file, tolerating transient Windows locks.
+
+    Windows Defender, indexers, and a user viewing the archive can briefly hold
+    an otherwise immutable JSON index open.  Archive capture must not turn
+    that short-lived sharing violation into a failed game turn.  The temporary
+    name is unique per write, and replacement retries remain bounded so a
+    genuinely persistent access problem still fails loudly and safely.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(_jsonable(value), indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    payload=json.dumps(_jsonable(value), indent=2, sort_keys=True)
+    try:
+        for attempt in range(6):
+            try:
+                tmp.write_text(payload, encoding="utf-8")
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                # Short exponential backoff (total < 1.3 seconds) handles a
+                # transient scanner/indexer lock without masking a real one.
+                time.sleep(0.04 * (2 ** attempt))
+    finally:
+        # A failed final rename must not leave a predictable stale .tmp file
+        # that a later archive phase could mistake for its own output.
+        try:
+            tmp.unlink(missing_ok=True)
+        except PermissionError:
+            pass
 
 
 def _update_json_archive_index(archive_root: Path, manifest: dict[str, Any], manifest_path: Path) -> None:
@@ -314,13 +412,74 @@ def archive_turn_phase(
     return dest
 
 
+def archive_approved_next_turn_actions(
+    archive_root: str | Path,
+    *,
+    turn_tag: str,
+    decision_turn_tag: str,
+    game_dir: str | Path,
+    basename: str,
+    logs_root: str | Path,
+    metadata: dict[str, Any] | None = None,
+    json_index: bool = True,
+) -> Path:
+    """Archive the next-host orders under the state turn they were chosen from.
+
+    This lightweight companion to ``30-committed`` is intentionally a review
+    bundle, not another native-game snapshot.  It gives a player one obvious
+    file to open without duplicating M/H files or creating an invalid replay
+    workspace from a partially staged state.
+    """
+    archive_root=Path(archive_root).resolve()
+    game_dir=Path(game_dir).resolve()
+    logs_path=Path(logs_root).resolve()
+    phase="40-approved-next-turn-actions"
+    dest=_unique_phase_dir(archive_root,str(turn_tag),phase)
+    dest.mkdir(parents=True)
+    order_inventory=_copy_order_files(game_dir,basename,dest/"orders")
+    report_inventory=_copy_turn_logs(logs_path,str(decision_turn_tag),dest/"reports")
+    generated_inventory=_write_approved_actions_summary(
+        dest,
+        archived_turn_tag=str(turn_tag),
+        decision_turn_tag=str(decision_turn_tag),
+        metadata=metadata,
+        report_directory="reports",
+    )
+    manifest={
+        "schema_version":1,
+        "captured_at_ns":time.time_ns(),
+        "turn_tag":str(turn_tag),
+        "phase":phase,
+        "game_basename":str(basename),
+        "source_game_directory":str(game_dir),
+        "archive_directory":str(dest),
+        "native_files":{},
+        "order_files":order_inventory,
+        "turn_logs":report_inventory,
+        "generated_files":generated_inventory,
+        "metadata":_jsonable(metadata or {}),
+    }
+    manifest_path=dest/"manifest.json"
+    _atomic_json_write(manifest_path,manifest)
+    if json_index:
+        _update_json_archive_index(archive_root,manifest,manifest_path)
+    (dest/"README_REVIEW.txt").write_text(
+        "STARS! AI approved-action review bundle\n\n"
+        "This is not a standalone game or replay directory. Review the prior "
+        "30-committed phase for native state, END_OF_TURN_APPROVED_ACTIONS.txt "
+        "for the decision summary, and orders/GAME.x# for the exact staged orders.\n",
+        encoding="utf-8",
+    )
+    return dest
+
+
 def verify_turn_archive(phase_dir: str | Path) -> dict[str, Any]:
     phase_dir = Path(phase_dir).resolve()
     manifest_path = phase_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     failures = []
     checked = 0
-    for section in ("native_files", "x_templates", "ai_state", "turn_logs"):
+    for section in ("native_files", "order_files", "x_templates", "ai_state", "turn_logs", "generated_files"):
         for _, row in (manifest.get(section) or {}).items():
             archived = Path(row["archive_path"])
             # Manifests store the absolute original archive path. If the archive

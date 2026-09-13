@@ -2,11 +2,11 @@
 
 Opening doctrine:
 
-* the homeworld moves at most 8,000 colonists / 80 kT per turn until it reaches
-  200,000 colonists, then at most 20,000 colonists / 200 kT;
-* a source normally dispatches at most ONE population transport per turn;
-* the opening homeworld starts pulsing at about 100,000 population and keeps
-  about 80,000 behind after a departure;
+* a population source retains its protected floor, while every available
+  carrier takes the load its hold, the source's remaining surplus, and the
+  selected child's remaining need permit; there is no population packet or
+  same-turn departure cap;
+* the homeworld exports only population above its protected breeder floor;
 * a graduated child hub keeps at least ~25% of racial planet capacity before
   exporting onward;
 * the homeworld feeds only designated, not-yet-graduated Layer-1 hubs;
@@ -19,10 +19,10 @@ Loaded population never receives stargate range credit. The freight leg flies
 normally; only an empty ship may later use a gate once native gate movement is
 validated.
 
-The Type-2 source-load form is host-accepted at 200 kT. Other quantities and a
-combined Type-2 population plus Type-1 mineral load are enabled experiments.
-Every experiment is carried in the native decision trace with its exact block
-sequence, so a host rejection can be isolated without disabling the capability.
+Population-only source loads use Type 1 through 127 kT and Type 2 from 128 kT.
+Mixed population/mineral manifests use Type 2. Every experiment is carried in
+the native decision trace with its exact block sequence, so a host rejection
+can be isolated without disabling the capability.
 """
 from __future__ import annotations
 
@@ -38,19 +38,20 @@ from .fuel_planner import (
     profile_with_planned_cargo,
 )
 from .logistics_capacity import (
-    HOMEWORLD_EARLY_EXPORT_KT,
     POPULATION_PULSE_COLONISTS,
     POPULATION_PULSE_KT,
     evaluate_logistics_capacity,
     export_source_statuses,
+    population_export_floor,
 )
 from .models import OrderSet
-from .planet_economy import decode_race_economy
+from .native.population_transport import MAX_SMALL_POPULATION_LOAD_KT
+from .planet_economy import decode_race_economy, projected_population_growth
 from .util import distance
 from .warp_policy import mission_warp
 
 COLONISTS_PER_KT = 100
-MIN_POPULATION_CARRIER_KT = HOMEWORLD_EARLY_EXPORT_KT
+MIN_POPULATION_CARRIER_KT = 1
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,10 @@ class PopulationTransferIntent:
     reason: str
 
     def to_payload(self) -> dict:
+        population_only_small=(
+            1 <= int(self.population_kt) <= MAX_SMALL_POPULATION_LOAD_KT
+            and not any(int(v or 0) for v in self.mineral_load.values())
+        )
         return asdict(self) | {
             "mission": "transport",
             "unload": {
@@ -80,11 +85,14 @@ class PopulationTransferIntent:
                 "germanium": "all",
                 "population": "all",
             },
-            "fuel": "load_optimal",
-            "native_population_encoding": "type2_97_00_12_08_le16",
+            "fuel": "unchanged",
+            "native_population_encoding": (
+                "type1_source_planet_u16_12_08_u8"
+                if population_only_small else "type2_source_planet_u16_12_mask_selected_le16"
+            ),
             "gate_allowed_while_loaded": False,
             "round_trip_logistics": True,
-            "population_dispatch_policy": "one_capped_export_per_source_per_turn",
+            "population_dispatch_policy": "source_surplus_destination_need_and_hold_with_protected_floor",
         }
 
 
@@ -222,7 +230,8 @@ def plan_population_redistribution(
     if not freighters:
         return []
 
-    dispatched_sources: set[int] = set()
+    source_outbound: dict[int, int] = {}
+    source_dispatches: dict[int, int] = {}
     used_fleets: set[int] = set()
     planned_to: dict[int, int] = {}
     intents: list[PopulationTransferIntent] = []
@@ -230,27 +239,17 @@ def plan_population_redistribution(
     for receiver_score, target, raw_need, target_hub, parent_id in receivers:
         if len(intents) >= int(max_transfers):
             break
-        if parent_id in dispatched_sources:
-            # Hard opening micro invariant: no 2+ population loads from one
-            # export planet in the same turn.
-            continue
         status = statuses.get(parent_id)
         source_hub = hubs.get(parent_id)
         source = planets.get(parent_id)
         if status is None or source_hub is None or source is None or not status.ready_now:
             continue
         remaining_need = int(raw_need) - int(planned_to.get(int(target.id), 0))
-        export_colonists = min(
-            int(status.max_export_colonists),
-            max(0, int(status.exportable_population)),
-            max(0, remaining_need),
+        already_outbound = int(source_outbound.get(parent_id, 0) or 0)
+        source_available = min(
+            max(0, int(status.exportable_population) - already_outbound),
+            max(0, int(source.population or 0) - int(status.protected_floor) - already_outbound),
         )
-        # The native population quantity is kT, i.e. an exact multiple of 100
-        # colonists. Do not round up a load beyond the source or target need.
-        export_colonists = (export_colonists // COLONISTS_PER_KT) * COLONISTS_PER_KT
-        export_kt = export_colonists // COLONISTS_PER_KT
-        if export_kt <= 0:
-            continue
 
         choices = []
         for fleet in freighters:
@@ -260,23 +259,40 @@ def plan_population_redistribution(
             if here is None or int(here.id) != parent_id:
                 continue
             cargo_cap = int((fleet.native or {}).get("cargo_capacity", 0) or 0)
-            if cargo_cap < export_kt:
+            export_colonists = min(
+                source_available,
+                max(0, remaining_need),
+                max(0, cargo_cap) * COLONISTS_PER_KT,
+            )
+            # The native population quantity is kT, i.e. an exact multiple of
+            # 100 colonists. Do not round up beyond a source/target/fleet limit.
+            export_colonists = (export_colonists // COLONISTS_PER_KT) * COLONISTS_PER_KT
+            export_kt = export_colonists // COLONISTS_PER_KT
+            if export_kt <= 0:
                 continue
-            if int(source.population or 0) - export_colonists < int(status.protected_floor):
+            if int(source.population or 0) - already_outbound - export_colonists < int(status.protected_floor):
                 continue
             if not mission_reachable_with_planned_cargo(
                 fleet, target.position, "transport", {"population": export_kt}
             ):
                 continue
             travel = distance(source.position, target.position)
-            # Prefer long-range compact population carriers over an oversized
-            # bulk freighter when both are otherwise usable.
-            oversize_penalty = max(0, cargo_cap - 300) / 600.0
-            choices.append((receiver_score - travel / 500.0 - oversize_penalty, fleet, cargo_cap))
+            # For a tied target, send the carrier that can deliver more of its
+            # actual remaining need first.
+            choices.append((
+                receiver_score - travel / 500.0,
+                export_colonists,
+                -int(fleet.id),
+                fleet,
+                cargo_cap,
+                export_kt,
+            ))
 
         if not choices:
             continue
-        score, fleet, cargo_cap = max(choices, key=lambda row: row[0])
+        score, export_colonists, _, fleet, cargo_cap, export_kt = max(
+            choices, key=lambda row: row[:3]
+        )
 
         # Use the otherwise-unused cargo hold for the recipient's real mineral
         # deficit. The shared reserve policy prevents stripping the source.
@@ -318,28 +334,37 @@ def plan_population_redistribution(
         else:
             selected_warp = int(mission_warp(fleet, target.position, "transport"))
 
-        before = int(source.population or 0)
+        before = int(source.population or 0) - already_outbound
         after = before - export_colonists
-        dispatched_sources.add(parent_id)
+        source_outbound[parent_id] = already_outbound + export_colonists
+        source_dispatches[parent_id] = int(source_dispatches.get(parent_id, 0)) + 1
         used_fleets.add(int(fleet.id))
         planned_to[int(target.id)] = int(planned_to.get(int(target.id), 0)) + export_colonists
 
         mixed_load = sum(mineral_load.values()) > 0
         baseline_200kt = export_kt == POPULATION_PULSE_KT and not mixed_load
+        baseline_80kt = export_kt == 80 and not mixed_load
+        small_population_only = 1 <= export_kt <= MAX_SMALL_POPULATION_LOAD_KT and not mixed_load
         experiment_id = (
             "population-type2-200kt-baseline"
             if baseline_200kt
-            else f"population-type2-{export_kt}kt" + ("-with-minerals" if mixed_load else "")
+            else "population-type1-80kt-baseline"
+            if baseline_80kt
+            else f"population-{'type1' if small_population_only else 'type2'}-{export_kt}kt"
+            + ("-with-minerals" if mixed_load else "")
         )
         native_experiment = {
             "enabled": True,
             "id": experiment_id,
-            "trust_level": "VALIDATED" if baseline_200kt else "EXPERIMENTAL",
-            "validated_baseline": "200 kT Type-2 97 00 12 08 + LE16 quantity with 0x11 population transport task",
+            "trust_level": "VALIDATED" if baseline_80kt else "EXPERIMENTAL",
+            "validated_baseline": (
+                "80 kT Type-1 <source planet u16> 12 08 50 + 0x51 Transport unload-all I/B/G/population "
+                "endpoint is host-validated end-to-end."
+            ),
             "risk": (
-                "None beyond the controlled population transport baseline."
-                if baseline_200kt
-                else "Type-2 quantity and/or combined Type-1 mineral source-load has not yet been client-captured."
+                "None beyond the end-to-end validated 80 kT transport baseline."
+                if baseline_80kt
+                else "This quantity or mixed manifest remains trace-required until confirmed in a host turn."
             ),
             "mineral_capacity_kt": int(residual_capacity),
         }
@@ -360,13 +385,14 @@ def plan_population_redistribution(
             mineral_load=mineral_load,
             native_experiment=native_experiment,
             reason=(
-                f"Onion population pulse {source.name} (ring {source_hub.ring})->{target.name} "
+                f"Strategic population export {source.name} (ring {source_hub.ring})->{target.name} "
                 f"(ring {target_hub.ring}): load {export_colonists:,} colonists "
                 f"({export_kt} kT) into {fleet.name} ({cargo_cap} kT hold)"
                 f"; minerals I/B/G={mineral_load['ironium']}/{mineral_load['boranium']}/{mineral_load['germanium']} kT. "
                 f"Projected source {before:,}->{after:,}; protected floor={status.protected_floor:,}. "
-                "This is the only population departure allowed from this source this turn. Loaded cargo "
-                "flies normally; after destination unload the empty hull returns/repositions for another pulse."
+                f"Source dispatch #{source_dispatches[parent_id]} this turn; aggregate source load remains above "
+                "the protected floor. Loaded cargo "
+                "flies normally; after destination unload the empty hull returns/repositions for future work."
             ),
         ))
     return intents
@@ -376,15 +402,15 @@ def plan_empty_freighter_returns(
     state: Any,
     transfer_intents: list[PopulationTransferIntent] | tuple[PopulationTransferIntent, ...] = (),
     *,
-    max_returns: int = 5,
+    max_returns: int | None = None,
 ) -> list[EmptyFreighterReturnIntent]:
     """Route idle empty transports back to useful export hubs.
 
-    An empty leg is only useful when the destination can load cargo immediately.
-    A transport may therefore return to a population exporter only when that
-    world has both an active downstream need and a currently legal population
-    packet.  This avoids consuming early fuel and travel time to park a scarce
-    freighter at a breeder that has nothing ready to move.
+    Staging is deliberately broader than dispatch.  A freighter that has just
+    unloaded at an outpost should return to a sound population source while
+    that source replenishes, rather than remain stranded until a whole native
+    1-kT packet is already available.  Actual loading remains subject to the
+    protected-floor and destination-demand checks in ``plan_population_redistribution``.
     """
     owned = [p for p in state.planets if p.owner == state.player_id]
     if not owned:
@@ -395,25 +421,50 @@ def plan_empty_freighter_returns(
     planets = {int(p.id): p for p in owned}
     statuses = {x.planet_id: x for x in logistics.exporter_status}
     used = {int(x.fleet_id) for x in transfer_intents}
-    dispatched_sources = {int(x.source_planet_id) for x in transfer_intents}
 
     exporters = []
-    for pid, status in statuses.items():
-        hub = hubs.get(pid)
+    for pid, hub in hubs.items():
+        status = statuses.get(pid)
         p = planets.get(pid)
+        if p is None:
+            continue
+        protected_floor = (
+            int(status.protected_floor)
+            if status is not None
+            else int(population_export_floor(state, hub, network))
+        )
+        exportable = max(0, int(p.population or 0) - protected_floor)
+        growth = max(0, int(projected_population_growth(p, state.race)))
+        downstream_backlog = int(status.downstream_backlog) if status is not None else 0
+        immediate_packet = exportable >= COLONISTS_PER_KT
+        # A source with a live onion lane, a network-advertised surplus, or a
+        # completed hub facing the frontier is a useful future export location.
+        # The latter admits a healthy HW/P1 between colony claims without
+        # treating every owned world as a freighter parking site.
+        export_role = bool(
+            status is not None
+            or int(hub.export_population or 0) > 0
+            or (
+                (int(hub.ring) == 0 or bool(hub.graduated))
+                and int(hub.frontier_worlds_160 or 0) > 0
+            )
+        )
         if (
-            hub is None
-            or p is None
-            or int(status.downstream_backlog) < int(status.max_export_colonists)
-            or not bool(status.ready_now)
-            or int(status.exportable_population) < COLONISTS_PER_KT
-            # A source has one legal population departure each turn.  Once a
-            # sibling freighter has claimed it, do not send another hull there
-            # empty on the strength of its pre-dispatch population snapshot.
-            or int(pid) in dispatched_sources
+            not export_role
+            or (not immediate_packet and growth <= 0)
         ):
             continue
-        exporters.append((pid, p, hub, status))
+        exporters.append((
+            pid,
+            p,
+            hub,
+            status,
+            protected_floor,
+            exportable,
+            growth,
+            downstream_backlog,
+            immediate_packet,
+        ))
     if not exporters:
         return []
 
@@ -428,7 +479,7 @@ def plan_empty_freighter_returns(
 
     returns: list[EmptyFreighterReturnIntent] = []
     for fleet in empty_freighters:
-        if len(returns) >= int(max_returns) or int(fleet.id) in used:
+        if (max_returns is not None and len(returns) >= int(max_returns)) or int(fleet.id) in used:
             continue
         current = _planet_under_fleet(fleet, owned)
         if current is None:
@@ -439,25 +490,62 @@ def plan_empty_freighter_returns(
             continue
 
         choices = []
-        for pid, export_planet, hub, status in exporters:
+        for (
+            pid,
+            export_planet,
+            hub,
+            status,
+            protected_floor,
+            exportable,
+            growth,
+            downstream_backlog,
+            immediate_packet,
+        ) in exporters:
             warp = _safe_empty_warp(fleet, export_planet)
             if warp is None:
                 continue
             travel = distance(current.position, export_planet.position)
             congestion = int(staged.get(pid, 0))
-            # A source that can sustain only ~0.2 pulse/turn does not need three
-            # waiting freighters. Sustainable rate and backlog both matter.
+            # Sustainable rate, backlog, and current staging congestion all
+            # matter; avoid accumulating an idle parking lot at one source.
+            sustainable_rate = (
+                float(status.sustainable_pulses_per_turn)
+                if status is not None
+                else min(1.0, float(growth) / float(POPULATION_PULSE_COLONISTS))
+            )
             score = (
-                2.2 * min(1.0, float(status.sustainable_pulses_per_turn) + (0.35 if status.ready_now else 0.0))
-                + min(2.5, int(status.downstream_backlog) / 80_000.0)
+                2.2 * min(1.0, sustainable_rate + (0.35 if immediate_packet else 0.0))
+                + min(2.5, downstream_backlog / 80_000.0)
                 + 0.35 * int(hub.ring)
                 - travel / 300.0
                 - 1.05 * congestion
             )
-            choices.append((score, pid, export_planet, hub, status, warp))
+            choices.append((
+                score,
+                pid,
+                export_planet,
+                hub,
+                protected_floor,
+                exportable,
+                sustainable_rate,
+                downstream_backlog,
+                immediate_packet,
+                warp,
+            ))
         if not choices:
             continue
-        score, pid, export_planet, hub, status, warp = max(choices, key=lambda row: row[0])
+        (
+            score,
+            pid,
+            export_planet,
+            hub,
+            protected_floor,
+            exportable,
+            sustainable_rate,
+            downstream_backlog,
+            immediate_packet,
+            warp,
+        ) = max(choices, key=lambda row: row[0])
         staged[pid] = staged.get(pid, 0) + 1
         returns.append(EmptyFreighterReturnIntent(
             fleet_id=int(fleet.id),
@@ -465,17 +553,17 @@ def plan_empty_freighter_returns(
             export_planet_id=int(pid),
             warp=int(warp),
             export_ring=int(hub.ring),
-            downstream_population_backlog=int(status.downstream_backlog),
+            downstream_population_backlog=int(downstream_backlog),
             score=round(float(score), 3),
             reason=(
                 f"Round-trip onion logistics: {fleet.name} is empty at {current.name}; reposition to "
-                f"ring-{hub.ring} exporter {export_planet.name}. Source currently has {status.population:,} "
-                f"colonists, with an immediate {status.exportable_population:,}-colonist exportable payload "
-                f"above trigger={status.dispatch_trigger:,} and protected floor={status.protected_floor:,}, "
-                f"sustainable rate~{status.sustainable_pulses_per_turn:.2f} "
-                f"{status.max_export_colonists:,}-colonist exports/turn, downstream "
-                f"backlog={status.downstream_backlog:,}. Wait there if another hull already used this turn's "
-                "single source dispatch."
+                f"ring-{hub.ring} exporter {export_planet.name}. Source currently has {int(export_planet.population or 0):,} "
+                f"colonists, with {exportable:,} colonists above protected floor={protected_floor:,} "
+                f"({'loadable now' if immediate_packet else 'replenishing for its next native packet'}), "
+                f"sustainable planning rate~{sustainable_rate:.2f} base loads/turn, "
+                f"downstream backlog={downstream_backlog:,}. Return now so this scarce hold is "
+                "at an active exporter when current or newly discovered demand appears; loading still requires "
+                "a legal source surplus above the protected floor."
             ),
         ))
     return returns

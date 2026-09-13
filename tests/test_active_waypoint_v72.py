@@ -4,6 +4,7 @@ from stars_ai.models import Fleet,GameState,OrderSet,Planet,Position,RaceProfile
 from stars_ai.native.waypoint import WaypointRecord
 from stars_ai.native.x_writer import _movement_route_blocks, _native_waypoint_decision
 from stars_ai.warp_policy import optimize_active_route_warps
+from stars_ai.fuel_planner import apply_fuel_safety
 
 
 def _waypoint(*, destination, warp, task, object_type=0x91):
@@ -126,3 +127,27 @@ def test_repeated_warp_seven_progress_near_four_ly_is_flagged():
     assert second[0]["suspicious_slow_turns"]==1
     assert third[0]["suspicious_slow_turns"]==2
     assert "SUSPICIOUS MOVEMENT" in third[0]["flag"]
+
+
+def test_fuel_safety_preserves_an_existing_colony_waypoint_instead_of_retargeting():
+    state=_state(destination=1,task=2,warp=7)
+    fleet=state.fleets[0]
+    fleet.role="colony"
+    fleet.native["fuel_profile"]={
+        "fuel":1,"effective_fuel":1,"fuel_capacity":100,
+        "mass":100,"groups":[{"engine_id":4,"mass":100}],
+    }
+    fleet.native["race_fuel_flags"]={"ife":False,"ce":False}
+    orders=OrderSet("g",2400,1)
+    orders.add(
+        "colony_operation",
+        {"fleet_id":0,"destination_planet_id":1,"mission":"colonize"},
+        "continue accepted colony route",
+    )
+
+    apply_fuel_safety(state,orders)
+
+    assert len(orders.orders)==1
+    assert orders.orders[0].kind=="colony_operation"
+    assert orders.orders[0].payload["fuel_plan"]["policy"]=="preserve_active_native_waypoint"
+    assert orders.orders[0].payload["warp"]==7

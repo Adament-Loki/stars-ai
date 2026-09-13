@@ -19,14 +19,19 @@ from typing import Any
 from .cargo_planner import derive_cargo_plan
 from .expansion_network import evaluate_expansion_network
 from .fuel_planner import mission_reachable_with_planned_cargo
-from .logistics_capacity import export_source_statuses
+from .logistics_capacity import export_source_statuses, population_export_floor
+from .native.population_transport import MAX_SMALL_POPULATION_LOAD_KT
 from .planet_economy import decode_race_economy
-from .population_redistribution import COLONISTS_PER_KT, _planet_under_fleet
+from .population_invasion import is_recently_lost_world, population_capture_targets
+from .population_redistribution import (
+    COLONISTS_PER_KT,
+    _planet_under_fleet,
+    plan_empty_freighter_returns,
+)
 from .util import distance
 from .warp_policy import mission_warp
 
 _MINERALS = ("ironium", "boranium", "germanium")
-
 
 def _empty_load() -> dict[str, int]:
     return {mineral: 0 for mineral in _MINERALS}
@@ -96,11 +101,12 @@ def _population_options(
     fleet: Any,
     source: Any,
     *,
+    network: Any,
     hubs: dict[int, Any],
     statuses: dict[int, Any],
     base_demands: dict[int, Any],
     population_inbound: dict[int, int],
-    dispatched_sources: set[int],
+    population_source_outbound: dict[int, int],
 ) -> list[dict[str, Any]]:
     """Return feasible population needs for one fleet at its current source."""
     cap = _fleet_capacity(fleet)
@@ -111,8 +117,7 @@ def _population_options(
     source_hub = hubs.get(source_id)
     if status is None or source_hub is None or not bool(status.ready_now):
         return []
-    if source_id in dispatched_sources:
-        return []
+    already_dispatched = int(population_source_outbound.get(source_id, 0) or 0)
 
     out: list[dict[str, Any]] = []
     for target_hub in hubs.values():
@@ -127,9 +132,14 @@ def _population_options(
             int(getattr(target_hub, "import_population_to_25", 0) or 0)
             - int(population_inbound.get(int(target.id), 0)),
         )
+        source_available = min(
+            max(0, int(status.exportable_population) - already_dispatched),
+            max(0, int(source.population or 0) - int(status.protected_floor) - already_dispatched),
+        )
         export_colonists = min(
-            int(status.max_export_colonists),
-            int(status.exportable_population),
+            # Each departure is constrained by real source surplus, remaining
+            # destination need, and the selected hull--not a packet policy.
+            source_available,
             remaining_colonists,
             cap * COLONISTS_PER_KT,
         )
@@ -137,7 +147,7 @@ def _population_options(
         population_kt = export_colonists // COLONISTS_PER_KT
         if population_kt <= 0:
             continue
-        if int(source.population or 0) - export_colonists < int(status.protected_floor):
+        if int(source.population or 0) - already_dispatched - export_colonists < int(status.protected_floor):
             continue
         if not mission_reachable_with_planned_cargo(
             fleet, target.position, "transport", {"population": population_kt}
@@ -159,9 +169,127 @@ def _population_options(
             "status": status,
             "population_kt": population_kt,
             "population_colonists": export_colonists,
+            "source_already_dispatched": already_dispatched,
             "remaining_colonists": remaining_colonists,
         })
     return out
+
+
+def _population_capture_options(
+    state: Any,
+    fleet: Any,
+    source: Any,
+    *,
+    plan: Any | None,
+    network: Any,
+    hubs: dict[int, Any],
+    dispatched_sources: set[int],
+) -> list[dict[str, Any]]:
+    """Return one-turn, large-transport population captures from this source.
+
+    The normal logistics program uses compact pulses.  Capture is intentionally
+    a different, rare operation: it consumes a large empty hull, leaves the
+    breeder above its normal protected floor, and only targets a small observed
+    non-AR colony.  It never falls back to a guessed Type-25 encoding.
+    """
+    if int(source.id) in dispatched_sources:
+        return []
+    capacity = _fleet_capacity(fleet)
+    source_hub = hubs.get(int(source.id))
+    if source_hub is None:
+        return []
+    protected_floor = int(population_export_floor(state, source_hub, network))
+    out: list[dict[str, Any]] = []
+    for target_info in population_capture_targets(state):
+        if int(target_info.required_kt) > capacity:
+            continue
+        target = next((p for p in state.planets if int(p.id) == int(target_info.planet_id)), None)
+        if target is None:
+            continue
+        recapture = is_recently_lost_world(target)
+        if plan is not None and not recapture:
+            diplomacy = getattr(plan, "diplomacy", {}) or {}
+            view = diplomacy.get(int(target_info.owner_id), diplomacy.get(str(target_info.owner_id), {})) or {}
+            attitude = str(view.get("attitude", "neutral") or "neutral").lower()
+            action = str((view.get("conflict", {}) or {}).get("recommended_action", "coexist") or "coexist").lower()
+            # An ordinary population capture is a war action.  Only the
+            # immediate recovery of a world just taken from us may bypass the
+            # normal hostile/opposed diplomacy gate.
+            if attitude in {"helpful", "allied"} or (attitude != "hostile" and action != "oppose"):
+                continue
+        if int(source.population or 0) - int(target_info.required_colonists) < protected_floor:
+            continue
+        if not mission_reachable_with_planned_cargo(
+            fleet, target.position, "transport", {"population": int(target_info.required_kt)}
+        ):
+            continue
+        # Recovering a world captured this turn prevents a quick enemy snowball
+        # and preserves infrastructure already paid for.  Other legal enemy
+        # colonies remain valuable, but do not outrank that direct recovery.
+        score = (
+            (7_000.0 if recapture else 5_500.0)
+            + min(250.0, float(getattr(target, "habitability", 0) or 0) * 2.0)
+            - min(500.0, distance(source.position, target.position))
+            - float(target_info.estimated_population) / 400.0
+        )
+        out.append({
+            "kind": "population_capture",
+            "score": score,
+            "source": source,
+            "target": target,
+            "source_hub": source_hub,
+            "target_info": target_info,
+            "population_kt": int(target_info.required_kt),
+            "population_colonists": int(target_info.required_colonists),
+            "protected_floor": protected_floor,
+            "recapture": recapture,
+        })
+    return out
+
+
+def _population_capture_payload(state: Any, fleet: Any, option: dict[str, Any]) -> dict[str, Any]:
+    source = option["source"]
+    target = option["target"]
+    target_info = option["target_info"]
+    pop_kt = int(option["population_kt"])
+    return {
+        "fleet_id": int(fleet.id),
+        "source_planet_id": int(source.id),
+        "destination_planet_id": int(target.id),
+        "population_kt": pop_kt,
+        "population_colonists": int(option["population_colonists"]),
+        "warp": int(mission_warp(fleet, target.position, "transport")),
+        "score": round(float(option["score"]), 3),
+        "source_population_before": int(source.population or 0),
+        "source_population_after": int(source.population or 0) - int(option["population_colonists"]),
+        "source_protected_floor": int(option["protected_floor"]),
+        "mineral_load": _empty_load(),
+        "mission": "transport",
+        "unload": {"ironium": "all", "boranium": "all", "germanium": "all", "population": "all"},
+        "fuel": "unchanged",
+        "native_population_encoding": "type2_source_planet_u16_12_mask_selected_le16",
+        "population_capture": {
+            "operation": "counter_capture" if bool(option.get("recapture")) else "expansion_capture",
+            "target_owner_id": int(target_info.owner_id),
+            "target_population_estimate": int(target_info.estimated_population),
+            "target_prt_id": target_info.target_prt_id,
+            "target_prt_name": target_info.target_prt_name,
+            "policy": "large-colonist capture; excluded when target is known Alternate Reality",
+        },
+        "shared_logistics": {
+            "need_rank": round(float(option["score"]), 3),
+            "manifest_policy": "dedicated large population capture",
+            "cargo_capacity": _fleet_capacity(fleet),
+            "manifest_total_kt": pop_kt,
+        },
+        "native_experiment": {
+            "enabled": True,
+            "id": f"population-capture-type2-{pop_kt}kt",
+            "trust_level": "EXPERIMENTAL",
+            "risk": "Type-2 population quantity is within its u16 field ceiling; the tactical capture remains trace-required until host-confirmed.",
+            "type25_policy": "Not used: Type-2 has no format transition at 1,000 kT.",
+        },
+    }
 
 
 def _mineral_options(
@@ -242,11 +370,15 @@ def _population_payload(
     pop_kt = int(option["population_kt"])
     colonists = int(option["population_colonists"])
     capacity = _fleet_capacity(fleet)
+    source_before = int(source.population or 0) - int(option.get("source_already_dispatched", 0) or 0)
     mixed = sum(mineral_load.values()) > 0
     baseline = pop_kt == 200 and not mixed
+    baseline_80kt = pop_kt == 80 and not mixed
+    small_population_only = 1 <= pop_kt <= MAX_SMALL_POPULATION_LOAD_KT and not mixed
     experiment_id = (
         "population-type2-200kt-baseline"
-        if baseline else f"population-type2-{pop_kt}kt" + ("-with-minerals" if mixed else "")
+        if baseline else "population-type1-80kt-baseline"
+        if baseline_80kt else f"population-{'type1' if small_population_only else 'type2'}-{pop_kt}kt" + ("-with-minerals" if mixed else "")
     )
     return {
         "fleet_id": int(fleet.id),
@@ -258,17 +390,20 @@ def _population_payload(
         "score": round(float(score), 3),
         "source_ring": int(getattr(option["source_hub"], "ring", 0) or 0),
         "destination_ring": int(getattr(option["target_hub"], "ring", 0) or 0),
-        "source_population_before": int(source.population or 0),
-        "source_population_after": int(source.population or 0) - colonists,
+        "source_population_before": source_before,
+        "source_population_after": source_before - colonists,
         "source_protected_floor": int(status.protected_floor),
         "mineral_load": dict(mineral_load),
         "mission": "transport",
         "unload": {"ironium": "all", "boranium": "all", "germanium": "all", "population": "all"},
-        "fuel": "load_optimal",
-        "native_population_encoding": "type2_97_00_12_08_le16",
+        "fuel": "unchanged",
+        "native_population_encoding": (
+            "type1_source_planet_u16_12_08_u8"
+            if small_population_only else "type2_source_planet_u16_12_mask_selected_le16"
+        ),
         "gate_allowed_while_loaded": False,
         "round_trip_logistics": True,
-        "population_dispatch_policy": "one_capped_export_per_source_per_turn",
+        "population_dispatch_policy": "source_surplus_destination_need_and_hold_with_protected_floor",
         "shared_logistics": {
             "need_rank": round(float(score), 3),
             "destination_priority": round(float(_destination_priority(target, option["target_hub"], None)), 3),
@@ -279,11 +414,14 @@ def _population_payload(
         "native_experiment": {
             "enabled": True,
             "id": experiment_id,
-            "trust_level": "VALIDATED" if baseline else "EXPERIMENTAL",
-            "validated_baseline": "200 kT Type-2 97 00 12 08 + LE16 quantity with 0x11 population transport task",
+            "trust_level": "VALIDATED" if baseline_80kt else "EXPERIMENTAL",
+            "validated_baseline": (
+                "80 kT Type-1 <source planet u16> 12 08 50 + 0x51 Transport unload-all I/B/G/population "
+                "endpoint is host-validated end-to-end."
+            ),
             "risk": (
-                "None beyond the controlled population transport baseline."
-                if baseline else "The Type-2 mixed-load field layout is client-captured; this selected quantity/mask remains trace-required until confirmed in a host turn."
+                "None beyond the end-to-end validated 80 kT transport baseline."
+                if baseline_80kt else "The Type-2 selected quantity/mask and its population-only endpoint pairing remain trace-required until confirmed in a host turn."
             ),
             "mineral_capacity_kt": max(0, capacity - pop_kt),
             "shared_scheduler": True,
@@ -324,9 +462,15 @@ def _consolidate_bulk_lanes(state: Any, orders: Any, schedule: list[dict[str, An
         largest_capacity = max(_fleet_capacity(f) for f in lane_fleets)
         if total_load <= largest_capacity:
             continue
-        population_assignment=next((a for a in assignments if a.get("kind") == "population"), None)
-        if population_assignment is None:
+        population_assignments=[a for a in assignments if a.get("kind") == "population"]
+        # The client capture proves one population hull plus one mineral hull
+        # can merge into a single mixed manifest.  It does not prove that a
+        # batch of independent population exports may merge safely; preserve
+        # those separate freighters so an overfull homeworld can feed several
+        # hubs in parallel.
+        if len(population_assignments) != 1:
             continue
+        population_assignment=population_assignments[0]
         population_order=next((
             order for order in orders.orders
             if order.kind == "transport_population"
@@ -355,7 +499,7 @@ def _consolidate_bulk_lanes(state: Any, orders: Any, schedule: list[dict[str, An
                 "enabled": True,
                 "trust_level": "CLIENT_CAPTURED_LAYOUT",
                 "id": "type37-then-type2-mixed-load-then-waypoint",
-                "risk": "The exact Type37 + Type2 + Type4 layout is client-captured; the AI's selected quantities and added Type5 unload/refuel task remain trace-required.",
+                "risk": "The exact Type37 + Type2 + Type4 layout is client-captured; the AI's selected quantities and Type5 unload-all-cargo task remain trace-required.",
             },
         }
         combined_minerals=_empty_load()
@@ -377,7 +521,7 @@ def _consolidate_bulk_lanes(state: Any, orders: Any, schedule: list[dict[str, An
             "fleet_id": target_fleet_id,
             "mineral_load": combined_minerals,
             "merged_cargo_capacity_kt": merged_capacity,
-            "native_population_encoding": "type2_97_00_12_mask_selected_le16",
+            "native_population_encoding": "type2_source_planet_u16_12_mask_selected_le16",
         })
         combined_payload["shared_logistics"]={
             **dict(combined_payload.get("shared_logistics") or {}),
@@ -391,7 +535,7 @@ def _consolidate_bulk_lanes(state: Any, orders: Any, schedule: list[dict[str, An
             "id": "type37-then-type2-mixed-population-minerals",
             "trust_level": "CLIENT_CAPTURED_LAYOUT",
             "merged_fleet_capacity_kt": merged_capacity,
-            "client_capture": "sandbox/GAME.x1: Type37 07 00 08 00 + Type2 07 00 97 00 12 0E 46 00 64 00 4A 01 + Type4 waypoint",
+            "client_capture": "latestdemo turn-022 P2: Type37 05 02 06 02 + Type2 05 02 <source planet 19> 12 0C FA 00 48 03 + Type4/Type5 Transport unload-all waypoint; Type37 retains the owner tag just like Type2.",
         }
         merged_operations.append((
             _order_priority(need_rank) + 1, merge_payload, combined_payload,
@@ -399,7 +543,7 @@ def _consolidate_bulk_lanes(state: Any, orders: Any, schedule: list[dict[str, An
                 f"Shared transport lane {source_id}->{target_id} needs {total_load}kT, above any one "
                 f"available hull ({largest_capacity}kT). Merge fleets {fleet_ids} at the source into "
                 f"fleet {target_fleet_id} ({merged_capacity}kT), then load its combined colonist/mineral "
-                "manifest and set the destination Transport unload/refuel task in this same X file."
+                "manifest and set the destination Transport unload-all-cargo task in this same X file."
             ),
         ))
         replaced_fleet_ids.update(fleet_ids)
@@ -447,9 +591,12 @@ def schedule_shared_transport_orders(
     source_committed: dict[int, dict[str, int]] = {}
     target_inbound: dict[int, dict[str, int]] = {}
     population_inbound: dict[int, int] = {}
+    population_source_outbound: dict[int, int] = {}
     dispatched_sources: set[int] = set()
     available: list[tuple[Any, Any]] = []
     schedule: list[dict[str, Any]] = []
+    blocked_delivery_fleet_ids: list[int] = []
+    scheduled_fleet_ids: set[int] = set()
 
     for fleet in state.fleets:
         if fleet.owner != state.player_id or fleet.role != "freighter" or fleet.destination_planet_id is not None:
@@ -459,21 +606,36 @@ def schedule_shared_transport_orders(
             continue
         cargo = (fleet.native or {}).get("cargo", {}) or {}
         if _cargo_mass(fleet) > 0:
+            # A transport which is already orbiting an owned planet with
+            # cargo aboard has completed the flight but not the delivery.
+            # Reapply the captured current-waypoint Transport task so Stars!
+            # unloads every cargo class, including fields that happen to be
+            # empty.  This deliberately recovers the individual hull without
+            # stopping unrelated empty freighters from serving new lanes.
+            payload={
+                "fleet_id": int(fleet.id),
+                "destination_planet_id": int(here.id),
+                "warp": 0,
+                "cargo_before": {key: int(cargo.get(key, 0) or 0) for key in (*_MINERALS, "population")},
+                "unload": {key: "all" for key in (*_MINERALS, "population")},
+                "mission": "transport",
+                "native_reference": "captured current-orbit Type-5 Transport task with all I/B/G/population unload fields",
+            }
             orders.add(
-                "transport_unload_remainder",
-                {
-                    "fleet_id": fleet.id,
-                    "destination_planet_id": here.id,
-                    "warp": int((fleet.native or {}).get("observed_warp", 1) or 1),
-                    "mission": "transport_unload_all",
-                    "cargo_before": {key: int(cargo.get(key, 0) or 0) for key in (*_MINERALS, "population")},
-                    "unload": {"ironium": "all", "boranium": "all", "germanium": "all", "population": "all"},
-                    "fuel": "load_optimal",
-                },
-                f"Finish delivery at {here.name} before assigning another transport need.",
-                priority=180,
+                "transport_unload_remainder",payload,
+                f"Recover completed freight delivery: {fleet.name} is orbiting {here.name} with cargo aboard; "
+                "set the current waypoint to unload all Ironium, Boranium, Germanium, and colonists.",
+                priority=176,
             )
-            schedule.append({"fleet_id": int(fleet.id), "status": "unload_remainder", "source_planet_id": int(here.id)})
+            scheduled_fleet_ids.add(int(fleet.id))
+            schedule.append({
+                "fleet_id": int(fleet.id),
+                "kind": "unload_remainder",
+                "status": "current_orbit_unload_all",
+                "source_planet_id": int(here.id),
+                "destination_planet_id": int(here.id),
+                "cargo_before": dict(payload["cargo_before"]),
+            })
             continue
         if _fleet_capacity(fleet) > 0:
             available.append((fleet, here))
@@ -482,29 +644,59 @@ def schedule_shared_transport_orders(
     # population availability before the next selection, which is the required
     # reprioritization step rather than two independent transport passes.
     while available:
-        candidates: list[tuple[float, int, int, dict[str, Any], Any]] = []
+        candidates: list[tuple[float, int, int, int, dict[str, Any], Any]] = []
         for index, (fleet, source) in enumerate(available):
-            for option in _population_options(
-                state, fleet, source, hubs=hubs, statuses=statuses,
-                base_demands=base_demands, population_inbound=population_inbound,
+            for option in _population_capture_options(
+                state, fleet, source, plan=plan, network=network, hubs=hubs,
                 dispatched_sources=dispatched_sources,
             ):
-                candidates.append((float(option["score"]), 1, -int(fleet.id), option, fleet))
+                candidates.append((float(option["score"]), 2, _fleet_capacity(fleet), -int(fleet.id), option, fleet))
+            for option in _population_options(
+                state, fleet, source, network=network, hubs=hubs, statuses=statuses,
+                base_demands=base_demands, population_inbound=population_inbound,
+                population_source_outbound=population_source_outbound,
+            ):
+                candidates.append((float(option["score"]), 1, _fleet_capacity(fleet), -int(fleet.id), option, fleet))
             for option in _mineral_options(
                 state, fleet, source, owned=owned, hubs=hubs, economy=economy,
                 orders=orders, base_demands=base_demands,
                 source_committed=source_committed, target_inbound=target_inbound,
             ):
-                candidates.append((float(option["score"]), 0, -int(fleet.id), option, fleet))
+                candidates.append((float(option["score"]), 0, _fleet_capacity(fleet), -int(fleet.id), option, fleet))
         if not candidates:
             break
         # On an exact need score, population receives the spare cargo rule;
         # otherwise destination need score is the sole primary decision.
-        _, _, _, selected, fleet = max(candidates, key=lambda row: row[:3])
+        # Need score remains primary.  A capacity tie is won by the larger
+        # freighter so it can satisfy more of the selected world's real need.
+        _, _, _, _, selected, fleet = max(candidates, key=lambda row: row[:4])
         source = selected["source"]
         target = selected["target"]
         available = [(f, p) for f, p in available if int(f.id) != int(fleet.id)]
         score = float(selected["score"])
+
+        if selected["kind"] == "population_capture":
+            payload = _population_capture_payload(state, fleet, selected)
+            orders.add(
+                "transport_population",
+                payload,
+                (
+                    f"{'Counter-capture' if bool(selected.get('recapture')) else 'Population-capture'} transport: {fleet.name} carries "
+                    f"{selected['population_colonists']:,} colonists to overwhelm "
+                    f"the observed {selected['target_info'].estimated_population:,}-colonist "
+                    f"foreign colony at {target.name}; known Alternate Reality targets are excluded."
+                ),
+                priority=int(_order_priority(score) * modifier),
+            )
+            dispatched_sources.add(int(source.id))
+            scheduled_fleet_ids.add(int(fleet.id))
+            schedule.append({
+                "fleet_id": int(fleet.id), "kind": "population_capture", "need_rank": round(score, 3),
+                "source_planet_id": int(source.id), "destination_planet_id": int(target.id),
+                "population_kt": int(selected["population_kt"]), "mineral_load": _empty_load(),
+                "manifest_total_kt": int(selected["population_kt"]), "capacity_kt": _fleet_capacity(fleet),
+            })
+            continue
 
         if selected["kind"] == "population":
             pop_kt = int(selected["population_kt"])
@@ -544,7 +736,12 @@ def schedule_shared_transport_orders(
                 priority=int(_order_priority(score) * modifier),
             )
             population_inbound[int(target.id)] = population_inbound.get(int(target.id), 0) + int(selected["population_colonists"])
+            population_source_outbound[int(source.id)] = (
+                population_source_outbound.get(int(source.id), 0)
+                + int(selected["population_colonists"])
+            )
             dispatched_sources.add(int(source.id))
+            scheduled_fleet_ids.add(int(fleet.id))
             _add_committed(source_committed, int(source.id), mineral_load)
             _add_committed(target_inbound, int(target.id), mineral_load)
             schedule.append({
@@ -574,7 +771,7 @@ def schedule_shared_transport_orders(
             "cargo_capacity": cargo_plan.capacity,
             "cargo_capacity_confidence": (fleet.native or {}).get("cargo_capacity_confidence", "unknown"),
             "unload": {"ironium": "all", "boranium": "all", "germanium": "all", "population": "all"},
-            "fuel": "load_optimal",
+            "fuel": "unchanged",
             "cargo_plan": cargo_plan.to_dict(),
             "target_promotion": {
                 "tier": int(getattr(target_hub, "promotion_tier", 3) or 3),
@@ -601,6 +798,7 @@ def schedule_shared_transport_orders(
         )
         _add_committed(source_committed, int(source.id), load)
         _add_committed(target_inbound, int(target.id), load)
+        scheduled_fleet_ids.add(int(fleet.id))
         schedule.append({
             "fleet_id": int(fleet.id), "kind": "minerals", "need_rank": round(score, 3),
             "source_planet_id": int(source.id), "destination_planet_id": int(target.id),
@@ -608,10 +806,40 @@ def schedule_shared_transport_orders(
             "capacity_kt": int(cargo_plan.capacity),
         })
 
+    # An idle transport at a non-exporting planet is capacity, not a reason to
+    # queue another hull.  Re-stage it at the nearest ready population source
+    # with real downstream work.  Freighters already selected for a delivery
+    # above retain that higher-priority operation.
+    for ret in plan_empty_freighter_returns(state):
+        if int(ret.fleet_id) in scheduled_fleet_ids:
+            continue
+        orders.add(
+            "move_fleet",
+            ret.to_payload(),
+            ret.reason,
+            priority=132,
+        )
+        scheduled_fleet_ids.add(int(ret.fleet_id))
+        schedule.append({
+            "fleet_id": int(ret.fleet_id),
+            "kind": "return_for_population_export",
+            "source_planet_id": int(ret.current_planet_id),
+            "destination_planet_id": int(ret.export_planet_id),
+            "downstream_population_backlog": int(ret.downstream_population_backlog),
+        })
+
+    if blocked_delivery_fleet_ids:
+        orders.notes.append(
+            "LOGISTICS DELIVERY QUARANTINE: native destination waypoints were consumed with cargo still aboard "
+            f"freighter(s) {blocked_delivery_fleet_ids}; those hulls are held while empty freighters continue "
+            "using the client-controlled four-cargo unload endpoint."
+        )
+
     _consolidate_bulk_lanes(state, orders, schedule)
     state.native["shared_transport_schedule"] = {
-        "policy": "rank destination need globally; recompute after each fleet; population payloads fill residual hold with same-destination minerals",
+        "policy": "rank destination need globally; recompute source surplus and destination need after each fleet; dispatch every useful available transport while preserving each source floor",
         "assignments": schedule,
+        "native_delivery_recovery_blocked_fleet_ids": blocked_delivery_fleet_ids,
         "unassigned_freighter_ids": sorted(int(f.id) for f, _ in available),
         "population_inbound_colonists": {str(k): int(v) for k, v in population_inbound.items()},
         "mineral_inbound_kt": {str(k): dict(v) for k, v in target_inbound.items()},

@@ -228,8 +228,11 @@ def working_mineral_reserve(
 
     # Exact ship/starbase mineral bills are not present in all normalized game
     # states.  These are intentionally labelled reserve allowances rather than
-    # claims about a particular design's actual cost.
-    ship_reserve=ships_queued*(90 if core else 30)
+    # claims about a particular design's actual cost.  A serial queue cannot
+    # spend the bill for every distant hull this turn, so reserve only a short
+    # executable horizon instead of fabricating a multi-thousand-kT deficit.
+    reserved_ship_horizon=min(3,ships_queued)
+    ship_reserve=reserved_ship_horizon*(90 if core else 30)
     starbase_reserve=bases_queued*(180 if core else 80)
     return {
         "ironium":base["ironium"]+defense_minerals+ship_reserve+starbase_reserve,
@@ -238,6 +241,7 @@ def working_mineral_reserve(
         "factory_germanium":factory_germanium,
         "queued_factories":factories_queued,
         "queued_ships":ships_queued,
+        "reserved_ship_horizon":reserved_ship_horizon,
         "queued_starbases":bases_queued,
         "core":core,
         "factory_headroom":int(status["factory_headroom"]),

@@ -1,7 +1,7 @@
-from stars_ai.design_legality import ComponentCategory, ComponentRef
+from stars_ai.design_legality import ComponentCategory, ComponentRef, validate_design
 from stars_ai.models import GameState, Planet, Position, RaceProfile, Tech
 from stars_ai.native.design_change import create_ship_design_blocks
-from stars_ai.ship_design_synth import synthesize_generic_design_proposal
+from stars_ai.ship_design_synth import synthesize_colony_upgrade, synthesize_generic_design_proposal
 from stars_ai.starsapi_items import (
     ELECTRICAL, ENGINE, MECHANICAL, MINE_LAYER, MINING_ROBOT, SCANNER, SHIELD,
     researched_available_components,
@@ -109,3 +109,65 @@ def test_generic_colonizer_is_compiled_only_with_researched_race_legal_parts():
 
     payload["desired_engine"] = "Galaxy Scoop"
     assert synthesize_generic_design_proposal(state, payload) is None
+
+
+def test_colony_synthesis_prefers_the_dedicated_colony_ship_over_large_cargo_hulls():
+    state = _state(prt=7, lrts=("IFE",), tech=Tech(propulsion=2, construction=10))
+
+    plan = synthesize_colony_upgrade(state, require_demand=False)
+
+    assert plan is not None
+    assert plan.encoded.hull_id == 15
+
+
+def test_colonizer_requires_cargo_and_never_creates_a_third_architecture():
+    state = _state(prt=7, lrts=("IFE",), tech=Tech(propulsion=2, construction=10))
+    payload = {
+        "role": "colony", "name": "Invalid colonizer", "is_starbase": False,
+        "desired_hull_id": 4, "desired_engine": "Fuel Mizer", "priority": 116,
+    }
+    # The Scout can fit a Colonization Module, but has no cargo and therefore
+    # cannot carry colonists to establish a world.
+    assert synthesize_generic_design_proposal(state, payload) is None
+
+    state.native["designs"] = [
+        {
+            "design_number": slot, "name": f"Colonizer {slot}", "hull_id": 15,
+            "is_starbase": False,
+            "slots": [
+                {"category": ENGINE, "item_id": 2, "count": 1},
+                {"category": MECHANICAL, "item_id": 0, "count": 1},
+            ],
+        }
+        for slot in (0, 1)
+    ]
+    payload.update({"desired_hull_id": 15, "name": "Third colonizer"})
+    assert synthesize_generic_design_proposal(state, payload) is None
+
+
+def test_alternate_reality_colonizer_module_is_limited_to_the_colony_ship_hull():
+    state = _state(prt=8, lrts=("IFE",), tech=Tech(propulsion=2, construction=10))
+    payload = {
+        "role": "colony", "name": "AR Colonizer", "is_starbase": False,
+        "desired_hull_id": 11, "desired_engine": "Fuel Mizer", "priority": 116,
+    }
+
+    # The Privateer has cargo and a general Mechanical slot, but AR cannot fit
+    # a Colonization Module there.  Cargo haulers remain a separate role.
+    assert synthesize_generic_design_proposal(state, payload) is None
+
+    payload["desired_hull_id"] = 15
+    plan = synthesize_generic_design_proposal(state, payload)
+    assert plan is not None
+    assert plan.encoded.hull_id == 15
+
+    invalid_privateer = (
+        ComponentRef(ENGINE, 2, 1),
+        ComponentRef(0, 0, 0),
+        ComponentRef(MECHANICAL, 0, 1),
+        ComponentRef(0, 0, 0),
+        ComponentRef(0, 0, 0),
+    )
+    result = validate_design(11, invalid_privateer, prt_id=8)
+    assert not result.ok
+    assert any(issue.code == "alternate_reality_colonizer_hull" for issue in result.issues)

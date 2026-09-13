@@ -1,7 +1,11 @@
 
 from stars_ai.models import GameState,RaceProfile,Tech,Planet,Fleet,Position,OrderSet
 from stars_ai.memory import AgentMemory
-from stars_ai.exploration_router import build_probe_route, exploration_promotion_target
+from stars_ai.exploration_router import (
+    build_probe_route,
+    exploration_promotion_target,
+    scout_refuel_route_allowed,
+)
 from stars_ai.fuel_planner import (
     highest_zero_fuel_warp,
     scout_one_way_warp,
@@ -95,6 +99,12 @@ def test_low_fuel_mizer_scan_is_not_sent_home_to_refuel():
     assert move.payload["fuel_plan"]["policy"]=="fastest_fuel_safe_mizer_recon"
 
 
+def test_scout_refuel_requires_subquarter_fuel_and_never_applies_to_fuel_mizer():
+    assert not scout_refuel_route_allowed(_fuel_profile(engine_id=2,fuel=0,capacity=100))
+    assert not scout_refuel_route_allowed(_fuel_profile(engine_id=1,fuel=25,capacity=100))
+    assert scout_refuel_route_allowed(_fuel_profile(engine_id=1,fuel=24,capacity=100))
+
+
 def test_probe_route_can_plan_twelve_unique_forward_worlds():
     s=_state(30)
     scout=Fleet(
@@ -137,6 +147,78 @@ def test_probe_route_stays_with_the_previous_waypoints_local_unexplored_cluster(
     assert route.planet_ids == [1,2]
 
 
+def test_persistent_scout_routes_clear_home_neighborhood_before_frontier():
+    home=Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=100,
+                population=300_000,native={"is_homeworld":True})
+    local=[
+        Planet(i,f"Local {i}",Position(40+i*25,(i%2)*15),observed=False)
+        for i in range(1,6)
+    ]
+    distant=[
+        Planet(20+i,f"Distant {i}",Position(350+i*10,10),observed=False)
+        for i in range(6)
+    ]
+    scouts=[
+        Fleet(i,f"Probe {i}",1,Position(0,0),role="scout")
+        for i in range(2)
+    ]
+    state=GameState("local-first",2415,1,RaceProfile(),Tech(),[home,*local,*distant],scouts)
+    orders=OrderSet("local-first",2415,1)
+
+    add_exploration_orders(state,orders,memory=AgentMemory())
+
+    scans=[order for order in orders.orders if order.payload.get("mission")=="scan"]
+    local_route=next(order for order in scans if order.payload["home_neighborhood_clearance"])
+    assert set(local_route.payload["route_planet_ids"]).issubset({planet.id for planet in local})
+    assert local_route.payload["destination_planet_id"] in {planet.id for planet in local}
+    assert len(local_route.payload["route_planet_ids"]) == 2
+
+
+def test_local_backlog_cancels_an_active_outer_scout_route_before_it_consumes_more_turns():
+    home=Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=100,
+                native={"is_homeworld":True})
+    local=Planet(1,"Local",Position(60,0),observed=False)
+    outer=Planet(2,"Outer",Position(300,0),observed=False)
+    scout=Fleet(
+        0,"Probe",1,Position(20,0),role="scout",destination_planet_id=2,
+        native={"waypoint_count":1},
+    )
+    state=GameState("local-preempt",2415,1,RaceProfile(),Tech(),[home,local,outer],[scout])
+    memory=AgentMemory()
+    memory.set_scout_route(0,[2],state.year,expected_discoveries=1,total_distance=280)
+    orders=OrderSet("local-preempt",2415,1)
+
+    add_exploration_orders(state,orders,memory=memory)
+
+    cancellation=next(order for order in orders.orders if order.kind=="cancel_scout_route")
+    assert cancellation.payload["fleet_id"]==0
+    assert cancellation.payload["cancelled_destination_planet_id"]==2
+    assert cancellation.payload["waypoint_count"]==1
+    assert not [order for order in orders.orders if order.kind=="move_fleet" and order.payload.get("fleet_id")==0]
+    assert state.native["scout_exploration_policy"]["home_neighborhood_unknown_ids"]==[1]
+    assert state.native["scout_exploration_policy"]["cancelled_outer_route_fleet_ids"]==[0]
+    assert memory.scout_route(0) is None
+
+
+def test_scout_retries_an_unscanned_home_world_instead_of_idling_after_old_assignment():
+    home=Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=100,
+                native={"is_homeworld":True, "starbase_capabilities":{"can_refuel":True}})
+    local=Planet(1,"Local",Position(70,0),observed=False)
+    scout=Fleet(0,"Probe",1,Position(20,0),role="scout")
+    state=GameState(
+        "retry-local",2415,1,RaceProfile(),Tech(),[home,local],[scout],
+        native={"recent_scan_targets":[1]},
+    )
+    orders=OrderSet("retry-local",2415,1)
+
+    add_exploration_orders(state,orders,memory=AgentMemory())
+
+    scan=next(order for order in orders.orders if order.kind=="move_fleet")
+    assert scan.payload["fleet_id"]==0
+    assert scan.payload["destination_planet_id"]==1
+    assert scan.payload["home_neighborhood_clearance"] is True
+
+
 def test_persistent_route_is_reused_next_turn_instead_of_replanned():
     s=_state(20,year=2410)
     scout=Fleet(
@@ -147,15 +229,19 @@ def test_persistent_route_is_reused_next_turn_instead_of_replanned():
         },
     )
     s.fleets=[scout]
+    # Persistent outer routes are preserved only after the 100-ly home ring is
+    # clear.  Mark the close worlds observed for this route-reuse case.
+    for planet in s.planets[1:7]:
+        planet.observed=True
     mem=AgentMemory()
-    mem.set_scout_route(0,[4,5,6,7],2410,expected_discoveries=4,total_distance=100)
+    mem.set_scout_route(0,[10,11,12,13],2410,expected_discoveries=4,total_distance=100)
 
     o=OrderSet("g",2410,1)
     add_exploration_orders(s,o,None,memory=mem)
 
     scan=next(x for x in o.orders if x.payload.get("mission")=="scan")
-    assert scan.payload["destination_planet_id"]==4
-    assert scan.payload["route_planet_ids"][:4]==[4,5,6,7]
+    assert scan.payload["destination_planet_id"]==10
+    assert scan.payload["route_planet_ids"][:4]==[10,11,12,13]
     assert scan.payload["route_managed"] is True
 
 

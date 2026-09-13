@@ -1,10 +1,15 @@
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Iterable
 import math
+
+from .starsapi_items import BEAM, ELECTRICAL, ENGINE, MECHANICAL, TORPEDO, stock_hulls
 
 
 class WeaponDoctrine(str, Enum):
@@ -20,6 +25,76 @@ class ModernizationDecision(str, Enum):
     HOLD_AND_TECH = "hold_and_tech"
     FIGHT_NOW = "fight_now"
     RETREAT_AND_PRESERVE = "retreat_and_preserve"
+
+
+@dataclass(frozen=True)
+class OffensiveRating:
+    """Battle-board-derived offensive score for one ship or starbase design.
+
+    The game UI's ``Rating`` formula was never published.  This is deliberately
+    a separate AI metric: it uses the stock battle statistics and rules, while
+    exposing every input and multiplier so a decision can be audited.
+    """
+
+    rating: float
+    display_rating: int
+    expected_damage_per_volley: float
+    shield_only_damage_per_volley: float
+    battle_movement: float
+    average_firing_initiative: float
+    maximum_firing_initiative: float
+    average_weapon_range: float
+    average_torpedo_accuracy: float
+    is_starbase: bool
+    weapon_count: int
+    model: str = "battle-board-offense-v1"
+
+
+# The Technical Reference's "Optimal Speed" is the manual's
+# ``Ideal_Speed_of_Engine`` for the battle-movement formula.  IDs are native
+# zero-based component IDs, as used by DesignBlock slots.
+_ENGINE_IDEAL_BATTLE_SPEED = {
+    0: 6, 1: 5, 2: 6, 3: 6, 4: 7, 5: 8, 6: 9, 7: 10,
+    8: 6, 9: 10, 10: 6, 11: 7, 12: 8, 13: 9, 14: 10, 15: 10,
+}
+
+# Stock hull initiatives from the Technical Reference.  A zero fallback is
+# intentional for utility hulls that have no published combat initiative.
+_STOCK_HULL_INITIATIVE = {
+    4: 1, 5: 4, 6: 3, 7: 5, 8: 5, 9: 10, 10: 10,
+    11: 3, 12: 4, 13: 4, 30: 2, 31: 2,
+    32: 10, 33: 12, 34: 14, 35: 16, 36: 18,
+}
+
+# (initiative bonus, torpedo-inaccuracy reduction).  Multiple computers stack
+# as separate reductions to the remaining inaccuracy, exactly like the rule
+# book's accuracy examples.
+# Native zero-based Electrical component IDs. Multiple copies stack as
+# separate reductions to the remaining torpedo inaccuracy, exactly like the
+# rule book's accuracy examples. Kept public so the ship fitter can make the
+# same component-synergy decision as the offensive-rating model.
+BATTLE_COMPUTERS = {
+    5: (1, 0.20),  # Battle Computer
+    6: (2, 0.30),  # Battle Super Computer
+    7: (3, 0.50),  # Battle Nexus
+}
+
+# Energy Capacitor's +10% beam damage is a component relationship, not a
+# property of a single gun.  The native zero-based Electrical item ID comes
+# from the active stock MOD and is deliberately shared with the fitter.
+ENERGY_CAPACITORS = {12: 0.10}
+
+
+@dataclass(frozen=True)
+class _StockWeapon:
+    name: str
+    category: int
+    damage: float
+    weapon_range: float
+    initiative: float
+    accuracy: float = 1.0
+    shield_only: bool = False
+    can_hit_ships: bool = True
 
 
 @dataclass
@@ -41,6 +116,11 @@ class ShipCombatProfile:
     effective_combat_value: float
     combat_value_per_resource: float
     obsolete_score: float = 0.0
+    offensive_rating: float = 0.0
+    display_offensive_rating: int = 0
+    expected_damage_per_volley: float = 0.0
+    battle_movement: float = 0.0
+    firing_initiative: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -87,16 +167,30 @@ class ModernizationPlan:
     engagement_guidance: str
 
 
+_MISSING = object()
+
+
+def _value(value: Any, *names: str, default: Any = None) -> Any:
+    """Read either native JSON/dict data or the small test/design objects."""
+    for name in names:
+        if isinstance(value, dict) and name in value:
+            return value[name]
+        found = getattr(value, name, _MISSING)
+        if found is not _MISSING:
+            return found
+    return default
+
+
 def _cat(slot: Any) -> int:
-    return int(getattr(slot, "category", getattr(slot, "category_mask", 0)) or 0)
+    return int(_value(slot, "category", "category_mask", default=0) or 0)
 
 
 def _count(slot: Any) -> int:
-    return int(getattr(slot, "count", 0) or 0)
+    return int(_value(slot, "count", default=0) or 0)
 
 
 def _item(slot: Any) -> int:
-    return int(getattr(slot, "item_id", getattr(slot, "itemId", 0)) or 0)
+    return int(_value(slot, "item_id", "itemId", default=0) or 0)
 
 
 def _slot_strength(slot: Any, item_db: Any | None = None) -> tuple[float, float, float, float]:
@@ -148,14 +242,234 @@ def _slot_strength(slot: Any, item_db: Any | None = None) -> tuple[float, float,
     return (0.0, 0.0, 0.0, 0.0)
 
 
+@lru_cache(maxsize=1)
+def _stock_weapon_stats() -> dict[tuple[int, int], _StockWeapon]:
+    """Read actual stock weapon battle fields from the bundled UNEDITED.MOD."""
+    path = Path(__file__).with_name("data_unedited.mod")
+    result: dict[tuple[int, int], _StockWeapon] = {}
+    for parts in csv.reader(path.read_text(encoding="latin-1").splitlines()):
+        if len(parts) < 20 or parts[0] not in ("2", "3"):
+            continue
+        mod_category = int(parts[0])
+        category = BEAM if mod_category == 2 else TORPEDO
+        item_id = int(parts[1]) - 1
+        nums = [int(value) if value else 0 for value in parts[3:]]
+        # The layout is documented by StarsAPI Items: range, damage, weapon
+        # initiative and (for torpedoes) hit chance begin at index 13.
+        weapon_range = float(nums[13])
+        damage = float(nums[14])
+        initiative = float(nums[15])
+        accuracy = float(nums[16]) / 100.0 if category == TORPEDO else 1.0
+        special = int(nums[16]) if category == BEAM else 0
+        name = parts[2]
+        result[(category, item_id)] = _StockWeapon(
+            name=name,
+            category=category,
+            damage=damage,
+            weapon_range=weapon_range,
+            initiative=initiative,
+            accuracy=max(0.0, min(1.0, accuracy)),
+            shield_only=(category == BEAM and special == 1),
+            # Multi Contained Munition is a mine weapon, not a ship weapon.
+            can_hit_ships=(name != "Multi Contained Munition"),
+        )
+    return result
+
+
+def weapon_stats(category: int, item_id: int) -> _StockWeapon | None:
+    """Return active-catalog battle statistics for a weapon component."""
+    return _stock_weapon_stats().get((int(category), int(item_id)))
+
+
+def is_line_weapon(category: int, item_id: int) -> bool:
+    """Whether a weapon can attack ships as normal battle-line armament.
+
+    Shield sappers and the Multi Contained Munition have important niche uses,
+    but neither is a substitute for an anti-ship beam or missile line.
+    """
+    weapon = weapon_stats(category, item_id)
+    # Zero-range weapons are point-blank niche tools. They can be useful in an
+    # explicit assault/counter plan, but are not a dependable default line:
+    # the battle board may never let them fire against a kiting opponent.
+    return bool(
+        weapon
+        and weapon.can_hit_ships
+        and not weapon.shield_only
+        and weapon.weapon_range > 0
+    )
+
+
+def _is_starbase(design: Any, hull_id: int | None) -> bool:
+    explicit = _value(design, "is_starbase", "isStarbase", default=_MISSING)
+    if explicit is not _MISSING:
+        return bool(explicit)
+    if hull_id is None:
+        return False
+    hull = stock_hulls().get(int(hull_id))
+    return bool(hull and hull.is_starbase)
+
+
+def _battle_movement(design: Any, slots: list[Any], mass: float, is_starbase: bool) -> float:
+    """Apply the published battle-movement equation, in quarter squares."""
+    explicit = _value(design, "battle_movement", "combat_speed", default=_MISSING)
+    if explicit is not _MISSING:
+        return max(0.0, float(explicit) or 0.0)
+    if is_starbase:
+        return 0.0
+
+    engines = [(s, max(1, _count(s))) for s in slots if _cat(s) == ENGINE and _count(s) > 0]
+    if not engines:
+        # Incomplete sighting/test data has no engine slot.  Preserve a neutral
+        # estimate rather than declaring an otherwise armed hull immobile.
+        return 1.0
+    engine_count = sum(count for _, count in engines)
+    engine_id = _item(engines[0][0])
+    ideal_speed = _ENGINE_IDEAL_BATTLE_SPEED.get(engine_id)
+    if ideal_speed is None:
+        return 1.0
+
+    jets = sum(
+        _count(s) for s in slots
+        if (_cat(s) == MECHANICAL and _item(s) == 7)
+        # The Multi Function Pod acts as a Maneuvering Jet.
+        or (_cat(s) == ELECTRICAL and _item(s) == 4)
+    )
+    overthrusters = sum(_count(s) for s in slots if _cat(s) == MECHANICAL and _item(s) == 8)
+    movement = (
+        (ideal_speed - 4.0) / 4.0
+        - float(mass) / 70.0 / 4.0 / engine_count
+        + 0.25 * jets
+        + 0.50 * overthrusters
+    )
+    # The battle board displays and moves in quarter squares, bounded at a
+    # quarter square and two-and-a-half squares per round.
+    return max(0.25, min(2.5, math.floor(movement * 4.0 + 0.5) / 4.0))
+
+
+def calculate_offensive_rating(design: Any) -> OffensiveRating:
+    """Rate a design's anti-ship offense using public Stars! battle rules.
+
+    Weapon damage is expected one-volley damage: beams are valued at their
+    midpoint range (the rules lose 10% only at maximum range), and torpedoes
+    include their stated hit probability plus one-eighth shield-only collateral
+    damage on misses.  Firing initiative is the hull, battle-computer and weapon
+    total.  Movement uses the published engine/mass/jet/overthruster formula.
+
+    The final scalar is intentionally an *offensive* rating, not a battle winner:
+    armor, shields, enemy jamming, tactics and target selection remain outside it.
+    Its small range, initiative and movement premiums make those board advantages
+    visible to the AI while retaining weapon damage as the dominant term.
+    """
+    slots = list(_value(design, "slots", default=[]) or [])
+    hull_id_raw = _value(design, "hull_id", "hullId", default=None)
+    hull_id = int(hull_id_raw) if hull_id_raw is not None else None
+    is_starbase = _is_starbase(design, hull_id)
+    mass = float(_value(design, "mass", default=0) or 0)
+    movement = _battle_movement(design, slots, mass, is_starbase)
+
+    explicit_hull_initiative = _value(
+        design, "hull_initiative", "base_initiative", "initiative", default=_MISSING
+    )
+    hull_initiative = (
+        float(explicit_hull_initiative)
+        if explicit_hull_initiative is not _MISSING
+        else float(_STOCK_HULL_INITIATIVE.get(hull_id, 0))
+    )
+    race_initiative = float(_value(design, "battle_initiative_bonus", "race_initiative_bonus", default=0) or 0)
+
+    computer_initiative = 0.0
+    torpedo_remaining_inaccuracy = 1.0
+    beam_damage_multiplier = 1.0
+    for slot in slots:
+        if _cat(slot) != ELECTRICAL:
+            continue
+        computer = BATTLE_COMPUTERS.get(_item(slot))
+        if computer is None:
+            continue
+        count = max(1, _count(slot))
+        computer_initiative += computer[0] * count
+        torpedo_remaining_inaccuracy *= (1.0 - computer[1]) ** count
+    for slot in slots:
+        if _cat(slot) != ELECTRICAL:
+            continue
+        capacitor_bonus = ENERGY_CAPACITORS.get(_item(slot))
+        if capacitor_bonus is not None:
+            beam_damage_multiplier += capacitor_bonus * max(1, _count(slot))
+
+    weapon_score = 0.0
+    expected_volley = 0.0
+    shield_only_volley = 0.0
+    weighted_initiative = 0.0
+    weighted_range = 0.0
+    torpedo_accuracy_weight = 0.0
+    torpedo_base_damage = 0.0
+    maximum_initiative = 0.0
+    weapon_count = 0
+    for slot in slots:
+        category = _cat(slot)
+        if category not in (BEAM, TORPEDO):
+            continue
+        weapon = _stock_weapon_stats().get((category, _item(slot)))
+        if weapon is None or not weapon.can_hit_ships:
+            continue
+        count = max(1, _count(slot))
+        weapon_count += count
+        effective_range = weapon.weapon_range + (1.0 if is_starbase else 0.0)
+        if category == BEAM:
+            # A beam loses a total of 10% damage linearly across range; use the
+            # midpoint as the target-neutral expected range.
+            expected_damage = (
+                weapon.damage * (0.95 if weapon.weapon_range > 0 else 1.0)
+                * beam_damage_multiplier
+            )
+        else:
+            accuracy = 1.0 - (1.0 - weapon.accuracy) * torpedo_remaining_inaccuracy
+            expected_damage = weapon.damage * (accuracy + (1.0 - accuracy) / 8.0)
+            torpedo_accuracy_weight += count * weapon.damage * accuracy
+            torpedo_base_damage += count * weapon.damage
+
+        firing_initiative = hull_initiative + race_initiative + computer_initiative + weapon.initiative
+        initiative_multiplier = 1.0 + max(0.0, firing_initiative) / 100.0
+        # Board range and movement do not change a weapon's damage.  They do,
+        # however, increase opportunities to fire before a target escapes or is
+        # destroyed.  Keep them deliberately subordinate to expected damage.
+        range_multiplier = 1.0 + max(0.0, effective_range) / 20.0
+        weapon_score += count * expected_damage * initiative_multiplier * range_multiplier
+        expected_volley += count * expected_damage
+        if weapon.shield_only:
+            shield_only_volley += count * expected_damage
+        weighted_initiative += count * expected_damage * firing_initiative
+        weighted_range += count * expected_damage * effective_range
+        maximum_initiative = max(maximum_initiative, firing_initiative)
+
+    movement_multiplier = 1.0 + min(2.5, movement) / 8.0
+    rating = weapon_score * movement_multiplier
+    average_initiative = weighted_initiative / expected_volley if expected_volley else 0.0
+    average_range = weighted_range / expected_volley if expected_volley else 0.0
+    average_torpedo_accuracy = torpedo_accuracy_weight / torpedo_base_damage if torpedo_base_damage else 1.0
+    return OffensiveRating(
+        rating=rating,
+        display_rating=int(math.floor(rating + 0.5)),
+        expected_damage_per_volley=expected_volley,
+        shield_only_damage_per_volley=shield_only_volley,
+        battle_movement=movement,
+        average_firing_initiative=average_initiative,
+        maximum_firing_initiative=maximum_initiative,
+        average_weapon_range=average_range,
+        average_torpedo_accuracy=average_torpedo_accuracy,
+        is_starbase=is_starbase,
+        weapon_count=weapon_count,
+    )
+
+
 def _design_tech_generation(design: Any, tech: dict[str, int] | None = None) -> float:
-    explicit = getattr(design, "tech_generation", None)
+    explicit = _value(design, "tech_generation", "techGeneration", default=None)
     if explicit is not None:
         return float(explicit)
     if tech:
         vals = [int(v or 0) for v in tech.values()]
         return sum(vals) / max(1, len(vals))
-    turn = getattr(design, "turn_designed", getattr(design, "turnDesigned", None))
+    turn = _value(design, "turn_designed", "turnDesigned", default=None)
     if turn is not None:
         # Not literal tech; useful as a relative recency prior.
         return float(turn) / 10.0
@@ -169,7 +483,7 @@ def evaluate_ship_design(
     item_db: Any | None = None,
     enemy_profiles: list[ShipCombatProfile] | None = None,
 ) -> ShipCombatProfile:
-    slots = list(getattr(design, "slots", []) or [])
+    slots = list(_value(design, "slots", default=[]) or [])
     beam = torp = shield = armor = 0.0
     for s in slots:
         b, t, sh, ar = _slot_strength(s, item_db)
@@ -178,20 +492,22 @@ def evaluate_ship_design(
         shield += sh
         armor += ar
 
-    mass = float(getattr(design, "mass", 0) or 0)
-    armor += float(getattr(design, "armor", 0) or 0)
+    mass = float(_value(design, "mass", default=0) or 0)
+    armor += float(_value(design, "armor", default=0) or 0)
 
     resource_cost = float(
-        getattr(design, "resource_cost",
-            getattr(design, "cost", max(1.0, mass * 0.6)))
+        _value(design, "resource_cost", "cost", default=max(1.0, mass * 0.6))
         or max(1.0, mass * 0.6)
     )
 
-    # Prefer concrete design metadata if later supplied by MOD parsing.
-    accuracy = float(getattr(design, "accuracy", 0.65 if torp > 0 else 0.9) or 0.0)
-    initiative = float(getattr(design, "initiative", 1.0) or 1.0)
-    combat_speed = float(getattr(design, "combat_speed", 1.0) or 1.0)
-    range_profile = float(getattr(design, "weapon_range", 1.0 if beam > 0 else (2.0 if torp > 0 else 0.0)) or 0.0)
+    offensive = calculate_offensive_rating(design)
+    # These legacy profile fields now retain their equivalent battle-board
+    # values, so established callers receive the improved data without a new
+    # integration point.
+    accuracy = offensive.average_torpedo_accuracy
+    initiative = offensive.average_firing_initiative
+    combat_speed = offensive.battle_movement
+    range_profile = offensive.average_weapon_range
 
     if beam > 0 and torp > 0:
         doctrine = WeaponDoctrine.MIXED
@@ -202,12 +518,12 @@ def evaluate_ship_design(
     else:
         doctrine = WeaponDoctrine.NONE
 
-    # Approximate effectiveness, deliberately transparent and replaceable by
-    # exact Stars! battle math later.
-    offense = beam * (0.75 + 0.25 * combat_speed) + torp * accuracy * (0.85 + 0.15 * range_profile)
+    # Keep defense meaningful to fleet-level survivability, but base its
+    # offensive term on the new weapon/initiative/movement score.  This makes
+    # ship and starbase design selection actually consume the rating.
+    offense = offensive.rating
     defense = shield * 0.85 + armor * 0.65
-    tempo = max(0.5, 0.75 + 0.15 * initiative + 0.10 * combat_speed)
-    effective = max(0.0, (offense * 0.62 + defense * 0.38) * tempo)
+    effective = max(0.0, offense + defense * 0.38)
 
     tech_generation = _design_tech_generation(design, tech)
     efficiency = effective / max(1.0, resource_cost)
@@ -224,8 +540,8 @@ def evaluate_ship_design(
         obsolete = min(1.0, obsolete)
 
     return ShipCombatProfile(
-        label=str(getattr(design, "name", getattr(design, "design_name", "Unnamed design"))),
-        hull_id=getattr(design, "hull_id", getattr(design, "hullId", None)),
+        label=str(_value(design, "name", "design_name", "designName", default="Unnamed design")),
+        hull_id=_value(design, "hull_id", "hullId", default=None),
         mass=mass,
         resource_cost=resource_cost,
         beam_strength=beam,
@@ -241,6 +557,24 @@ def evaluate_ship_design(
         effective_combat_value=effective,
         combat_value_per_resource=efficiency,
         obsolete_score=obsolete,
+        offensive_rating=offensive.rating,
+        display_offensive_rating=offensive.display_rating,
+        expected_damage_per_volley=offensive.expected_damage_per_volley,
+        battle_movement=offensive.battle_movement,
+        firing_initiative=offensive.average_firing_initiative,
+        metadata={
+            "offensive_rating_model": offensive.model,
+            "offensive_rating": offensive.rating,
+            "display_offensive_rating": offensive.display_rating,
+            "expected_damage_per_volley": offensive.expected_damage_per_volley,
+            "shield_only_damage_per_volley": offensive.shield_only_damage_per_volley,
+            "battle_movement": offensive.battle_movement,
+            "firing_initiative": offensive.average_firing_initiative,
+            "maximum_firing_initiative": offensive.maximum_firing_initiative,
+            "average_weapon_range": offensive.average_weapon_range,
+            "average_torpedo_accuracy": offensive.average_torpedo_accuracy,
+            "starbase_weapon_range_bonus": 1 if offensive.is_starbase else 0,
+        },
     )
 
 

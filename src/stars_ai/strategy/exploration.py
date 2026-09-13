@@ -5,6 +5,7 @@ import math
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
 from ..util import distance
+from ..empire_geometry import homeworld_center
 from ..warp_policy import mission_warp
 from ..fuel_planner import mission_reachable, highest_zero_fuel_warp
 from ..exploration_router import (
@@ -19,6 +20,18 @@ from ..planetary_scanners import deployed_planetary_sensor_network
 
 
 MAX_QUEUED_SCOUT_WAYPOINTS=7
+# A persistent scout route is deliberately long, so its first choice matters
+# disproportionately.  Clear the useful home neighborhood before reserving a
+# route that can pull a probe hundreds of light-years away for several years.
+# This is a reconnaissance doctrine boundary, not an empire expansion limit:
+# once this local backlog is gone, the ordinary fuel-safe frontier router owns
+# the rest of the map.
+HOME_NEIGHBORHOOD_RECON_RADIUS_LY=100.0
+# While this ring contains unobserved worlds, do not queue a chain of outer
+# destinations.  Keep two local stops instead: it preserves home-first
+# scouting while ensuring a probe which completes a short first leg does not
+# sit idle for the host phase before the next AI decision pass.
+HOME_CLEARANCE_MAX_ROUTE_STOPS=2
 
 
 def _needs_recon(planet) -> bool:
@@ -88,6 +101,46 @@ def add_exploration_orders(
     ]
     if not unknown_all:
         return
+    home_center=homeworld_center(state)
+    home_unknown_ids={
+        int(p.id) for p in unknown_all
+        if distance(home_center,p.position)<=HOME_NEIGHBORHOOD_RECON_RADIUS_LY
+    }
+    home_clearance_active=bool(home_unknown_ids)
+
+    # A pre-existing outer waypoint used to bypass the local-backlog policy:
+    # the route was preserved before a newly idle scout could be assigned one
+    # of the nearby unknown worlds.  Do not continue spending years on that
+    # outer route.  The writer emits the captured Type-3 cancellation only;
+    # next turn, after the host has removed the route, the scout receives its
+    # ordinary one-stop local survey order.
+    cancelled_outer_routes=set()
+    if home_clearance_active:
+        planets_by_id={int(planet.id):planet for planet in state.planets}
+        for probe in probes:
+            destination=probe.destination_planet_id
+            target=planets_by_id.get(int(destination)) if destination is not None else None
+            if target is None or distance(home_center,target.position)<=HOME_NEIGHBORHOOD_RECON_RADIUS_LY:
+                continue
+            waypoint_count=max(1, int(((probe.native or {}).get("waypoint_count", 1) or 1)))
+            orders.add(
+                "cancel_scout_route",
+                {
+                    "fleet_id":int(probe.id),
+                    "cancelled_destination_planet_id":int(target.id),
+                    "waypoint_count":waypoint_count,
+                    "reason":"home_neighborhood_clearance",
+                },
+                (
+                    f"Cancel scout route to {target.name} ({distance(home_center,target.position):.1f} ly): "
+                    f"unexplored worlds remain within {HOME_NEIGHBORHOOD_RECON_RADIUS_LY:.0f} ly of home. "
+                    "The scout will be reissued a local survey route after the host confirms cancellation."
+                ),
+                priority=max(94,int(108*scout_weight)),
+            )
+            cancelled_outer_routes.add(int(probe.id))
+            if memory is not None:
+                memory.clear_scout_route(int(probe.id))
 
     border_missions={
         int(mission["target_planet_id"]):mission
@@ -109,6 +162,10 @@ def add_exploration_orders(
     route_limit=min(
         MAX_QUEUED_SCOUT_WAYPOINTS,
         max(1,math.ceil(len(unknown_all)/exploration_assets)),
+    )
+    active_route_limit=(
+        HOME_CLEARANCE_MAX_ROUTE_STOPS
+        if home_clearance_active else route_limit
     )
 
     # Reserve one genuinely local leftover for each early combat auxiliary.
@@ -135,13 +192,38 @@ def add_exploration_orders(
     }
     assigned.update(aux_reserved)
     for f in probes:
-        if f.destination_planet_id is not None:
+        if f.destination_planet_id is not None and int(f.id) not in cancelled_outer_routes:
             assigned.add(int(f.destination_planet_id))
 
     # Reserve every future stop in other scouts' persistent routes so sectors do
-    # not converge on the same chain over multiple years.
+    # not converge on the same chain over multiple years.  An old outer chain
+    # is *not* allowed to reserve the map while an unobserved home-neighborhood
+    # world remains: that was the failure mode that left Hell unexplored.
+    deferred_outer_route_ids=set()
     if memory is not None:
-        assigned.update(memory.reserved_scout_route_targets())
+        persistent_targets=memory.reserved_scout_route_targets()
+        if home_clearance_active:
+            deferred_outer_route_ids={
+                int(pid) for pid in persistent_targets
+                if int(pid) not in home_unknown_ids
+            }
+            persistent_targets={
+                int(pid) for pid in persistent_targets
+                if int(pid) in home_unknown_ids
+            }
+        assigned.update(persistent_targets)
+
+    state.native["scout_exploration_policy"].update({
+        "home_neighborhood_radius_ly": HOME_NEIGHBORHOOD_RECON_RADIUS_LY,
+        "home_neighborhood_unknown_ids": sorted(home_unknown_ids),
+        "home_neighborhood_unknown_count": len(home_unknown_ids),
+        "home_neighborhood_clearance_active": home_clearance_active,
+        "home_clearance_route_stop_cap": (
+            HOME_CLEARANCE_MAX_ROUTE_STOPS if home_clearance_active else None
+        ),
+        "cancelled_outer_route_fleet_ids": sorted(cancelled_outer_routes),
+        "deferred_outer_persistent_route_ids": sorted(deferred_outer_route_ids),
+    })
 
     already_moving={
         int(o.payload["fleet_id"]) for o in orders.orders
@@ -152,6 +234,14 @@ def add_exploration_orders(
 
     for probe in probes:
         fid=int(probe.id)
+        if fid in cancelled_outer_routes:
+            route_diags.append({
+                "fleet_id":fid,
+                "next":None,
+                "remaining":0,
+                "reason":"cancelled outer route; local survey will be assigned after host read-back",
+            })
+            continue
         if fid in already_moving or probe.destination_planet_id is not None:
             continue
 
@@ -172,7 +262,17 @@ def add_exploration_orders(
                 and _needs_recon(p)
                 for p in state.planets
             )
-        ][:route_limit]
+        ]
+        # Memory is advisory for an idle scout.  Preempt a route that escapes
+        # the local clearance ring.  A route made entirely of local worlds is
+        # already doing the right work, so retain it intact rather than
+        # needlessly throwing away its verified waypoint chain.
+        if home_clearance_active:
+            has_outer_stop=any(pid not in home_unknown_ids for pid in route_ids)
+            if has_outer_stop:
+                route_ids=[pid for pid in route_ids if pid in home_unknown_ids]
+                route_ids=route_ids[:HOME_CLEARANCE_MAX_ROUTE_STOPS]
+        route_ids=route_ids[:route_limit]
         route_specs=route_waypoint_specs(
             state,probe,route_ids,pressure=pressure
         )
@@ -198,10 +298,30 @@ def add_exploration_orders(
                 route_ids=[]
 
         if not route_ids:
-            candidates=[
+            unassigned_unknown=[
                 p for p in unknown_all
-                if p.id not in assigned and p.id not in recent_targets
+                if p.id not in assigned
             ]
+            nearby_backlog=[
+                p for p in unassigned_unknown
+                if distance(home_center,p.position)<=HOME_NEIGHBORHOOD_RECON_RADIUS_LY
+            ]
+            # Route construction reserves every future stop.  Restrict the
+            # candidate pool only while there are unclaimed home-neighborhood
+            # worlds, which lets successive probes split the local ring rather
+            # than allowing the first sector's far route to monopolize years
+            # of scout time.
+            home_neighborhood_clearance=bool(nearby_backlog)
+            if home_neighborhood_clearance:
+                # An unknown world remains unknown even if an earlier route
+                # was intended to scan it. Retrying it is strictly better than
+                # idling a scout or sending it beyond the home ring.
+                candidates=nearby_backlog
+            else:
+                candidates=[
+                    p for p in unassigned_unknown
+                    if p.id not in recent_targets
+                ]
             # Reserve a scout for a concrete contested-border gap before the
             # general sector route is built.  This is the mobile complement to
             # stationary planetary sensors: normal exploration continues, but
@@ -211,7 +331,36 @@ def add_exploration_orders(
                 if int(planet.id) in border_missions
                 and mission_reachable(probe,planet.position,"scan")
             ]
-            if border_candidates:
+            if home_neighborhood_clearance:
+                reachable_local=[
+                    planet for planet in candidates
+                    if mission_reachable(probe,planet.position,"scan")
+                ]
+                if reachable_local:
+                    # The home ring is a coverage problem, not a sector-score
+                    # problem.  Start with the closest unobserved world to the
+                    # actual homeworld, then use fleet distance as a tie-break.
+                    target=min(
+                        reachable_local,
+                        key=lambda planet:(
+                            distance(home_center,planet.position),
+                            distance(probe.position,planet.position),
+                            int(planet.id),
+                        ),
+                    )
+                    route=build_probe_route(
+                        state,probe,candidates,reserved=assigned,
+                        pressure=pressure,
+                        max_stops=HOME_CLEARANCE_MAX_ROUTE_STOPS,
+                        sector=scout_sector(state,probe),
+                        # Preserve the home-first choice above, then add one
+                        # fuel-safe local continuation so arrival does not
+                        # leave the scout idle until next turn's decision.
+                        first_planet_id=int(target.id),
+                    )
+                else:
+                    route=None
+            elif border_candidates:
                 target=min(
                     border_candidates,
                     key=lambda planet:distance(probe.position,planet.position),
@@ -226,7 +375,7 @@ def add_exploration_orders(
                     state,probe,candidates,
                     reserved=assigned,
                     pressure=pressure,
-                    max_stops=route_limit,
+                    max_stops=active_route_limit,
                     sector=scout_sector(state,probe),
                 )
             if route is not None:
@@ -273,6 +422,9 @@ def add_exploration_orders(
                         "contested_border_intel"
                         if int(target.id) in border_missions else "frontier_exploration"
                     ),
+                    "home_neighborhood_clearance": bool(
+                        distance(home_center,target.position)<=HOME_NEIGHBORHOOD_RECON_RADIUS_LY
+                    ),
                     "border_mission":border_missions.get(int(target.id)),
                 },
                 (
@@ -285,6 +437,10 @@ def add_exploration_orders(
                         if free_warp>=2 else ""
                     )
                     +". Route prefers nearby supported worlds but may extend the frontier when fuel-safe."
+                    +(
+                        f" Home-neighborhood clearance is active inside {HOME_NEIGHBORHOOD_RECON_RADIUS_LY:.0f} ly."
+                        if distance(home_center,target.position)<=HOME_NEIGHBORHOOD_RECON_RADIUS_LY else ""
+                    )
                     +(
                         " Contested-border reconnaissance is prioritized because no live penetrating planetary sensor covers this target."
                         if int(target.id) in border_missions else ""
@@ -307,14 +463,22 @@ def add_exploration_orders(
         # It must demonstrably unlock a substantial future exploration campaign.
         candidates=[
             p for p in unknown_all
-            if p.id not in assigned and p.id not in recent_targets
+            if p.id not in assigned
         ]
+        if home_clearance_active:
+            candidates=[p for p in candidates if int(p.id) in home_unknown_ids]
+        else:
+            candidates=[p for p in candidates if p.id not in recent_targets]
         refuel=evaluate_recon_refuel(
             state,probe,candidates,
             reserved=assigned,
             pressure=pressure,
             max_refuel_distance=150.0,
-            minimum_route_gain=5,
+            # When the home ring still contains an unknown world, bringing a
+            # low-fuel scout back to a base only needs to unlock one local
+            # observation.  The old five-world threshold left P2's scout idle
+            # even though refueling was its only productive recovery action.
+            minimum_route_gain=1 if home_clearance_active else 5,
         )
         if refuel is not None:
             base=refuel["base"]

@@ -1,15 +1,14 @@
 """Shared logistics-capacity model for onion expansion.
 
-Population logistics and industrial bulk logistics are deliberately separate:
+Population logistics and industrial bulk logistics share the same carriers:
 
-* Opening population movement uses a deliberately gentle 8,000-colonist /
-  80-kT homeworld pulse until the homeworld reaches 200,000 colonists. It then
-  uses 20,000-colonist / 200-kT pulses. A source may dispatch at most one
-  population transport per turn and must remain above its protected breeder
-  floor.
-* Large Freighters are valued primarily for bulk mineral concentration at
-  shipyards / major base-construction hubs, not because a child world wants
-  more population.
+* A source retains its protected breeder floor, while every available
+  freighter may take the population that its hold, the source's surplus, and
+  the selected destination's remaining need allow.  There is no fixed
+  population packet size or same-turn departure count.
+* Large Freighters remain useful for mineral concentration at shipyards / major
+  base-construction hubs, and now also accelerate high-priority population
+  development when they are available.
 
 This module contains no native serialization. It supplies strategy/production,
 research, design-development, and diagnostics with one shared definition of
@@ -28,10 +27,8 @@ from .util import distance
 
 POPULATION_PULSE_COLONISTS = 20_000
 POPULATION_PULSE_KT = 200
-HOMEWORLD_EARLY_EXPORT_COLONISTS = 8_000
-HOMEWORLD_EARLY_EXPORT_KT = 80
-HOMEWORLD_STABLE_POPULATION = 200_000
-POPULATION_EXPORT_TRIGGER = 100_000
+# ``POPULATION_PULSE_*`` remains a capacity-planning unit.  It is not a
+# transport manifest, readiness, or same-turn departure cap.
 HOMEWORLD_POST_EXPORT_FLOOR = 80_000
 OPENING_HUB_HOLD_FRACTION = 0.25
 LATE_HUB_HOLD_FRACTION = 0.33
@@ -44,7 +41,7 @@ T30_POPULATION_FREIGHTER_CAP = 5
 LATE_POPULATION_FREIGHTER_CAP = 8
 
 # Large-freighter industrial trigger. This is intentionally much larger than a
-# normal 20k population pulse or a single small hub bootstrap shipment.
+# capacity-planning population pulse or a single small hub bootstrap shipment.
 BULK_LARGE_FREIGHTER_TRIGGER_KT = 600
 
 
@@ -94,9 +91,9 @@ class LogisticsCapacitySnapshot:
 def population_export_floor(state: Any, hub, network=None) -> int:
     """Protected population after an economic population-freight departure.
 
-    Opening homeworld doctrine keeps an 80k protected breeder floor. Before
-    200k population it exports only 8k at a time, so the homeworld continues to
-    stabilize rather than repeatedly falling back to its floor.
+    Opening homeworld doctrine keeps an 80k protected breeder floor.  Export
+    size is then chosen from the receiving world's need and the transport's
+    hold, never by an 8k or 20k artificial packet cap.
 
     A graduated child hub is different: it may export only while remaining at
     or above its onion graduation/breeder floor (~25% capacity through T30).
@@ -138,31 +135,26 @@ def export_source_statuses(state: Any, network=None) -> list[ExportSourceStatus]
         backlog = sum(int(x.import_population_to_25 or 0) for x in child_hubs)
         floor = population_export_floor(state, hub, network)
         pop = int(planet.population or 0)
-        is_homeworld = network.homeworld_id is not None and int(parent_id) == int(network.homeworld_id)
-        early_homeworld = bool(is_homeworld and pop < HOMEWORLD_STABLE_POPULATION)
-        max_export = (
-            HOMEWORLD_EARLY_EXPORT_COLONISTS
-            if early_homeworld
-            else POPULATION_PULSE_COLONISTS
-        )
+        # This status field is a snapshot of total currently exportable
+        # population, not a fixed per-ship allowance.  The scheduler spends it
+        # across however many available freighters are useful this turn while
+        # maintaining the protected floor.
+        max_export = max(0, pop - floor)
         max_export_kt = max_export // 100
-        # A homeworld is permitted to start its gentle staging pulse at 88k.
-        # Other exporters retain the normal 100k / 20k staging rule.
-        trigger = (
-            floor + max_export
-            if is_homeworld
-            else max(POPULATION_EXPORT_TRIGGER, floor + POPULATION_PULSE_COLONISTS)
-        )
         exportable = max(0, pop - floor)
-        stored = max(0, exportable // max_export)
+        stored = max(0, exportable // POPULATION_PULSE_COLONISTS)
         growth = max(0, int(projected_population_growth(planet, state.race)))
         # Long-run source replenishment is the primary rate. Existing stored
-        # surplus is allowed to raise the near-term rate, but never above the
-        # one-departure-per-source-per-turn phasing invariant.
-        growth_rate = growth / float(max_export)
+        # surplus raises the near-term capacity estimate.  This is a fleet
+        # sizing signal only; it does not restrict actual departures.
+        growth_rate = growth / float(POPULATION_PULSE_COLONISTS)
         stored_rate = min(1.0, stored / 5.0)
         sustainable = min(1.0, max(growth_rate, stored_rate))
-        ready = bool(pop >= trigger and backlog >= 10_000)
+        # The native cargo field is expressed in kT (100 colonists).  Beyond
+        # that protocol granularity, readiness is entirely source-surplus and
+        # destination-demand driven.
+        trigger = floor
+        ready = bool(exportable >= 100 and backlog >= 100)
         out.append(ExportSourceStatus(
             planet_id=int(parent_id),
             ring=int(hub.ring),

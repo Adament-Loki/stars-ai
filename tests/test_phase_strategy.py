@@ -6,6 +6,8 @@ from stars_ai.phase_strategy import (
     PlanetPreference,
     planet_meets_preference,
 )
+from stars_ai.models import Fleet, GameState, Planet, Position, RaceProfile, Tech
+from stars_ai.persona import BalancedPersona
 
 
 @dataclass
@@ -51,6 +53,41 @@ def test_all_personas_share_aggressive_opening():
     assert d.policy.explore_weight > 1.0
     assert d.policy.expand_weight > 1.0
     assert d.policy.attack_weight < 1.0
+
+
+def test_first_contact_uses_the_intermediate_frontier_phase():
+    state = S(
+        [P(owner_id=1, observed=True)]
+        + [P(owner_id=None, observed=False) for _ in range(5)]
+        + [P(owner_id=2, observed=True)],
+        fleets=[F(owner_id=2)],
+    )
+
+    decision = StrategicPhaseManager().decide(state, Persona())
+
+    assert decision.phase == StrategicPhase.FRONTIER_CONTACT
+    assert decision.policy.expand_weight == 1.0
+    assert decision.policy.fortify_weight > 1.0
+
+
+def test_persona_exposes_fortification_phase_to_live_planners():
+    state = GameState(
+        "phase", 2420, 1, RaceProfile(), Tech(),
+        [
+            Planet(0, "Home", Position(0, 0), owner=1, observed=True),
+            Planet(1, "Core", Position(30, 0), owner=1, observed=True),
+            Planet(2, "Border", Position(60, 0), owner=2, observed=True),
+        ],
+        [Fleet(9, "Foreign", 2, Position(60, 0), role="combat", combat_power=20)],
+    )
+
+    plan = BalancedPersona().build_plan(state)
+
+    assert plan.phase == StrategicPhase.FORTIFICATION.value
+    assert plan.objective("defend") > 1.0
+    assert plan.objective("expand") < 1.0
+    assert plan.planet("defenses") > 1.0
+    assert "frontier_pressure" in plan.phase_assessment
 
 
 def test_militarist_transitions_to_opportunistic_war():

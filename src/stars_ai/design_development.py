@@ -7,12 +7,162 @@ import csv
 
 from .fuel_planner import has_ife
 from .colony_planner import colony_planet_is_eligible
-from .ship_design_synth import plan_native_ship_design, synthesize_scout_upgrade
+from .ship_design_synth import (
+    COLONY_SHIP_HULL_ID,
+    PRT_ALTERNATE_REALITY,
+    best_legal_ship_hull,
+    best_legal_starbase_hull,
+    colony_design_records,
+    plan_native_ship_design,
+    ranked_legal_ship_hulls,
+    synthesize_scout_upgrade,
+    synthesize_starbase_design_proposal,
+)
 from .logistics_capacity import evaluate_logistics_capacity, POPULATION_PULSE_KT
-from .starsapi_items import MINE_LAYER, hull_unlocked as race_hull_unlocked, stock_hulls as race_stock_hulls
+from .starsapi_items import (
+    MINE_LAYER,
+    hull_unlocked as race_hull_unlocked,
+    prt_id as race_prt_id,
+    stock_hulls as race_stock_hulls,
+)
 from .territorial_defense import assess_territorial_defense
 
 TECH_FIELDS=("energy","weapons","propulsion","construction","electronics","biotechnology")
+
+
+def _design_activity(state, slots: set[int]) -> tuple[dict[int, int], dict[int, int]]:
+    """Return owner-only live and queued counts for the given design slots."""
+    live={slot:0 for slot in slots}
+    for fleet in state.fleets:
+        if fleet.owner != state.player_id:
+            continue
+        for slot,count in enumerate((fleet.native or {}).get("ship_count", []) or []):
+            if slot in live:
+                live[slot] += max(0, int(count or 0))
+    queued={slot:0 for slot in slots}
+    for queue in ((state.native or {}).get("production_by_planet", {}) or {}).values():
+        for item in queue or []:
+            if int(item.get("item_type", 0) or 0) != 4:
+                continue
+            slot=int(item.get("item_id", -1) or -1)
+            if slot in queued:
+                queued[slot] += max(0, int(item.get("count", 0) or 0))
+    return live,queued
+
+
+def _design_cargo_capacity(record: dict) -> int:
+    if record.get("cargo_capacity") is not None:
+        return max(0, int(record.get("cargo_capacity", 0) or 0))
+    hull_id=record.get("hull_id")
+    hull=race_stock_hulls().get(int(hull_id)) if hull_id is not None else None
+    return max(0, int(hull.cargo if hull is not None else 0))
+
+
+def _design_engine_id(record: dict) -> int | None:
+    if record.get("engine_id") is not None:
+        return int(record["engine_id"])
+    for component in (record.get("slots", []) or []):
+        if int(component.get("category", 0) or 0) == 1 and int(component.get("count", 0) or 0) > 0:
+            return int(component.get("item_id", 0) or 0)
+    return None
+
+
+def _obsolete_colony_design(state) -> dict | None:
+    """Return one safely deletable colony design that violates the new policy.
+
+    Native design slots are stateful: a blueprint is deleted only when it has
+    no live ships, no queued production, and the host reports no remaining
+    hulls.  That lets us correct old non-cargo "colonizers" without risking a
+    fleet that has not yet appeared in a partial M-file read-back.
+    """
+    raw={
+        int(design.get("design_number", -1)): design
+        for design in ((state.native or {}).get("designs", []) or [])
+        if not bool(design.get("is_starbase", False))
+    }
+    records={
+        int(record.get("design_number", -1)): record
+        for record in colony_design_records(state)
+        if int(record.get("design_number", -1)) in raw
+    }
+    if not records:
+        return None
+    live,queued=_design_activity(state,set(records))
+    removable=[
+        slot for slot in records
+        if live[slot] == 0 and queued[slot] == 0
+        and int(raw[slot].get("total_remaining", 0) or 0) == 0
+    ]
+    if not removable:
+        return None
+
+    # First remove historical designs that cannot perform their claimed
+    # colonization mission, or that predate the dedicated-colony policy: a
+    # non-cargo hull cannot deliver settlers, and general cargo hulls should
+    # remain reusable transports rather than carrying a one-use module.
+    non_cargo=[slot for slot in removable if _design_cargo_capacity(records[slot]) <= 0]
+    invalid_ar_hull=[
+        slot for slot in removable
+        if race_prt_id(state) == PRT_ALTERNATE_REALITY
+        and int(records[slot].get("hull_id", -1) or -1) != COLONY_SHIP_HULL_ID
+    ]
+    legacy_general_hull=[
+        slot for slot in removable
+        if int(records[slot].get("hull_id", -1) or -1) != COLONY_SHIP_HULL_ID
+    ]
+    invalid_colonizers=sorted(set(non_cargo) | set(invalid_ar_hull) | set(legacy_general_hull))
+    if invalid_colonizers:
+        slot=min(invalid_colonizers,key=lambda candidate:(
+            int(raw[candidate].get("turn_designed", 0) or 0), candidate,
+        ))
+        reason=(
+            "Delete legacy Alternate Reality colonizer on a non-Colony Ship hull."
+            if slot in invalid_ar_hull else
+            "Delete legacy non-cargo colonizer: a Colonization Module without cargo cannot deliver settlers."
+            if slot in non_cargo else
+            "Delete zero-ship general-hull colonizer: use the dedicated Colony Ship and retain freighters for repeat transport work."
+        )
+    elif len(records) > 2:
+        # Bring legacy design inventories down to the two-architecture cap;
+        # retain the largest/newest available designs while any live ships
+        # continue to protect their own blueprints.
+        slot=min(removable,key=lambda candidate:(
+            _design_cargo_capacity(records[candidate]),
+            int(raw[candidate].get("turn_designed", 0) or 0), candidate,
+        ))
+        reason="Delete excess colony architecture above the two-design policy cap."
+    else:
+        # A replacement is recognized only when the newer design actually
+        # improves cargo capacity or changes the engine architecture.  This
+        # preserves two genuinely complementary active designs while allowing
+        # a superseded, zero-ship blueprint to be reclaimed.
+        candidates=[]
+        for slot in removable:
+            older=records[slot]
+            older_turn=int(raw[slot].get("turn_designed", 0) or 0)
+            for newer_slot,newer in records.items():
+                if newer_slot == slot:
+                    continue
+                newer_turn=int(raw[newer_slot].get("turn_designed", 0) or 0)
+                if newer_turn < older_turn:
+                    continue
+                cargo_upgrade=_design_cargo_capacity(newer) > _design_cargo_capacity(older)
+                engine_upgrade=_design_engine_id(newer) != _design_engine_id(older)
+                if cargo_upgrade or engine_upgrade:
+                    candidates.append(slot)
+                    break
+        if not candidates:
+            return None
+        slot=min(candidates,key=lambda candidate:(
+            int(raw[candidate].get("turn_designed", 0) or 0), candidate,
+        ))
+        reason="Delete zero-ship colony design superseded by a newer cargo or engine architecture."
+    return {
+        "target_slot":int(slot),
+        "role":"colony",
+        "design_name":str(raw[slot].get("name") or f"Design #{slot + 1}"),
+        "reason":reason,
+    }
 
 
 def _unbuilt_superseded_combat_design(state) -> dict | None:
@@ -36,6 +186,13 @@ def _unbuilt_superseded_combat_design(state) -> dict | None:
     }
     military_slots=sorted(slot for slot in profiles if slot in designs)
     if len(military_slots) < 2:
+        return None
+
+    # A live territorial response is precisely when a newly unlocked combat
+    # blueprint needs time to reach an actual build queue.  Deleting it on the
+    # next turn caused a create/delete loop in the playtest (slot 8 every
+    # turn), consuming native design operations without ever fielding a hull.
+    if assess_territorial_defense(state).needs_response:
         return None
 
     live={slot:0 for slot in military_slots}
@@ -107,6 +264,7 @@ class DesignProposal:
     objectives:list[str]
     reason:str
     priority:int
+    purpose:str|None=None
     native_status:str="PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
 
     def to_payload(self):
@@ -193,10 +351,21 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
         compact=[d for d in freighters if POPULATION_PULSE_KT <= int(d.get("cargo_capacity",0) or 0) < 1000]
         bulk=[d for d in freighters if int(d.get("cargo_capacity",0) or 0) >= 1000]
         if logistics.desired_population_freighters>0:
-            privateer=stock_hulls().get(11)
-            medium=stock_hulls().get(1)
-            desired=(privateer if privateer is not None and _unlocked(state,privateer) else medium)
-            if desired is not None and _unlocked(state,desired):
+            compact_options=[
+                hull for hull in ranked_legal_ship_hulls(
+                    state,"freighter",minimum_cargo_kt=POPULATION_PULSE_KT,
+                )
+                if int(hull.cargo)<1000
+            ]
+            desired=min(
+                compact_options,
+                key=lambda hull:(
+                    abs(int(hull.cargo)-POPULATION_PULSE_KT),
+                    -int(hull.fuel),int(hull.engine_count),int(hull.hull_id),
+                ),
+                default=None,
+            )
+            if desired is not None:
                 has_privateer_runner=any(
                     int(d.get("hull_id",-1))==11 and int(d.get("fuel_capacity",0) or 0)>=1200
                     for d in compact
@@ -219,8 +388,8 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                         ), priority=132,
                     ))
         if logistics.large_freighter_valuable and not bulk:
-            large=stock_hulls().get(2)
-            if large is not None and _unlocked(state,large):
+            large=best_legal_ship_hull(state,"freighter")
+            if large is not None and int(large.cargo)>=1000:
                 proposals.append(DesignProposal(
                     role="freighter", name="Bulk Freighter AI", is_starbase=False,
                     desired_hull_id=large.hull_id, desired_hull_name=large.name, desired_engine=preferred_engine,
@@ -237,20 +406,27 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
 
     colonies=_designs(state,"colony")
     viable=sum(1 for p in state.planets if colony_planet_is_eligible(state,p,plan))
-    if colonies and viable and fuel_mizer and not _has_engine(state,"colony",2):
+    colony_hull=best_legal_ship_hull(state,"colony")
+    if (
+        colonies and viable and fuel_mizer and not _has_engine(state,"colony",2)
+        and colony_hull is not None
+    ):
         proposals.append(DesignProposal(
             role="colony", name="Colonizer Mk II", is_starbase=False,
-            desired_hull_id=15 if 15 in stock_hulls() and _unlocked(state,stock_hulls()[15]) else 14,
-            desired_hull_name="Colony Ship" if 15 in stock_hulls() and _unlocked(state,stock_hulls()[15]) else "Mini-Colony Ship",
+            desired_hull_id=colony_hull.hull_id,
+            desired_hull_name=colony_hull.name,
             desired_engine="Fuel Mizer",
             objectives=["reach new colonies with a safe one-way fuel budget","carry the required colonization module","minimize nonessential mass"],
             reason=f"{viable} viable colony targets are known and Fuel Mizer improves colonization range.",
             priority=116,
         ))
 
-    # Starbase hull availability is race-legal, not tech-only. Space Dock and
-    # Ultra Station are Improved Starbases (ISB) LRT hulls and MUST NOT be
-    # proposed for a non-ISB race.
+    territorial = assess_territorial_defense(state, plan)
+    state.native["territorial_defense"] = territorial.to_dict()
+
+    # Starbase hull availability is race-legal, not tech-only. The selector
+    # considers every stock base; it chooses the least costly hull that
+    # actually supplies the current support-hub need.
     owned=[p for p in state.planets if p.owner==state.player_id]
     operational=sum(1 for p in owned if bool(((p.native or {}).get("starbase_capabilities") or {}).get("can_build_ships")))
     orbital_forts=sum(1 for p in owned if bool(((p.native or {}).get("starbase_capabilities") or {}).get("is_orbital_fort")))
@@ -259,18 +435,17 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
         and bool((profile.get("capabilities") or {}).get("can_refuel"))
         for profile in (state.native or {}).get("starbase_profiles", []) or []
     )
+    support_hull=best_legal_starbase_hull(state,purpose="support")
     if not support_design_exists:
         # Every empire needs a custom support-base blueprint before the onion
         # network can promote P1/P2 worlds. ISB prefers Space Dock; all other
         # races use the universally legal Space Station. The compiler selects
         # only researched PRT/LRT-legal fittings and a free base-design slot.
-        preferred_hull=33 if has_isb else 34
-        support_hull=stock_hulls().get(preferred_hull)
-        if support_hull is not None and _unlocked(state,support_hull):
-            support_name="Fleet Support Space Dock" if preferred_hull==33 else "Fleet Support Space Station"
+        if support_hull is not None:
+            support_name=f"Fleet Support {support_hull.name}"
             proposals.append(DesignProposal(
                 role="starbase", name=support_name, is_starbase=True,
-                desired_hull_id=preferred_hull, desired_hull_name=support_hull.name, desired_engine=None,
+                desired_hull_id=support_hull.hull_id, desired_hull_name=support_hull.name, desired_engine=None,
                 objectives=[
                     "provide real ship construction",
                     "provide orbital refueling",
@@ -282,17 +457,88 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                     f"and no custom support-base blueprint. {support_hull.name} is the current legal support hull."
                 ),
                 priority=210 if operational==0 else 150,
+                purpose="support",
             ))
 
-    if has_isb and operational>0 and int(state.tech.construction)>=12:
-        if not any(int(x.get("hull_id",-1))==35 for x in state.native.get("starbase_profiles",[])):
-            proposals.append(DesignProposal(
-                role="starbase", name="Ultra Station Support Base", is_starbase=True,
-                desired_hull_id=35, desired_hull_name="Ultra Station", desired_engine=None,
-                objectives=["increase orbital capacity and defenses","serve as a mature fleet-construction/refuel hub"],
-                reason="ISB race with Construction 12 can consider an Ultra Station support design.",
-                priority=95,
-            ))
+    operational_hull_ids = {
+        int((planet.native or {}).get("starbase_capabilities", {}).get("hull_id", -1) or -1)
+        for planet in owned
+        if bool(((planet.native or {}).get("starbase_capabilities") or {}).get("can_build_ships"))
+    }
+    # A starter station can have a few basic weapons and still be strategically
+    # obsolete.  Treating any nonzero weapon count as ``armed enough`` was the
+    # reason research never produced a modern base: the old starter design
+    # suppressed every same-hull refit forever.  Ask the canonical compiler
+    # whether it can create a distinct legal current-tech variant instead. It
+    # returns None for an exact architecture match, a full design namespace,
+    # or a component/hull that is not actually legal, making this both a
+    # capability check and a natural anti-duplicate gate.
+    def _modern_variant(hull, *, purpose: str = "defense"):
+        if hull is None:
+            return None
+        return synthesize_starbase_design_proposal(state, {
+            "role": "starbase",
+            "name": f"Modern {hull.name} {purpose.title()}",
+            "is_starbase": True,
+            "desired_hull_id": int(hull.hull_id),
+            "desired_hull_name": hull.name,
+            "purpose": purpose,
+            "priority": 1,
+        })
+
+    # The current operational hull is the fastest refit target during an
+    # emergency.  Outside an emergency it is still eligible for a one-at-a-
+    # time modernization whenever research produces a stronger valid fitting.
+    immediate_hull = next((
+        best_legal_starbase_hull(state, purpose="defense", desired_hull_id=hull_id)
+        for hull_id in sorted(operational_hull_ids)
+        if best_legal_starbase_hull(state, purpose="defense", desired_hull_id=hull_id) is not None
+    ), None)
+    immediate_variant = _modern_variant(immediate_hull)
+
+    # At Construction 12 or beyond, a larger legal orbital hull can be a
+    # better normal modernization than a same-hull refit.  During an active
+    # threat, however, prefer the current-hull refit whenever it exists: the
+    # quicker overlap gives the threatened world protection sooner.
+    advanced_hull = (
+        best_legal_starbase_hull(state, purpose="defense")
+        if operational > 0 and int(state.tech.construction) >= 12
+        else None
+    )
+    advanced_variant = _modern_variant(advanced_hull)
+    if territorial.needs_response:
+        selected_hull, selected_variant, label, priority = (
+            (immediate_hull, immediate_variant, "Immediate", 200)
+            if immediate_variant is not None else
+            (advanced_hull, advanced_variant, "Immediate Advanced", 196)
+        )
+    else:
+        selected_hull, selected_variant, label, priority = (
+            (advanced_hull, advanced_variant, "Advanced", 184)
+            if advanced_variant is not None else
+            (immediate_hull, immediate_variant, "Modernized", 176)
+        )
+
+    if selected_hull is not None and selected_variant is not None:
+        proposals.append(DesignProposal(
+            role="starbase", name=f"{label} {selected_hull.name} Defense", is_starbase=True,
+            desired_hull_id=selected_hull.hull_id, desired_hull_name=selected_hull.name, desired_engine=None,
+            objectives=[
+                "replace starter orbital fittings with the best currently legal weapons and protection",
+                "preserve existing orbital cover until the new defensive design completes",
+                "queue one deliberate replacement after next-M design read-back",
+            ],
+            reason=(
+                (
+                    f"{territorial.reason} " if territorial.needs_response else
+                    f"Weapons={state.tech.weapons}, Energy={state.tech.energy}, Construction={state.tech.construction}: "
+                )
+                + f"{selected_hull.name} has a distinct current-tech defensive architecture. "
+                "The existing base remains active while the new design is created, read back, and queued as an overlapping replacement."
+            ),
+            priority=priority,
+            purpose="defense",
+        ))
 
     # A minefield is a territorial claim and should be backed by a real
     # minelayer, not merely an advisory response. Design one when armed or
@@ -300,22 +546,9 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
     # can be built. Space Demolition gets the dedicated mine-layer hulls, but
     # all other races may use a compatible general-purpose hull with a
     # standard Mine Dispenser.
-    territorial = assess_territorial_defense(state, plan)
-    state.native["territorial_defense"] = territorial.to_dict()
     minelayers = _designs(state, "minelayer")
     if territorial.needs_minefield and not minelayers:
-        minelayer_hull = next(
-            (
-                stock_hulls().get(hull_id)
-                for hull_id in (28, 27, 5, 6, 7, 8, 10, 11, 13, 12, 29)
-                if (
-                    stock_hulls().get(hull_id) is not None
-                    and _unlocked(state, stock_hulls()[hull_id])
-                    and any(slot.allows(MINE_LAYER) for slot in race_stock_hulls()[hull_id].slots[1:])
-                )
-            ),
-            None,
-        )
+        minelayer_hull=best_legal_ship_hull(state,"minelayer")
         if minelayer_hull is not None:
             proposals.append(DesignProposal(
                 role="minelayer", name="Territory Mine Layer", is_starbase=False,
@@ -334,13 +567,17 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
             ))
 
     combat=_designs(state,"combat")
-    if combat and max(int(state.tech.weapons),int(state.tech.energy))>=6:
+    combat_hull=best_legal_ship_hull(state,"combat")
+    if (
+        combat and max(int(state.tech.weapons),int(state.tech.energy))>=6
+        and combat_hull is not None
+    ):
         newest_turn=max((int(d.get("turn_designed",0) or 0) for d in combat),default=0)
         if state.year-2400-newest_turn>=5:
             proposals.append(DesignProposal(
                 role="combat", name="Fleet Combat Mk II", is_starbase=False,
-                desired_hull_id=6 if 6 in stock_hulls() and _unlocked(state,stock_hulls()[6]) else 5,
-                desired_hull_name="Destroyer" if 6 in stock_hulls() and _unlocked(state,stock_hulls()[6]) else "Frigate",
+                desired_hull_id=combat_hull.hull_id,
+                desired_hull_name=combat_hull.name,
                 desired_engine=preferred_engine,
                 objectives=["use newly unlocked Weapons/Energy technology","serve shared combat and escort duty","balance weapons, shields/armor, and mass"],
                 reason=f"Weapons={state.tech.weapons}, Energy={state.tech.energy}; existing combat architecture is at least five turns old.",
@@ -352,8 +589,38 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
 
 
 def add_design_development_orders(state,orders,plan=None):
-    # First-pass native Type27 execution is limited to exact utility designs.
-    native_plan=plan_native_ship_design(state,plan)
+    # Repair a known-invalid colony blueprint before allocating another scarce
+    # design operation.  The two-turn native read-back contract then makes the
+    # next colonizer creation unambiguous.
+    cleanup=_obsolete_colony_design(state)
+    # A starbase modernization is an actual strategic replacement, not merely
+    # an advisory second choice after an endless stream of utility hulls.  It
+    # is still one Type-27 mutation and still waits for native read-back before
+    # construction, but it may take that one design slot when its priority is
+    # at least the competing native ship proposal.
+    proposals=plan_design_development(state,plan)
+    top_proposal=proposals[0] if proposals else None
+    emergency_starbase=bool(
+        top_proposal is not None
+        and bool(top_proposal.is_starbase)
+        and str(top_proposal.purpose or "").casefold() == "defense"
+        and int(top_proposal.priority) >= 190
+    )
+    # Removing a bad unused colony blueprint is normally useful hygiene, but
+    # it cannot consume the only Type-27 mutation while a threatened empire
+    # needs an already-compilable base modernization. The cleanup remains
+    # pending and is retried after the replacement design has been created.
+    if cleanup is not None and emergency_starbase:
+        cleanup=None
+    native_plan=None if cleanup is not None else plan_native_ship_design(state,plan)
+    prioritize_starbase=bool(
+        top_proposal is not None
+        and bool(top_proposal.is_starbase)
+        and str(top_proposal.purpose or "").casefold() == "defense"
+        and (native_plan is None or int(top_proposal.priority) >= int(native_plan.priority))
+    )
+    if prioritize_starbase:
+        native_plan=None
     if native_plan is not None:
         payload=native_plan.to_payload()
         if native_plan.encoded.replace_existing:
@@ -371,7 +638,8 @@ def add_design_development_orders(state,orders,plan=None):
                 priority=native_plan.priority,
             )
 
-    cleanup=None if native_plan is not None else _unbuilt_superseded_combat_design(state)
+    if cleanup is None and native_plan is None:
+        cleanup=_unbuilt_superseded_combat_design(state)
     if cleanup is not None:
         orders.add(
             "delete_ship_design",
@@ -380,9 +648,15 @@ def add_design_development_orders(state,orders,plan=None):
             priority=150,
         )
 
-    for proposal in plan_design_development(state,plan):
-        # Avoid duplicate advisory for the exact role already selected for this
-        # turn's experimental native creation.
-        if (native_plan is not None and proposal.role==native_plan.role) or cleanup is not None:
-            continue
-        orders.add("create_design",proposal.to_payload(),proposal.reason,priority=proposal.priority)
+    # Type-27 has one atomic native design mutation per turn.  Planning a
+    # second advisory creation merely makes the writer discard it, obscuring
+    # the real priority and delaying the next read-back.  Emit one selected
+    # mutation only; the remaining needs are deterministically reconsidered
+    # from the next M file.
+    if native_plan is None and cleanup is None and top_proposal is not None:
+        orders.add(
+            "create_design",
+            top_proposal.to_payload(),
+            top_proposal.reason,
+            priority=top_proposal.priority,
+        )

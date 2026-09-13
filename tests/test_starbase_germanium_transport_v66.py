@@ -44,6 +44,15 @@ def test_space_dock_is_refuel_and_shipyard():
     assert c["name"]=="Space Dock"
     assert c["can_refuel"] is True
     assert c["can_build_ships"] is True
+    assert c["max_buildable_ship_mass_kt"]==200
+
+
+def test_larger_operational_bases_have_no_ship_mass_cap():
+    for hull_id in (34,35,36):
+        c=starbase_capabilities(hull_id)
+        assert c["can_refuel"] is True
+        assert c["can_build_ships"] is True
+        assert c["max_buildable_ship_mass_kt"] is None
 
 
 def test_unknown_base_is_conservative():
@@ -119,7 +128,7 @@ def test_orbital_fort_planet_does_not_receive_ship_build():
     )
 
 
-def test_known_transport_residual_preserves_identical_native_transport_task():
+def test_known_transport_residual_reapplies_current_orbit_unload_all_task():
     state=GameState(
         "g",2405,1,race(),Tech(),
         [Planet(7,"Target",Position(100,200),owner=1,observed=True)],
@@ -133,7 +142,10 @@ def test_known_transport_residual_preserves_identical_native_transport_task():
         state,
         {"fleet_id":3,"destination_planet_id":7,"warp":6}
     )
-    assert blocks==[]
+    assert [block.type_id for block in blocks] == [5]
+    assert blocks[0].data == bytes.fromhex(
+        "03 00 00 00 64 00 c8 00 07 00 61 51 00 20 00 20 00 20 00 20"
+    )
 
 
 def _record(pid,turn,pop,install=True,surface=True):

@@ -1,6 +1,6 @@
 from stars_ai.cargo_planner import derive_cargo_plan
 from stars_ai.models import GameState, OrderSet, Planet, Position, RaceProfile, Tech
-from stars_ai.planet_economy import decode_race_economy, estimated_mineral_output
+from stars_ai.planet_economy import decode_race_economy, estimated_mineral_output, working_mineral_reserve
 from stars_ai.research_planner import ResearchDecision
 from stars_ai.strategy.economy import _prioritize_economic_infrastructure, add_economic_orders
 
@@ -83,6 +83,18 @@ def test_core_infrastructure_precedes_optional_work_and_preserves_germanium():
     assert economy["mineral_reserve"]["germanium"] >= 320
 
 
+def test_mature_mineral_secure_core_builds_factories_before_more_mines():
+    world=_core(minerals=(1_181,756,909),factories=10,mines=59)
+    state=_state(world)
+    orders=OrderSet(state.game_name,state.year,state.player_id)
+
+    add_economic_orders(state,orders)
+
+    queue=next(order.payload["queue"] for order in orders.orders if order.kind=="set_planet_queue")
+    assert queue[0]["item"]=="factory"
+    assert not any(item["item"]=="mine" for item in queue)
+
+
 def test_mines_and_factories_precede_an_unfunded_ship_queue_even_in_a_sprint():
     queue=[
         {"item":"ship_design","design_name":"Opening Scout","quantity":6},
@@ -106,11 +118,24 @@ def test_opening_queue_places_colonization_ahead_of_preserved_scout_work():
         {"item":"factory","quantity":25},
     ]
 
-    ordered=_prioritize_economic_infrastructure(queue,opening_growth=True)
+    ordered=_prioritize_economic_infrastructure(
+        queue,opening_growth=True,colony_launch_priority=True,
+    )
 
     assert [(item["item"],item.get("role")) for item in ordered]==[
-        ("mine",None),("factory",None),("ship_design","colony"),("ship_design","scout"),
+        ("ship_design","colony"),("mine",None),("factory",None),("ship_design","scout"),
     ]
+
+
+def test_deep_ship_backlog_does_not_create_a_full_mineral_reserve_bill():
+    reserve=working_mineral_reserve(
+        _core(),decode_race_economy(_race()),
+        queue=[{"item":"ship_design","quantity":20}],
+    )
+
+    assert reserve["queued_ships"]==20
+    assert reserve["reserved_ship_horizon"]==3
+    assert reserve["ironium"]==300+3*90
 
 
 def test_only_key_research_sprints_may_displace_shared_economic_growth():

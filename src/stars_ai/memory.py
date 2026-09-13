@@ -162,6 +162,41 @@ class AgentMemory:
             "has_starbase": bool(native.get("has_starbase", False)),
             "starbase_hull_id": native.get("starbase_hull_id"),
         }
+        # A post-capture M record commonly reveals the new owner but omits the
+        # former colony's population, installations, and surface minerals.
+        # Zero is not useful enemy intelligence in that case (an owned world
+        # cannot have zero inhabitants), so retain the last observed friendly
+        # values as explicitly stale tactical facts. Ownership itself always
+        # comes from the current M record and is never restored from memory.
+        if (
+            planet.owner not in (None,player_id)
+            and int(prior.get("last_known_owner",-1) or -1)==int(player_id)
+        ):
+            retained=[]
+            if int(entry["population"] or 0)<=0 and int(prior.get("population",0) or 0)>0:
+                entry["population"]=int(prior["population"])
+                retained.append("population")
+            economic_fields=("factories","mines","defenses","ironium","boranium","germanium")
+            if (
+                all(int(entry[name] or 0)==0 for name in economic_fields)
+                and any(int(prior.get(name,0) or 0)>0 for name in economic_fields)
+            ):
+                for name in economic_fields:
+                    entry[name]=int(prior.get(name,0) or 0)
+                retained.extend(economic_fields)
+            if retained:
+                entry["strategic_stats_source"]="last_friendly_observation"
+                entry["strategic_stats_stale_since_year"]=int(year)
+                entry["strategic_stats_retained_fields"]=retained
+        # Keep the control-loss audit across subsequent enemy observations;
+        # these tags are diagnostic only and cannot authorize local orders.
+        for audit_key in (
+            "local_control_purged_year",
+            "ownership_revoked_year",
+            "ownership_source",
+        ):
+            if audit_key in prior and planet.owner != player_id:
+                entry[audit_key]=prior[audit_key]
         self.planet_intel[key] = entry
 
         if planet.habitability is not None:
@@ -180,6 +215,154 @@ class AgentMemory:
         ):
             self.colonized_years[key] = int(year)
 
+    @staticmethod
+    def _explicitly_not_owned_by_player(planet, player_id: int) -> bool:
+        """Return whether this turn supplies positive evidence that a world is lost.
+
+        Map-only worlds are deliberately not evidence: persistent intel may be
+        the only information we have about them. A current M record is
+        authoritative even when sparse; generic adapters may instead expose a
+        direct observed owner field.
+        """
+        native=planet.native or {}
+        if bool(native.get("current_m_record",False)):
+            return native.get("current_m_owner") != player_id
+        return bool(planet.observed and planet.owner != player_id)
+
+    @staticmethod
+    def _expectation_planet_ids(expectation: dict[str, Any]) -> set[int]:
+        """Find world references in a pending command without guessing IDs."""
+        reference_keys={
+            "planet_id",
+            "source_planet_id",
+            "destination_planet_id",
+            "population_export_hub_id",
+            "export_planet_id",
+            "current_planet_id",
+            "desired_colony_planet_id",
+        }
+        found:set[int]=set()
+
+        def visit(value, key: str | None=None) -> None:
+            if isinstance(value,dict):
+                for child_key,child_value in value.items():
+                    visit(child_value,str(child_key))
+                return
+            if isinstance(value,(list,tuple)):
+                for child in value:
+                    visit(child,key)
+                return
+            if key not in reference_keys or isinstance(value,bool):
+                return
+            try:
+                found.add(int(value))
+            except (TypeError,ValueError):
+                pass
+
+        visit(expectation)
+        return found
+
+    def _purge_lost_world_control_state(
+        self,
+        state,
+        lost_planet_ids: set[int],
+        year: int,
+    ) -> dict[str, Any]:
+        """Remove only local control state after current M ownership is revoked.
+
+        Planet intel is intentionally retained: the world can now be an enemy
+        mineral, population, or tactical objective. What must not survive is
+        an actionable local queue/export/route expectation that treats it as
+        ours. Retired actions are recorded as outcomes for auditability, then
+        removed from the active ledger before its outcome evaluation runs.
+        """
+        if not lost_planet_ids:
+            return {
+                "purged_pending_action_ids":[],
+                "purged_state_queue_planet_ids":[],
+                "purged_fleet_movement_ids":[],
+            }
+
+        retired=[]
+        for key,expectation in list(self.action_expectations.items()):
+            references=self._expectation_planet_ids(expectation)
+            affected=sorted(references & lost_planet_ids)
+            if not affected:
+                continue
+            names=", ".join(
+                str(expectation.get("planet_name",f"Planet #{planet_id + 1}"))
+                if int(expectation.get("planet_id",-1) or -1)==planet_id
+                else f"Planet #{planet_id + 1}"
+                for planet_id in affected
+            )
+            archived={
+                **dict(expectation),
+                "status":"CANCELLED_WORLD_LOST",
+                "resolved_year":int(year),
+                "lost_planet_ids":affected,
+                "message":(
+                    f"CANCELLED_WORLD_LOST - {expectation.get('description','pending command')} "
+                    f"references lost world(s) {names}; remove its local queue/export/action state."
+                ),
+            }
+            self._archive_action_outcome(archived)
+            self.action_expectations.pop(key,None)
+            retired.append(str(key))
+
+        # These maps are current-turn mirrors, not durable enemy intelligence.
+        # Remove any stale local queue/research entries before strategy reads
+        # them, while preserving planet_intel's observed strategic statistics.
+        purged_state_queues=[]
+        for field_name in ("production_by_planet","planet_research_modes"):
+            mapping=(state.native or {}).get(field_name)
+            if not isinstance(mapping,dict):
+                continue
+            for planet_id in lost_planet_ids:
+                removed=False
+                for key in (planet_id,str(planet_id)):
+                    if key in mapping:
+                        mapping.pop(key,None)
+                        removed=True
+                if removed and planet_id not in purged_state_queues:
+                    purged_state_queues.append(planet_id)
+
+        # This is diagnostic memory rather than a native order, but it can
+        # otherwise make a now-invalid route look like a live pending mission
+        # in the next decision report.
+        purged_fleet_movement_ids=[]
+        for fleet_id,progress in list(self.fleet_movement_history.items()):
+            if int((progress or {}).get("destination_planet_id",-1) or -1) not in lost_planet_ids:
+                continue
+            self.fleet_movement_history.pop(fleet_id,None)
+            purged_fleet_movement_ids.append(int(fleet_id))
+
+        planets={int(planet.id):planet for planet in state.planets}
+        for planet_id in lost_planet_ids:
+            key=str(planet_id)
+            planet=planets.get(planet_id)
+            intel=self.planet_intel.get(key)
+            if intel is not None:
+                intel["local_control_purged_year"]=int(year)
+                intel["ownership_revoked_year"]=int(year)
+                # `_capture_planet` has already recorded the current owner and
+                # its strategic stats. Sparse current-M unowned worlds use the
+                # branch below; both cases remain useful tactical intel.
+                intel["ownership_source"]=(
+                    "current_m_enemy_owned"
+                    if planet is not None and planet.owner not in (None,state.player_id)
+                    else "current_m_unowned"
+                )
+            if planet is not None and planet.owner not in (None,state.player_id):
+                self.known_enemy_planets[key]=int(planet.owner)
+            else:
+                self.known_enemy_planets.pop(key,None)
+
+        return {
+            "purged_pending_action_ids":retired,
+            "purged_state_queue_planet_ids":sorted(purged_state_queues),
+            "purged_fleet_movement_ids":sorted(purged_fleet_movement_ids),
+        }
+
     def reconcile_state(self, state) -> dict[str, Any]:
         """
         Merge CURRENT observations into memory, then restore older learned data
@@ -190,11 +373,39 @@ class AgentMemory:
 
         current_observed = {int(p.id): bool(p.observed) for p in state.planets}
         current_m_ownership_revoked: list[int] = []
+        owned_before_observation={
+            int(key)
+            for key,intel in self.planet_intel.items()
+            if int((intel or {}).get("last_known_owner", -1) or -1)==int(state.player_id)
+        }
+        lost_planet_ids={
+            int(planet.id)
+            for planet in state.planets
+            if int(planet.id) in owned_before_observation
+            and self._explicitly_not_owned_by_player(planet,int(state.player_id))
+        }
 
         # First ingest only what the current M file genuinely exposes.
         for p in state.planets:
             if current_observed[int(p.id)]:
+                prior = dict(self.planet_intel.get(str(int(p.id)), {}) or {})
+                # Current enemy ownership revokes all local control, but the
+                # just-lost world is a special tactical target. Preserve the
+                # former friendly headcount only as a conservative population
+                # floor for a possible *legal* counter-capture; it cannot
+                # revive local queues, exports, or ownership.
+                recently_lost = bool(
+                    p.owner not in (None, state.player_id)
+                    and int(prior.get("last_known_owner", -1) or -1) == int(state.player_id)
+                )
                 self._capture_planet(p, year, int(state.player_id))
+                if recently_lost:
+                    p.native["recently_lost_by_player"] = True
+                    p.native["tactical_population_estimate"] = max(
+                        int(p.population or 0),
+                        int(prior.get("population", 0) or 0),
+                    )
+                    p.native["tactical_population_estimate_source"] = "last_friendly_observation"
                 continue
 
             # A sparse current M record that explicitly has no owner is more
@@ -218,6 +429,17 @@ class AgentMemory:
             self.known_enemy_planets.pop(key,None)
             p.native["current_m_revoked_stale_owner"]=int(state.player_id)
             current_m_ownership_revoked.append(int(p.id))
+
+        # Both an observed enemy capture and a sparse current-M unowned record
+        # revoke local control immediately. Preserve the world as strategic
+        # intelligence, but remove active local queues, exports, and pending
+        # command expectations before their warning/status evaluation below.
+        purge_diag=self._purge_lost_world_control_state(
+            state,lost_planet_ids,year,
+        )
+        current_m_ownership_revoked=sorted(
+            set(current_m_ownership_revoked) | lost_planet_ids
+        )
 
         restored = 0
         for p in state.planets:
@@ -296,6 +518,8 @@ class AgentMemory:
             "ever_observed": known,
             "restored_from_memory": restored,
             "current_m_ownership_revoked_planet_ids": current_m_ownership_revoked,
+            "lost_owned_planet_ids": sorted(lost_planet_ids),
+            **purge_diag,
             "total_planets": len(state.planets),
         }
 
@@ -540,6 +764,16 @@ class AgentMemory:
                         expectation["unload"]={
                             str(k):str(v) for k,v in (payload.get("unload") or {}).items()
                         }
+                    # A transport/colony action has two local-world
+                    # dependencies. Preserve the source/export reference so
+                    # a later ownership loss can retire the pending action
+                    # even if its destination remains friendly.
+                    for reference_key in (
+                        "source_planet_id",
+                        "population_export_hub_id",
+                    ):
+                        if payload.get(reference_key) is not None:
+                            expectation[reference_key]=int(payload[reference_key])
                     self._add_action_expectation(expectation)
                     origin=(float(target.position.x),float(target.position.y))
                 continue
@@ -1107,7 +1341,15 @@ class AgentMemory:
         )
 
     def new_colonies_count(self) -> int:
-        return len(self.colonized_years)
+        # Keep the full colonization history for rate/trend analysis, but use
+        # only worlds currently remembered as ours for expansion posture. A
+        # captured colony must not inflate the live-territory milestone.
+        return sum(
+            1 for key in self.colonized_years
+            if int((self.planet_intel.get(str(key),{}) or {}).get(
+                "last_known_owner",-1
+            ) or -1)==int(self.player_id or -1)
+        )
 
     def scan_order_count(self) -> int:
         return sum(

@@ -21,15 +21,17 @@ def _state(bulk=False):
     })
 
 
-def test_general_freighter_pick_for_population_prefers_compact_privateer():
-    assert _pick(_state(False),"freighter")["name"]=="Onion Privateer"
+def test_general_freighter_pick_for_population_uses_available_cargo_capacity():
+    assert _pick(_state(False),"freighter")["name"]=="LF"
 
 
-def test_population_demand_builds_compact_transport_not_large_freighter():
+def test_population_demand_builds_transport_that_can_use_current_surplus():
     req=plan_objective_ship_builds(_state(False))
     freight=[x for x in req if x.role=="freighter"]
-    # Existing assets may already satisfy demand; if a build is needed it must be compact.
-    assert all(x.design_slot==1 for x in freight)
+    # The current protected source surplus and recipient need can use the
+    # larger hold, so population duty is not constrained to a compact hull.
+    population=[x for x in freight if "strategic colony backlog" in x.reason]
+    assert population and all(x.design_slot==2 for x in population)
 
 
 def test_bulk_industrial_pressure_can_request_large_freighter():

@@ -255,16 +255,30 @@ class StrategicPhaseManager:
 
         if (
             a.owned_planets < min_opening_planets
+            and not a.has_contact
             and a.frontier_pressure < contact_threshold
         ):
             phase = StrategicPhase.EARLY_EXPANSION
             reason = "Opening doctrine: aggressively explore and claim viable worlds before borders harden."
         elif (
-            a.frontier_pressure < contact_threshold
+            not a.has_contact
+            and a.frontier_pressure < contact_threshold
             and a.expansion_saturation < saturation_threshold
         ):
             phase = StrategicPhase.EARLY_EXPANSION
             reason = "Substantial open frontier remains; continued exploration/expansion has the best macro return."
+        elif a.has_contact and a.expansion_saturation < saturation_threshold:
+            # Contact is not the same as the end of expansion.  It is a
+            # distinct transition in which scouts, colonists, and a modest
+            # defensive screen all matter.  The old controller defined this
+            # phase but could never select it, so a single sighting jumped
+            # straight to the persona's late-game posture.
+            phase = StrategicPhase.FRONTIER_CONTACT
+            reason = (
+                "Foreign contact has hardened part of the frontier while viable "
+                "space remains; keep expanding with border intelligence and a "
+                "defensive screen."
+            )
         else:
             style = getattr(persona, "transition_style", "consolidate")
             if style == "attack":

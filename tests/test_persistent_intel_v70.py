@@ -2,6 +2,7 @@
 from stars_ai.memory import AgentMemory
 from stars_ai.models import GameState,RaceProfile,Tech,Planet,Fleet,Position,OrderSet
 from stars_ai.strategy.exploration import add_exploration_orders
+from stars_ai.strategy.economy import add_economic_orders
 from stars_ai.strategic_watchdog import evaluate_strategic_watchdog
 
 
@@ -83,6 +84,113 @@ def test_current_m_unowned_record_revokes_stale_local_ownership():
     assert diag["current_m_ownership_revoked_planet_ids"]==[1]
 
 
+def test_lost_world_purges_local_actions_but_retains_enemy_strategic_intel():
+    mem=AgentMemory()
+    s0=_state(2478,observed_ids={0,1},owners={0:1,1:1})
+    for planet in s0.planets:
+        planet.native.update({
+            "current_m_record":True,
+            "current_m_owner":planet.owner,
+            "current_m_owned_by_player":planet.owner==1,
+        })
+    prior_lost=next(planet for planet in s0.planets if planet.id==1)
+    prior_lost.population=28_000
+    prior_lost.factories=90
+    prior_lost.mines=50
+    prior_lost.ironium=410
+    prior_lost.boranium=320
+    prior_lost.germanium=230
+    mem.reconcile_state(s0)
+    # Preserve historical colonization timing for rate analysis; its live
+    # expansion contribution must disappear once the world is captured.
+    mem.colonized_years["1"]=2478
+    mem.fleet_movement_history["9"]={
+        "fleet_id":9,"destination_planet_id":1,"year":2478,
+    }
+    mem.action_expectations={
+        "queue-lost":{
+            "id":"queue-lost","kind":"production_queue","planet_id":1,
+            "planet_name":"P1","description":"P1 production queue",
+        },
+        "export-lost-source":{
+            "id":"export-lost-source","kind":"transport","planet_id":0,
+            "source_planet_id":1,"population_export_hub_id":1,
+            "description":"freighter export from P1",
+        },
+        "action-lost-target":{
+            "id":"action-lost-target","kind":"fleet_arrival","planet_id":1,
+            "description":"freighter arrive at P1",
+        },
+        "unrelated":{
+            "id":"unrelated","kind":"production_queue","planet_id":0,
+            "description":"P0 production queue",
+        },
+    }
+
+    # P1 is now visibly captured by Player 2. Its reported population/mineral
+    # data remains usable tactical intelligence, never local economy state.
+    s1=_state(2479,observed_ids={0,1},owners={0:1,1:2})
+    captured=next(planet for planet in s1.planets if planet.id==1)
+    # The enemy ownership is visible, but its detailed economic record is not.
+    # Retain the last friendly observation as stale tactical intelligence.
+    captured.population=0
+    captured.ironium=0
+    captured.native.update({
+        "current_m_record":True,
+        "current_m_owner":2,
+        "current_m_owned_by_player":False,
+    })
+    home=next(planet for planet in s1.planets if planet.id==0)
+    home.native.update({
+        "current_m_record":True,
+        "current_m_owner":1,
+        "current_m_owned_by_player":True,
+    })
+    s1.native.update({
+        "production_by_planet":{"0":[{"item_name":"Factory"}],"1":[{"item_name":"Mine"}]},
+        "planet_research_modes":{"0":1,"1":1},
+    })
+
+    diag=mem.reconcile_state(s1)
+
+    assert diag["lost_owned_planet_ids"]==[1]
+    assert set(diag["purged_pending_action_ids"]) == {
+        "queue-lost","export-lost-source","action-lost-target",
+    }
+    assert set(mem.action_expectations)=={"unrelated"}
+    assert "9" not in mem.fleet_movement_history
+    assert s1.native["production_by_planet"]=={"0":[{"item_name":"Factory"}]}
+    assert s1.native["planet_research_modes"]=={"0":1}
+    assert mem.planet_intel["1"]["last_known_owner"]==2
+    assert mem.planet_intel["1"]["population"]==28_000
+    assert mem.planet_intel["1"]["ironium"]==410
+    assert mem.planet_intel["1"]["strategic_stats_source"]=="last_friendly_observation"
+    assert mem.known_enemy_planets["1"]==2
+    assert captured.native["recently_lost_by_player"] is True
+    assert captured.native["tactical_population_estimate"]==28_000
+    assert captured.native["tactical_population_estimate_source"]=="last_friendly_observation"
+    assert mem.colonized_years["1"]==2478
+    assert mem.new_colonies_count()==0
+    assert {
+        outcome["id"] for outcome in mem.action_outcome_history
+        if outcome.get("status")=="CANCELLED_WORLD_LOST"
+    } == {"queue-lost","export-lost-source","action-lost-target"}
+
+
+def test_economy_does_not_propose_a_queue_for_memory_only_owned_world():
+    state=_state(2410,observed_ids={0},owners={0:1,1:1})
+    state.native["current_m_owned_planet_ids"]=[0]
+    # P1 exists only as retained memory in this synthetic current turn.
+    stale=next(planet for planet in state.planets if planet.id==1)
+    stale.native={"current_m_record":False,"current_m_owner":None}
+
+    orders=OrderSet("g",state.year,1)
+    add_economic_orders(state,orders)
+
+    queue_ids={int(order.payload["planet_id"]) for order in orders.orders if order.kind=="set_planet_queue"}
+    assert queue_ids == {0}
+
+
 def test_known_world_count_is_monotonic_across_sparse_turns():
     mem=AgentMemory()
     counts=[]
@@ -122,13 +230,15 @@ def test_new_colonies_are_counted_relative_to_opening_empire():
     assert mem.colonized_years["2"]==2405
 
 
-def test_recent_scan_assignment_is_not_selected_again_next_turn():
+def test_unobserved_home_neighborhood_scan_is_retried_next_turn():
     mem=AgentMemory()
     s=_state(2400,observed_ids={0},owners={0:1})
     s.fleets=[Fleet(0,"Scout",1,Position(0,0),role="scout")]
     mem.reconcile_state(s)
 
-    # Pretend last turn assigned P1 but it did not yet become observed.
+    # Pretend last turn assigned P1 but it did not yet become observed.  A
+    # close target remains a priority until the M file confirms its scan; a
+    # stale memory reservation must not leave the home ring unexplored.
     o=OrderSet("g",2400,1)
     o.add(
         "move_fleet",
@@ -146,7 +256,7 @@ def test_recent_scan_assignment_is_not_selected_again_next_turn():
     out=OrderSet("g",2401,1)
     add_exploration_orders(s1,out,None)
     scan=next(x for x in out.orders if x.kind=="move_fleet")
-    assert scan.payload["destination_planet_id"] != 1
+    assert scan.payload["destination_planet_id"] == 1
 
 
 def test_turn10_watchdog_uses_hard_numbers_requested_for_opening():

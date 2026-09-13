@@ -33,7 +33,13 @@ from stars_ai.native.design_change import (
     create_ship_design_blocks, create_starbase_design_blocks,
     delete_existing_ship_design_block, encoded_ship_design_from_payload,
 )  # V8_6_NATIVE_DESIGN_LIFECYCLE_PATCH
-from stars_ai.native.population_transport import medium_load_block, population_load_block
+from stars_ai.native.population_transport import (
+    MAX_SMALL_POPULATION_LOAD_KT,
+    MIN_MEDIUM_POPULATION_LOAD_KT,
+    medium_load_block,
+    population_load_block,
+    small_population_load_block,
+)
 from stars_ai.planet_economy import theoretical_max_population, planet_population_capacity, population_capacity_fraction, projected_population_growth, projected_next_population
 from stars_ai.ship_design_synth import synthesize_generic_design_proposal
 
@@ -336,13 +342,14 @@ def _raw_fleet_number(state:Any, fleet_id:int) -> int:
     return ((player_id-1) << 9) | (int(fleet_id) & 0x1ff)
 
 
-def _fleet_merge_block(payload:dict) -> NativeBlock:
-    """Encode StarsAPI's decoded Type37 FleetsMerge layout.
+def _fleet_merge_block(state:Any, payload:dict) -> NativeBlock:
+    """Encode the client-observed Type37 FleetsMerge layout.
 
-    Type37 carries local 9-bit fleet numbers (not the owner-tagged raw fleet
-    number used by waypoint blocks): retained target first, then each fleet to
-    merge into it.  The field layout is decoded by StarsAPI but has no client
-    encode capture yet, so callers must trace the emitted bytes.
+    Although StarsAPI decodes the members as 9-bit local fleet identifiers,
+    the live Player-2 capture at latestdemo turn 22 proves the wire fields
+    retain the owner tag, exactly like the following Type2 load and waypoint:
+    P2 fleets 5 and 6 are ``05 02 06 02``, not ``05 00 06 00``.  Omitting that
+    tag creates an internally inconsistent transaction that can hang the host.
     """
     target=int(payload.get("target_fleet_id",payload.get("fleet_id",-1)))
     sources=[int(value) for value in (payload.get("source_fleet_ids") or [])]
@@ -354,7 +361,7 @@ def _fleet_merge_block(payload:dict) -> NativeBlock:
         raise ValueError("Type37 fleet merge source ids must be distinct and exclude the retained fleet")
     if any(not 0 <= source <= 0x1ff for source in sources):
         raise ValueError(f"Type37 source fleets must be local 9-bit ids; got {sources}")
-    data=b"".join(_u16(value) for value in (target,*sources))
+    data=b"".join(_u16(_raw_fleet_number(state,value)) for value in (target,*sources))
     return NativeBlock(37,len(data),data)
 
 def _manual_load_population_25kt_block(state:Any, fleet_id:int)->NativeBlock:
@@ -418,14 +425,47 @@ def _waypoint_change_task_block(state:Any, *, fleet_id:int, destination_planet_i
                                 waypoint_index:int=1)->NativeBlock:
     target=next((p for p in state.planets if p.id==int(destination_planet_id)),None)
     if target is None: raise ValueError(f"Unknown destination planet {destination_planet_id}")
+    return _waypoint_change_task_at_position_block(
+        state,
+        fleet_id=fleet_id,
+        x=int(target.position.x),
+        y=int(target.position.y),
+        target_id=int(destination_planet_id),
+        warp=warp,
+        task=task,
+        additional=additional,
+        object_type=object_type,
+        waypoint_index=waypoint_index,
+    )
+
+
+def _waypoint_change_task_at_position_block(
+    state:Any, *, fleet_id:int, x:int, y:int, target_id:int,
+    warp:int, task:int, additional:bytes=b"", object_type:int=0x51,
+    waypoint_index:int=1,
+)->NativeBlock:
+    """Encode Stars!' Type-5 waypoint task form at an explicit location.
+
+    Unlike Type-4 WaypointAdd, Type-5 is also the client form for changing a
+    current deep-space waypoint.  Keeping the coordinate form separate avoids
+    pretending every mission must have a planet target.
+    """
     data=(
         _u16(_raw_fleet_number(state,fleet_id))+_u16(int(waypoint_index))
-        +_u16(int(target.position.x))+_u16(int(target.position.y))
-        +_u16(int(destination_planet_id)&0x7ff)
+        +_u16(int(x))+_u16(int(y))
+        +_u16(int(target_id)&0x7ff)
         +bytes([((max(0,min(15,int(warp)))<<4)|(int(task)&0x0f)),object_type])
         +additional
     )
     return NativeBlock(5,len(data),data)
+
+
+def _waypoint_delete_block(state: Any, *, fleet_id: int, waypoint_index: int) -> NativeBlock:
+    """Encode the captured Type-3 removal of a pending waypoint."""
+    index = int(waypoint_index)
+    if not 0 <= index <= 0xFF:
+        raise ValueError(f"Waypoint deletion index must fit one byte; got {index}")
+    return NativeBlock(3, 4, _u16(_raw_fleet_number(state, fleet_id)) + bytes([index, 0]))
 
 
 def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
@@ -477,11 +517,17 @@ def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
     current_task=int(current.get("task",0) or 0)
     if current_task == 3:
         return None
-    if current_task != 0 or int(current.get("warp",0) or 0) != 0:
+    current_warp=int(current.get("warp",0) or 0)
+    # A fleet that has arrived at a world commonly retains its *arrival* warp
+    # in waypoint zero.  Type-5 writes both the task and the replacement warp,
+    # so changing a stationary task-0 waypoint at Warp 5 to task-3/Warp 0 is
+    # the same bounded mutation as the captured task-0/Warp-0 form.  Accept
+    # only normal travel warps; malformed/unknown forms still fail closed.
+    if current_task != 0 or not 0 <= current_warp <= 9:
         raise UnsafeWaypointMutationError({
             "operation":"remote_mine","fleet_id":fleet_id,"result":"BLOCK",
-            "reason":"The captured Remote Mining transition is task 0 / warp 0 -> task 3; preserve other current waypoint forms.",
-            "current_task":current_task,"current_warp":int(current.get("warp",0) or 0),
+            "reason":"Remote Mining may replace only a stationary task-0 waypoint with a normal arrival warp; preserve other current waypoint forms.",
+            "current_task":current_task,"current_warp":current_warp,
         })
     return _waypoint_change_task_block(
         state,fleet_id=fleet_id,destination_planet_id=destination_id,
@@ -489,24 +535,26 @@ def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
     )
 
 
-def _minefield_task_block(state: Any, payload: dict) -> NativeBlock | None:
-    """Emit the narrowly-scoped experimental stationary Lay Mines transition.
+LAY_MINEFIELD_TASK = 6
+LAY_MINEFIELD_SUBTASK = 5
 
-    The Type-5 shape is established by the client-captured stationary Remote
-    Mining transition. Stars! task numbering identifies task 4 as Lay Mines,
-    but we have not yet captured a human-created minefield X file. To keep the
-    experiment attributable, this function permits only ``task 0 / warp 0``
-    on waypoint zero at an owned anchor planet; movement to the anchor is a
-    separate ordinary task-0 turn.
+
+def _minefield_task_block(state: Any, payload: dict) -> NativeBlock | None:
+    """Encode the two client-captured indefinite Lay Minefield forms.
+
+    ``latestdemo`` turn 100 contains the controlling Player-2 X-file capture:
+    Type-5 uses task 6 plus subtask 5.  It was observed both on a stationary
+    deep-space current waypoint and on a planet destination waypoint.  The
+    latter is suitable for normal AI territorial deployment: it travels to an
+    owned anchor and begins laying mines there without a speculative follow-up
+    order.
     """
     fleet_id = int(payload["fleet_id"])
-    destination_id = int(payload["destination_planet_id"])
     fleet = _fleet_state(state, fleet_id)
-    target = next((planet for planet in state.planets if int(planet.id) == destination_id), None)
-    if fleet is None or target is None or int(target.owner or -1) != int(state.player_id):
+    if fleet is None:
         raise UnsafeWaypointMutationError({
             "operation": "lay_minefield", "result": "BLOCK",
-            "reason": "Minefield deployment requires an owned minelayer at a known owned anchor planet.",
+            "reason": "Minefield deployment requires an owned minelayer.",
         })
     if str(fleet.role).casefold() != "minelayer":
         raise UnsafeWaypointMutationError({
@@ -515,43 +563,63 @@ def _minefield_task_block(state: Any, payload: dict) -> NativeBlock | None:
         })
     native = fleet.native or {}
     waypoints = list(native.get("waypoints") or [])
-    if int(native.get("waypoint_count", len(waypoints)) or 0) != 1 or not waypoints:
-        raise UnsafeWaypointMutationError({
-            "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
-            "reason": "Experimental mine laying is limited to the single stationary current waypoint form.",
-        })
-    current = waypoints[0]
-    raw_current_target = current.get("position_object")
-    current_target = int(-1 if raw_current_target is None else raw_current_target) & 0x7FF
-    object_type = int(current.get("position_object_type", 0)) & 0xFF
-    raw_position = native.get("position_object_id")
-    position_object_id = -1 if raw_position is None else int(raw_position)
-    at_target = (
-        position_object_id == destination_id
-        or (
-            abs(float(fleet.position.x) - float(target.position.x)) <= 0.5
-            and abs(float(fleet.position.y) - float(target.position.y)) <= 0.5
+    mode = str(payload.get("minefield_mode", "planet_destination")).casefold()
+    if mode == "deep_space_current":
+        waypoint_count = int(native.get("waypoint_count", len(waypoints)) or 0)
+        if waypoint_count not in (1, 2) or not waypoints:
+            raise UnsafeWaypointMutationError({
+                "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
+                "reason": "The captured deep-space Lay Minefield form supports one current waypoint and at most one pending destination.",
+            })
+        current = waypoints[0]
+        current_task = int(current.get("task", 0) or 0)
+        if current_task == LAY_MINEFIELD_TASK:
+            return None
+        if current_task != 0:
+            raise UnsafeWaypointMutationError({
+                "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
+                "reason": "Deep-space Lay Minefield may replace only an ordinary current waypoint.",
+                "current_task": current_task,
+            })
+        # Exact capture: current coordinates, target=0, target-type 4,
+        # task 6 / subtask 5.  Warp is retained from the current waypoint.
+        return _waypoint_change_task_at_position_block(
+            state,
+            fleet_id=fleet_id,
+            x=int(round(float(fleet.position.x))),
+            y=int(round(float(fleet.position.y))),
+            target_id=0,
+            warp=int(current.get("warp", 9) or 9),
+            task=LAY_MINEFIELD_TASK,
+            additional=bytes([LAY_MINEFIELD_SUBTASK]),
+            object_type=0x14,
+            waypoint_index=0,
         )
-    )
-    if not at_target or current_target != destination_id or (object_type & 0x0F) != 1:
+
+    if mode != "planet_destination":
         raise UnsafeWaypointMutationError({
             "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
-            "reason": "Mine laying may change only the current waypoint of a stationary minelayer at its owned target planet.",
-            "current_target": current_target, "requested_target": destination_id,
-            "object_type": object_type, "at_target": at_target,
+            "reason": f"Unknown captured Lay Minefield mode: {mode}.",
         })
-    current_task = int(current.get("task", 0) or 0)
-    if current_task == 4:
+    destination_id = int(payload["destination_planet_id"])
+    target = next((planet for planet in state.planets if int(planet.id) == destination_id), None)
+    if target is None or int(target.owner or -1) != int(state.player_id):
+        raise UnsafeWaypointMutationError({
+            "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
+            "reason": "Planet-destination Lay Minefield requires a known owned anchor planet.",
+        })
+    if any(int(wp.get("task", 0) or 0) == LAY_MINEFIELD_TASK for wp in waypoints):
         return None
-    if current_task != 0 or int(current.get("warp", 0) or 0) != 0:
-        raise UnsafeWaypointMutationError({
-            "operation": "lay_minefield", "fleet_id": fleet_id, "result": "BLOCK",
-            "reason": "The inferred Lay Mines transition permits only task 0 / warp 0 -> task 4; preserving all other waypoint forms.",
-            "current_task": current_task, "current_warp": int(current.get("warp", 0) or 0),
-        })
+    # Exact planet-destination capture: waypoint index 0, target type 1,
+    # task 6 / subtask 5.  This works whether the target is already queued or
+    # is a newly assigned territorial anchor.
     return _waypoint_change_task_block(
         state, fleet_id=fleet_id, destination_planet_id=destination_id,
-        warp=0, task=4, object_type=object_type, waypoint_index=0,
+        warp=int(payload.get("warp", 9) or 9),
+        task=LAY_MINEFIELD_TASK,
+        additional=bytes([LAY_MINEFIELD_SUBTASK]),
+        object_type=0x11,
+        waypoint_index=0,
     )
 
 
@@ -855,27 +923,36 @@ def _colonize_blocks(state:Any,payload:dict)->list[NativeBlock]:
 #   Boranium   00 20 = Unload All
 #   Germanium  00 20 = Unload All
 #   Population 00 20 = Unload All
-#   Fuel       00 70 = Load Optimal
-TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL = bytes.fromhex(
-    "00 20 00 20 00 20 00 20 00 70"
-)
+#
+# The live-client control in turn-035 sends an empty freighter to Chunk and
+# explicitly selects Unload All for every cargo type.  Its Type-5 task ends
+# after these four cargo fields: it does *not* append a fuel-load directive.
+# Keep this byte-for-byte client form for every freight mission, whether a
+# particular hold currently contains each cargo type or not.
+TRANSPORT_UNLOAD_ALL_CARGO = bytes.fromhex("00 20 00 20 00 20 00 20")
 
-# P1 human-client 200-kT population transport control (turn 2407): leave
-# minerals untouched and unload all population.  It is intentionally distinct
-# from the mineral-transport form above, including the target object byte.
+# Historical P1 human-client 200-kT population transport control (turn 2407):
+# leave minerals untouched and unload all population.  It is retained as a
+# decoder reference only.  The live playtest showed that this narrow 0x11
+# endpoint can leave population aboard after arrival, so new autonomous
+# population shipments use the complete observed Transport policy above.
 TRANSPORT_POPULATION_UNLOAD_ALL = bytes.fromhex("00 00 00 00 00 00 00 20")
 
 
 def _transport_population_blocks(state:Any,payload:dict)->list[NativeBlock]:
-    """Emit a Type-2 population transport, optionally topped off with minerals.
+    """Emit a client-captured population transport, optionally topped off with minerals.
 
-    200 kT population-only is the host-accepted control. sandbox/GAME.x1 adds
-    the client-created Type-2 selected-cargo form for a merged fleet carrying
-    Boranium, Germanium, and Population in one record. Generalized selected
-    quantities remain trace-required.
+    Population-only loads use Type 1 through 127 kT and Type 2 from 128 kT.
+    A merged Privateer capture uses Type 2 for B/G/Population. Generalized
+    mixed manifests remain trace-required.
     """
     fid=int(payload["fleet_id"])
     pid=int(payload["destination_planet_id"])
+    if payload.get("source_planet_id") is None:
+        raise ValueError(
+            "Population transport requires source_planet_id to encode the native manual-load block"
+        )
+    source_pid=int(payload["source_planet_id"])
     warp=int(payload.get("warp",6))
     qty=int(payload.get("population_kt",0) or 0)
     movement={**payload,"mission":"transport"}
@@ -890,22 +967,43 @@ def _transport_population_blocks(state:Any,payload:dict)->list[NativeBlock]:
         "germanium":int((payload.get("mineral_load") or {}).get("germanium",0) or 0),
     }
     mixed_load=sum(mineral_load.values())>0
-    # The strict population-only control retains its client-observed 0x11
-    # route/task. Mixed cargo requires the normal transport all-unload/refuel
-    # policy, so it deliberately uses the separately observed 0x51 family.
-    route_type=0x51 if mixed_load else 0x11
+    # The dedicated 0x11 population endpoint was host-accepted but did not
+    # execute its unload policy in the current native playtest: completed
+    # freighters accumulated at their destinations with population aboard.
+    # Use the client-observed general Transport endpoint for every autonomous
+    # shipment.  It explicitly unloads all four cargo types, including types
+    # absent from the current hold.  Do not append an inferred fuel directive:
+    # the controlling live-client order stops after those four unload fields.
+    route_type=0x51
     # sandbox/GAME.x1: a human merged two Privateers and issued Type37 followed
     # by one Type2 ``12 0E`` B/G/Population load.  The client uses the Type2
     # selection mask to carry the entire mixed manifest; do not synthesize a
     # competing Type1 mineral order after the population load.
-    blocks=[
-        medium_load_block(
+    if mixed_load:
+        load_block=medium_load_block(
             state,
             fid,
             {"population":qty, **mineral_load},
+            source_planet_id=source_pid,
             capacity_override=payload.get("merged_cargo_capacity_kt"),
-        ) if mixed_load else population_load_block(state,fid,qty)
-    ]
+        )
+    elif 1 <= qty <= MAX_SMALL_POPULATION_LOAD_KT:
+        load_block=small_population_load_block(
+            state,
+            fid,
+            qty,
+            source_planet_id=source_pid,
+        )
+    elif qty >= MIN_MEDIUM_POPULATION_LOAD_KT:
+        load_block=population_load_block(
+            state,
+            fid,
+            qty,
+            source_planet_id=source_pid,
+        )
+    else:
+        raise ValueError(f"Population transport requires a positive population_kt; got {qty}")
+    blocks=[load_block]
     blocks.extend([
         _movement_to_planet_block(
             state,{"fleet_id":fid,"destination_planet_id":pid,"warp":warp,"mission":"transport"},
@@ -913,7 +1011,7 @@ def _transport_population_blocks(state:Any,payload:dict)->list[NativeBlock]:
         ),
         _waypoint_change_task_block(
             state,fleet_id=fid,destination_planet_id=pid,warp=warp,task=1,
-            additional=(TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL if mixed_load else TRANSPORT_POPULATION_UNLOAD_ALL),
+            additional=TRANSPORT_UNLOAD_ALL_CARGO,
             object_type=route_type,
         ),
     ])
@@ -930,7 +1028,7 @@ def _transport_manifest_total(payload:dict)->int:
 
 
 def _transport_mineral_blocks(state:Any,payload:dict)->list[NativeBlock]:
-    """Load at source, move, then let the destination Transport task unload/refuel."""
+    """Load at source, move, then unload every cargo type at destination."""
     fid=int(payload["fleet_id"])
     pid=int(payload["destination_planet_id"])
     warp=int(payload.get("warp",6))
@@ -954,7 +1052,7 @@ def _transport_mineral_blocks(state:Any,payload:dict)->list[NativeBlock]:
             destination_planet_id=pid,
             warp=warp,
             task=1,
-            additional=TRANSPORT_UNLOAD_ALL_LOAD_OPTIMAL,
+            additional=TRANSPORT_UNLOAD_ALL_CARGO,
             object_type=route_type,
         ),
     ]
@@ -968,6 +1066,23 @@ def _annotate_untrusted_emissions(emitted:list[dict]) -> None:
     annotation so a later host failure can be attributed to a concrete codec.
     """
     for event in emitted:
+        payload=dict(event.get("payload") or {})
+        if (
+            event.get("kind")=="transport_population"
+            and not any(int(v or 0) for v in (payload.get("mineral_load") or {}).values())
+            and int(payload.get("population_kt",0) or 0) in {80,200}
+            and str((payload.get("native_experiment") or {}).get("trust_level","")) == "VALIDATED"
+        ):
+            event["native_capability"]={
+                "status":"VALIDATED",
+                "reason":(
+                    "Host-validated end-to-end 80 kT Type-1 population delivery: "
+                    "source-planet u16 load plus the general 0x51 Transport "
+                    "four-cargo unload endpoint."
+                ),
+                "trace_required":False,
+            }
+            continue
         native_capability=capability(str(event.get("kind", "")))
         if native_capability.status != "VALIDATED":
             event["native_capability"]={
@@ -987,20 +1102,21 @@ def _population_emitted_payload(
     mixed_load=sum(int(v or 0) for v in (ep.get("mineral_load") or {}).values())>0
     experiment.update({
         "enabled": True,
+        # The Type-1 80-kT load plus the general 0x51 endpoint was replayed
+        # end-to-end: the host accepted it, the fleet arrived empty, and the
+        # destination population increased by 8,000.  Larger Type-2 pairings
+        # retain their per-emission trace until they receive the same check.
         "trust_level": (
             "VALIDATED"
-            if int(ep.get("population_kt",0) or 0)==200 and not mixed_load
+            if int(ep.get("population_kt",0) or 0) == 80 and not mixed_load
             else "EXPERIMENTAL"
         ),
         "block_sequence": [
             {"type_id":int(block.type_id),"length":int(block.size),"data_hex":block.data.hex(" ")}
             for block in population_blocks
         ],
-        "waypoint_route_type": "0x51" if mixed_load else "0x11",
-        "destination_task_policy": (
-            "unload_all_cargo_and_load_optimal_fuel"
-            if mixed_load else "unload_all_population"
-        ),
+        "waypoint_route_type": "0x51",
+        "destination_task_policy": "unload_all_ironium_boranium_germanium_population",
     })
     ep["native_experiment"]=experiment
     return ep
@@ -1009,17 +1125,44 @@ def _population_emitted_payload(
 
 
 def _transport_unload_remainder_blocks(state:Any,payload:dict)->list[NativeBlock]:
+    """Restore the captured all-cargo Transport task at the current orbit.
+
+    This recovery never retargets or adds a destination waypoint.  It is only
+    legal when the owned freighter is presently at the owned destination; the
+    emitted Type-5 edits waypoint zero in place and contains all four
+    unload-all fields, matching the player-authored client capture.
     """
-    Recovery guard: preserve an identical active Transport task and refuse any
-    synthetic replacement. A separately validated native recovery transaction
-    is required before this path may emit bytes again.
-    """
-    diagnostic=_native_waypoint_decision(
-        state,{**payload,"mission":"transport"},operation_kind="transport_unload_remainder"
+    fleet_id=int(payload["fleet_id"])
+    destination_id=int(payload["destination_planet_id"])
+    fleet=_fleet_state(state,fleet_id)
+    target=next((p for p in state.planets if int(p.id)==destination_id),None)
+    if fleet is None or target is None or int(getattr(target,"owner",-1) or -1)!=int(state.player_id):
+        raise UnsafeWaypointMutationError({
+            "operation":"transport_unload_remainder","fleet_id":fleet_id,"result":"BLOCK",
+            "reason":"Unload recovery requires an owned freighter and its owned destination planet.",
+        })
+    native=fleet.native or {}
+    waypoints=list(native.get("waypoints") or [])
+    current=waypoints[0] if waypoints else {}
+    current_object=native.get("position_object_id",current.get("position_object"))
+    at_target=(
+        current_object is not None and int(current_object)==destination_id
+    ) or (
+        abs(float(fleet.position.x)-float(target.position.x))<=0.5
+        and abs(float(fleet.position.y)-float(target.position.y))<=0.5
     )
-    if diagnostic["result"]=="CONTINUE":
-        return []
-    raise UnsafeWaypointMutationError(diagnostic)
+    object_type=int(current.get("position_object_type",0x51) or 0x51)&0xff
+    if not at_target or (object_type&0x0f)!=1:
+        raise UnsafeWaypointMutationError({
+            "operation":"transport_unload_remainder","fleet_id":fleet_id,"result":"BLOCK",
+            "reason":"Unload recovery is limited to a freighter currently orbiting the requested planet.",
+        })
+    return [_waypoint_change_task_at_position_block(
+        state,fleet_id=fleet_id,x=int(target.position.x),y=int(target.position.y),
+        target_id=destination_id,warp=int(current.get("warp",payload.get("warp",0)) or 0),
+        task=1,additional=TRANSPORT_UNLOAD_ALL_CARGO,object_type=object_type,
+        waypoint_index=0,
+    )]
 
 
 RELATION_CODES = {
@@ -1107,6 +1250,145 @@ def _static_template_blocks(template_blocks:list[NativeBlock])->list[NativeBlock
             continue
         keep.append(NativeBlock(b.type_id,b.size,b.data))
     return keep
+
+
+def _fleet_id_from_split_block(block: NativeBlock) -> int:
+    """Return the zero-based source fleet ID encoded by a Type-24 block."""
+    if block.type_id != 24 or len(block.data) != 2:
+        raise ValueError("FleetSplit must be a two-byte Type-24 block")
+    # StarsAPI's FleetSplitBlock uses the low byte plus bit zero of byte two.
+    return int.from_bytes(block.data, "little") & 0x1FF
+
+
+def _copy_client_fleet_split_pairs(
+    client_x_path: Path | None,
+    *,
+    m_header,
+    player_id: int,
+    owned_fleet_ids: set[int],
+) -> tuple[list[NativeBlock], list[int], list[dict]]:
+    """Return safe, verbatim client FleetSplit -> MoveShips transactions.
+
+    Type 24's source fleet field is documented by StarsAPI, but the trailing
+    fields in the observed nine-byte Type 23 payload have not yet been
+    independently decoded. Rather than inventing a split codec, retain only
+    a same-turn, internally consistent transaction created by the Stars!
+    client. The source fleet is returned so the AI cannot also write a
+    conflicting operation for it.
+    """
+    if client_x_path is None or not client_x_path.exists():
+        return [], [], []
+
+    try:
+        client_header, blocks, _ = read_blocks(client_x_path)
+    except Exception as exc:
+        return [], [], [{
+            "status": "REJECTED",
+            "reason": f"Could not decode client X snapshot: {type(exc).__name__}: {exc}",
+            "path": str(client_x_path),
+        }]
+
+    header_mismatch = (
+        int(client_header.game_id) != int(m_header.game_id)
+        or int(client_header.turn) != int(m_header.turn)
+        or int(client_header.player_index) != int(player_id) - 1
+        or int(client_header.file_type) != 1
+        or not bool(client_header.turn_submitted)
+    )
+    if header_mismatch:
+        return [], [], [{
+            "status": "REJECTED",
+            "reason": (
+                "Client X snapshot is not a submitted X file for the current "
+                "game/turn/player; no split transaction was retained."
+            ),
+            "path": str(client_x_path),
+            "client_header": {
+                "game_id": int(client_header.game_id),
+                "turn": int(client_header.turn),
+                "player_index": int(client_header.player_index),
+                "file_type": int(client_header.file_type),
+                "turn_submitted": bool(client_header.turn_submitted),
+            },
+        }]
+
+    hashes = [block for block in blocks if block.type_id == 9]
+    actual_order_len = sum(
+        2 + len(block.data)
+        for block in blocks
+        if block.type_id in ORDER_BLOCK_TYPES and block.type_id != 0
+    )
+    if (
+        len(hashes) != 1
+        or len(hashes[0].data) < 2
+        or int.from_bytes(hashes[0].data[:2], "little") != actual_order_len
+    ):
+        return [], [], [{
+            "status": "REJECTED",
+            "reason": "Client X snapshot FileHash does not match its encoded order length.",
+            "path": str(client_x_path),
+        }]
+
+    copied: list[NativeBlock] = []
+    source_ids: list[int] = []
+    diagnostics: list[dict] = []
+    index = 0
+    while index < len(blocks):
+        block = blocks[index]
+        if block.type_id == 24:
+            move_block = blocks[index + 1] if index + 1 < len(blocks) else None
+            try:
+                source_id = _fleet_id_from_split_block(block)
+            except ValueError as exc:
+                diagnostics.append({
+                    "status": "REJECTED",
+                    "reason": str(exc),
+                    "path": str(client_x_path),
+                })
+                index += 1
+                continue
+            if (
+                move_block is None
+                or move_block.type_id != 23
+                or len(move_block.data) != 9
+                or (int.from_bytes(move_block.data[:2], "little") & 0x1FF) != source_id
+                or source_id not in owned_fleet_ids
+                or source_id in source_ids
+            ):
+                diagnostics.append({
+                    "status": "REJECTED",
+                    "reason": (
+                        "FleetSplit was not followed by the observed nine-byte MoveShips "
+                        "form for one owned, previously unreserved source fleet."
+                    ),
+                    "path": str(client_x_path),
+                    "source_fleet_id": source_id,
+                })
+                index += 1
+                continue
+            copied.extend([
+                NativeBlock(block.type_id, len(block.data), bytes(block.data)),
+                NativeBlock(move_block.type_id, len(move_block.data), bytes(move_block.data)),
+            ])
+            source_ids.append(source_id)
+            diagnostics.append({
+                "status": "PRESERVED",
+                "source_fleet_id": source_id,
+                "type24_hex": block.data.hex(" "),
+                "type23_hex": move_block.data.hex(" "),
+                "path": str(client_x_path),
+                "preservation_only": True,
+            })
+            index += 2
+            continue
+        if block.type_id == 23:
+            diagnostics.append({
+                "status": "REJECTED",
+                "reason": "MoveShips has no immediately preceding valid FleetSplit block.",
+                "path": str(client_x_path),
+            })
+        index += 1
+    return copied, source_ids, diagnostics
 
 def _persona(name:str):
     n=(name or "Balanced").lower()
@@ -1435,6 +1717,15 @@ def _build_decision_report(
     for e in emitted:
         payload=e.get("payload",{})
         kind=e.get("kind")
+        if kind=="fleet_split":
+            source=int(payload.get("source_fleet_id",-1))
+            lines.append(
+                f"{_object_name_for_fleet(state,source)} - PRESERVED CLIENT FLEET SPLIT: "
+                f"Type24=[{payload.get('type24_hex','?')}], "
+                f"Type23=[{payload.get('type23_hex','?')}]. "
+                "The client-authored transaction was retained verbatim; AI split synthesis remains disabled."
+            )
+            continue
         if kind=="merge_fleets":
             retained=int(payload.get("target_fleet_id",payload.get("fleet_id",-1)))
             merged=[int(value) for value in (payload.get("source_fleet_ids") or [])]
@@ -1572,6 +1863,7 @@ def write_ai_turn(
     xy_path:Path,
     template_x_path:Path,
     output_x_path:Path,
+    client_x_path:Path|None=None,
     persona_name:str="Balanced",
     trace_path:Path|None=None,
     friend_player_ids:list[int]|None=None,
@@ -1638,7 +1930,7 @@ def write_ai_turn(
     type27_exact_client_transaction=False
 
     # Read current M header and known-good X template.
-    _, mblocks, _ = read_blocks(m_path)
+    m_header, mblocks, _ = read_blocks(m_path)
     m_header_block=next(b for b in mblocks if b.type_id==8)
     _, xblocks, _ = read_blocks(template_x_path)
     x_header_block=next(b for b in xblocks if b.type_id==8)
@@ -1657,6 +1949,32 @@ def write_ai_turn(
     generated=[]
     design_tail=[]
     touched_fleets=set()
+    client_split_blocks, client_split_sources, client_split_diagnostics = (
+        _copy_client_fleet_split_pairs(
+            client_x_path,
+            m_header=m_header,
+            player_id=player_id,
+            owned_fleet_ids={
+                int(fleet.id) for fleet in state.fleets
+                if int(fleet.owner) == int(player_id)
+            },
+        )
+    )
+    generated.extend(client_split_blocks)
+    touched_fleets.update(client_split_sources)
+    for diagnostic in client_split_diagnostics:
+        if diagnostic.get("status") != "PRESERVED":
+            continue
+        payload={key:value for key,value in diagnostic.items() if key != "status"}
+        payload["native_capability_status"]=capability("fleet_split").status
+        emitted.append({
+            "kind":"fleet_split",
+            "payload":payload,
+            "reason":(
+                "Preserved a current-turn Stars! client FleetSplit -> MoveShips transaction "
+                "without synthesizing undecoded Type-23 fields."
+            ),
+        })
     # A retained Type37 fleet is the sole deliberate exception to the normal
     # one-operation guard: the client capture proves merge -> Type2 load ->
     # waypoint is one legal transaction for that retained fleet.
@@ -1669,14 +1987,44 @@ def write_ai_turn(
     for o in orders.orders:
         cap=capability(o.kind)
         try:
-            if o.kind=="merge_fleets":
+            if o.kind=="cancel_scout_route":
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                details=_native_waypoint_details(state,fid)
+                if not details["has_waypoint_slot"]:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":"No pending native waypoint exists to cancel.",
+                        "payload":o.payload,
+                    })
+                    continue
+                waypoint_count=max(1,min(32,int(o.payload.get("waypoint_count",1) or 1)))
+                # Delete from the end so every pending route leg is removed;
+                # a Type-3 removal renumbers later waypoint indices.
+                cancellation_blocks=[
+                    _waypoint_delete_block(state,fleet_id=fid,waypoint_index=index)
+                    for index in range(waypoint_count,0,-1)
+                ]
+                generated.extend(cancellation_blocks)
+                touched_fleets.add(fid)
+                ep=dict(o.payload)
+                ep["native_waypoint_cancellation_hex"]=[block.data.hex(" ") for block in cancellation_blocks]
+                ep["native_waypoint_action"]="CANCEL ROUTE"
+                ep["native_reference"]=(
+                    "Captured Type-3 pending-waypoint removal; local scout retarget is deliberately "
+                    "deferred until the next M-file read-back rather than synthesizing an unvalidated replacement."
+                )
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="merge_fleets":
                 target_fleet=int(o.payload.get("target_fleet_id",o.payload.get("fleet_id",-1)))
                 source_fleets=[int(value) for value in (o.payload.get("source_fleet_ids") or [])]
                 involved={target_fleet,*source_fleets}
                 if any(fleet_id in touched_fleets for fleet_id in involved):
                     skipped.append({"kind":o.kind,"reason":"A fleet selected for Type37 merge already has a higher-priority native operation.","payload":o.payload})
                     continue
-                merge_block=_fleet_merge_block(o.payload)
+                merge_block=_fleet_merge_block(state,o.payload)
                 generated.append(merge_block)
                 touched_fleets.update(involved)
                 if bool(o.payload.get("one_turn_transport",False)):
@@ -1714,24 +2062,22 @@ def write_ai_turn(
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
-                diagnostic=_native_waypoint_decision(
-                    state,{**o.payload,"mission":"transport"},operation_kind=o.kind
-                )
-                if diagnostic["result"]=="ADD":
-                    diagnostic.update(
-                        result="BLOCKED MISSION CHANGE",
-                        reason=(
-                            "Transport-remainder recovery requires an existing validated destination task; "
-                            "no waypoint #1 exists, so no native bytes were emitted."
-                        ),
-                    )
-                waypoint_diagnostics.append(diagnostic)
+                recovery_blocks=_transport_unload_remainder_blocks(state,o.payload)
+                generated.extend(recovery_blocks)
                 touched_fleets.add(fid)
-                skipped.append({
-                    "kind":o.kind,
-                    "reason":diagnostic["reason"],
-                    "payload":{**o.payload,"native_waypoint_action":diagnostic["result"]},
+                ep=dict(o.payload)
+                ep.update({
+                    "native_waypoint_action":"CURRENT_UNLOAD_ALL",
+                    "native_experiment":{
+                        "enabled":True,"trust_level":"EXPERIMENTAL",
+                        "block_sequence":[
+                            {"type_id":int(block.type_id),"length":int(block.size),"data_hex":block.data.hex(" ")}
+                            for block in recovery_blocks
+                        ],
+                        "destination_task_policy":"unload_all_ironium_boranium_germanium_population",
+                    },
                 })
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="transport_population":
                 fid=int(o.payload["fleet_id"])
                 if _transport_manifest_total(o.payload)<=0:
@@ -1873,19 +2219,27 @@ def write_ai_turn(
                 ep["native_waypoint_action"]=(
                     "CONTINUE_LAYING_MINES" if minefield_block is None else "CHANGE_CURRENT_TASK_TO_LAY_MINES"
                 )
-                ep["native_waypoint_task"]=4
+                ep["native_waypoint_task"]=LAY_MINEFIELD_TASK
                 ep["native_reference"]=(
-                    "Type5 stationary waypoint task 4 inferred from Stars! task map; "
-                    "Remote Mining task-3 capture validates only the common block shape"
+                    "latestdemo turn-100 Player-2 client capture: Type5 waypoint task 6, "
+                    "subtask 5; captured for both deep-space current and planet-destination forms"
                 )
                 ep["native_experiment"]={
                     "enabled":True,
-                    "id":"territorial-minefield-task4",
-                    "trust_level":"EXPERIMENTAL",
+                    "id":"territorial-minefield-task6-subtask5",
+                    "trust_level":"CLIENT_CAPTURED_PENDING_HOST_REPLAY",
                     "minefield_type":str(o.payload.get("minefield_type","standard")),
-                    "preconditions":"owned anchor + minelayer + single stationary current planet waypoint task 0",
+                    "form":str(o.payload.get("minefield_mode","planet_destination")),
+                    "preconditions":"minelayer; exact Type5 task-6/subtask-5 client form; host replay remains traced",
                 }
                 if minefield_block is not None:
+                    if str(o.payload.get("minefield_mode", "")).casefold() == "deep_space_current":
+                        native_fleet = _fleet_state(state, fid)
+                        waypoint_count = int(((native_fleet.native or {}).get("waypoint_count", 0) if native_fleet else 0) or 0)
+                        if waypoint_count == 2:
+                            deletion = _waypoint_delete_block(state, fleet_id=fid, waypoint_index=1)
+                            generated.append(deletion)
+                            ep["native_waypoint_delete_hex"] = deletion.data.hex(" ")
                     generated.append(minefield_block)
                     ep["native_block_hex"]=minefield_block.data.hex(" ")
                     ep["native_experiment"]["block_sequence"]=[{
@@ -2210,6 +2564,8 @@ def write_ai_turn(
                 ),
                 "type27_kind":type27_kind,
                 "type27_slot":type27_slot,
+                "client_fleet_split_snapshot":str(client_x_path) if client_x_path else None,
+                "client_fleet_split_diagnostics":client_split_diagnostics,
             },
             "persistent_intel":state.native.get("persistent_intel",{}),
             "strategic_watchdog":state.native.get("strategic_watchdog",{}),

@@ -48,3 +48,17 @@ def test_existing_remote_mining_task_is_idempotent():
     assert _remote_mining_task_block(state,{
         "fleet_id":8,"destination_planet_id":98,"mission":"remote_mine",
     }) is None
+
+
+def test_arrival_warp_is_replaced_when_starting_remote_mining():
+    """An arrived miner may retain its last travel warp in waypoint zero."""
+    state=_state()
+    state.fleets[0].native["waypoints"][0]["warp"]=5
+
+    block=_remote_mining_task_block(state,{
+        "fleet_id":8,"destination_planet_id":98,"mission":"remote_mine",
+    })
+
+    assert block is not None
+    assert block.type_id == 5
+    assert block.data[10] == 3  # Warp 0 / task 3

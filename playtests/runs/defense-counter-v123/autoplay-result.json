@@ -1,0 +1,15 @@
+[
+  {
+    "turn": 1,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-defense-counter-v123\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-defense-counter-v123\\GAME.x2"
+    ],
+    "host_returncode": null,
+    "year_before": 2498,
+    "year_after": null,
+    "checkpoint_written": false,
+    "success": false,
+    "message": "RuntimeError: Stars! host timed out after 180s; host launch exceeded its deadline without observable output or a detectable Stars! process. See C:\\Dev\\repos\\stars-ai\\playtests\\runs\\defense-counter-v123\\logs\\turn-001-HOST-TIMEOUT.json"
+  }
+]

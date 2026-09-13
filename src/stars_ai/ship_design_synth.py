@@ -10,30 +10,56 @@ Initial native scope is intentionally narrow:
 """
 from __future__ import annotations
 
+import csv
 from dataclasses import asdict, dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
-from .design_legality import ComponentCategory, ComponentRef, HULL_RULES, validate_design
+from .design_legality import (
+    COLONY_SHIP_HULL_ID,
+    PRT_ALTERNATE_REALITY,
+    ComponentCategory,
+    ComponentRef,
+    HULL_RULES,
+    validate_design,
+)
 from .expansion_network import evaluate_expansion_network
+from .colony_planner import colony_planet_is_eligible
+from .combat_doctrine import (
+    BATTLE_COMPUTERS,
+    ENERGY_CAPACITORS,
+    calculate_offensive_rating,
+    is_line_weapon,
+    weapon_stats,
+)
 from .fuel_planner import ENGINE_DATA, best_range_ly, design_fuel_profile
 from .starsapi_items import (
     stock_hulls as canonical_stock_hulls, hull_unlocked as canonical_hull_unlocked,
-    proven_available_components, ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO,
+    component_spec, proven_available_components, ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO,
     BOMB, MINING_ROBOT, MINE_LAYER, ORBITAL, ELECTRICAL, MECHANICAL,
 )
 from .logistics_capacity import evaluate_logistics_capacity, POPULATION_PULSE_KT
 from .native.design_change import EncodedShipDesign, starbase_design_slot_safety
 from .standard_mod import TechLevels
+from .starbase_capabilities import starbase_capabilities
 
 UNIVERSAL_FREIGHTER_HULLS = (0, 1, 2)  # Small, Medium, Large. Super Freighter is IS-specific.
 MEDIUM_FREIGHTER_HULL_ID = 1
 LARGE_FREIGHTER_HULL_ID = 2
 SCOUT_HULL_ID = 4
 PRIVATEER_HULL_ID = 11
+FRIGATE_HULL_ID = 5
 FUEL_MIZER_ITEM_ID = 2
 FUEL_TANK_ITEM_ID = 5
 FUEL_TANK_COUNT = 3
+# A colony design is an expensive strategic architecture, not a disposable
+# component carrier.  Two complementary cargo hulls (normally a compact and a
+# long-range/bulk variant) cover the useful cases without consuming the ship
+# design list with cosmetic variants.
+MAX_COLONY_DESIGN_TYPES = 2
+MAX_MINELAYER_DESIGN_TYPES = 2
+MIN_NON_ENGINE_SLOT_UTILIZATION = 0.75
 
 
 @dataclass(frozen=True)
@@ -101,6 +127,83 @@ def stock_native_starbases() -> dict[int, HullNativeSpec]:
     }
 
 
+@lru_cache(maxsize=1)
+def _stock_starbase_hull_costs() -> dict[int, dict[str, int]]:
+    """Read bare-hull costs for value-for-purpose starbase selection."""
+    costs: dict[int, dict[str, int]] = {}
+    path=Path(__file__).with_name("data_hulls.mod")
+    for row in csv.reader(path.read_text(encoding="latin-1").splitlines()):
+        if not row or int(row[0]) != 16:
+            continue
+        numbers=[int(value) if value else 0 for value in row[3:]]
+        if len(numbers) < 12:
+            continue
+        costs[int(numbers[0])] = {
+            "resources":int(numbers[8]),
+            "ironium":int(numbers[9]),
+            "boranium":int(numbers[10]),
+            "germanium":int(numbers[11]),
+        }
+    return costs
+
+
+def ranked_legal_starbase_hulls(
+    state,
+    *,
+    purpose:str="support",
+    desired_hull_id:int|None=None,
+) -> list[HullNativeSpec]:
+    """Return every researched, trait-legal stock base ranked for a mission.
+
+    This is deliberately a full stock-hull search, not a Space Dock/Station
+    allow-list.  A support hub favours the least expensive operational hull;
+    a defensive request favours orbital capacity and protection.  The native
+    compiler still validates every resulting fitting and design slot.
+    """
+    purpose=str(purpose).casefold()
+    if desired_hull_id is not None:
+        pool=[stock_native_starbases().get(int(desired_hull_id))]
+    else:
+        pool=list(stock_native_starbases().values())
+    candidates=[]
+    costs=_stock_starbase_hull_costs()
+    for hull in pool:
+        if hull is None or not _hull_unlocked(state,hull):
+            continue
+        capabilities=starbase_capabilities(hull.hull_id)
+        if purpose in {"support","shipyard","refuel"} and not (
+            capabilities["can_build_ships"] and capabilities["can_refuel"]
+        ):
+            continue
+        cost=costs.get(hull.hull_id,{})
+        total_cost=sum(max(0,int(cost.get(key,0))) for key in (
+            "resources","ironium","boranium","germanium",
+        ))
+        if purpose in {"support","shipyard","refuel"}:
+            # Small, cheap operational bases establish the expansion network
+            # sooner.  Capability is a hard eligibility rule, not a proxy for
+            # price, so this naturally picks a Space Dock for ISB but remains
+            # open to any future legal stock base.
+            rank=(total_cost,int(cost.get("resources",0)),hull.slot_count,hull.hull_id)
+        else:
+            rank=(-int(hull.armor),-int(hull.slot_count),total_cost,hull.hull_id)
+        candidates.append((rank,hull))
+    return [hull for _rank,hull in sorted(candidates,key=lambda row:row[0])]
+
+
+def best_legal_starbase_hull(
+    state,
+    *,
+    purpose:str="support",
+    desired_hull_id:int|None=None,
+) -> HullNativeSpec|None:
+    """Return the best current legal stock starbase for the requested need."""
+    ranked=ranked_legal_starbase_hulls(
+        state,purpose=purpose,desired_hull_id=desired_hull_id,
+    )
+    return ranked[0] if ranked else None
+
+
 def _tech(state) -> TechLevels:
     return TechLevels(
         energy=int(state.tech.energy or 0),
@@ -119,6 +222,15 @@ def _hull_unlocked(state, hull: HullNativeSpec) -> bool:
 
 def _lrts(state) -> set[str]:
     return {str(x).upper() for x in ((state.race.native or {}).get("lrts", []) or [])}
+
+
+def _prt_id(state) -> int | None:
+    value = ((getattr(state.race, "native", {}) or {}).get("prt_id"))
+    if value is not None:
+        return int(value)
+    if "alternate reality" in str(getattr(state.race, "primary_trait", "") or "").casefold():
+        return PRT_ALTERNATE_REALITY
+    return None
 
 
 def _staging_shipclass_name(state, hull_name: str) -> str:
@@ -249,7 +361,11 @@ def _validate_candidate(state, hull: HullNativeSpec, slots: tuple[ComponentRef, 
     # availability comes from the current research levels plus PRT/LRT gates.
     available=set(proven_available_components(state))
     result=validate_design(
-        hull.hull_id,list(slots),hull_rules=HULL_RULES,available_components=available
+        hull.hull_id,
+        list(slots),
+        hull_rules=HULL_RULES,
+        available_components=available,
+        prt_id=_prt_id(state),
     )
     return bool(result.ok)
 
@@ -303,7 +419,12 @@ def synthesize_onion_privateer(state) -> NativeShipDesignPlan | None:
     """Preferred opening 20k-population / hub-bootstrap round-trip carrier."""
     logistics=evaluate_logistics_capacity(state)
     network=evaluate_expansion_network(state)
-    if logistics.population_lane_count<=0 and not network.layer1_pending_ids:
+    range_recovery_needed=bool((state.native or {}).get("colony_range_blocks"))
+    if (
+        logistics.population_lane_count<=0
+        and not network.layer1_pending_ids
+        and not range_recovery_needed
+    ):
         return None
     hull=stock_native_hulls().get(PRIVATEER_HULL_ID)
     if hull is None or not _hull_unlocked(state,hull) or _has_onion_privateer(state):
@@ -331,80 +452,99 @@ def synthesize_onion_privateer(state) -> NativeShipDesignPlan | None:
             f"20,000-colonist / {POPULATION_PULSE_KT}-kT pulse with 50 kT spare; fuel rises from "
             f"{hull.fuel} to about {hull.fuel+3*250} mg. This compact long-range carrier supports "
             "repeated loaded-out/empty-return micro without forcing early Large-Freighter research. "
-            f"Slot {slot} is {'dead/recyclable' if replace else 'free'}; production waits for next-M read-back."
+            + (
+                "Known colony assets are range-blocked, so this same long-range tank architecture is also retained as a co-located merge-and-return recovery tender. "
+                if range_recovery_needed else ""
+            )
+            + f"Slot {slot} is {'dead/recyclable' if replace else 'free'}; production waits for next-M read-back."
         ),
     )
 
 
 def synthesize_medium_population_transport(state) -> NativeShipDesignPlan | None:
-    """C3 fallback when no 200-kT compact population carrier exists yet."""
+    """Create the best current compact carrier for a 200-kT population lane."""
     logistics=evaluate_logistics_capacity(state)
     if logistics.desired_population_freighters<=0 or _compact_population_carrier_exists(state):
-        return None
-    hull=stock_native_hulls().get(MEDIUM_FREIGHTER_HULL_ID)
-    if hull is None or not _hull_unlocked(state,hull):
         return None
     engine_id=_engine_choice(state,"freighter")
     if engine_id is None:
         return None
-    target_slot=safe_recyclable_ship_slot(state,preferred_role="freighter")
-    if target_slot is None:
-        return None
-    slot,replace=target_slot
-    slots=_empty_slot_array(hull,engine_id)
-    if not _validate_candidate(state,hull,slots):
-        return None
-    design=EncodedShipDesign(
-        slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
-        turn_designed=max(0,int(state.year)-2400),slots=slots,
-        name="Population Shuttle",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
+    compact_hulls=sorted(
+        (
+            hull for hull in ranked_legal_ship_hulls(
+                state,"freighter",minimum_cargo_kt=POPULATION_PULSE_KT,
+            )
+            if hull.cargo < 1000
+        ),
+        key=lambda hull:(
+            abs(int(hull.cargo)-POPULATION_PULSE_KT),
+            -int(hull.fuel),int(hull.engine_count),int(hull.hull_id),
+        ),
     )
-    return NativeShipDesignPlan(
-        design,"freighter",133,
-        f"No verified compact 200-kT population carrier exists. Create a Medium Freighter shuttle for phased 20k-colonist onion pulses; slot {slot} is {'dead/recyclable' if replace else 'free'}. Production waits for read-back.",
-    )
+    for hull in compact_hulls:
+        # The generic freight ranking favours the greatest useful hold.  For
+        # this opening-specific fallback, a compact hull near the current
+        # 200-kT need is more economical than a premature bulk transport.
+        target_slot=safe_recyclable_ship_slot(state,preferred_role="freighter")
+        if target_slot is None:
+            return None
+        slot,replace=target_slot
+        slots=_empty_slot_array(hull,engine_id)
+        if not _validate_candidate(state,hull,slots):
+            continue
+        design=EncodedShipDesign(
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            turn_designed=max(0,int(state.year)-2400),slots=slots,
+            name="Population Shuttle",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
+        )
+        return NativeShipDesignPlan(
+            design,"freighter",133,
+            f"No verified compact {POPULATION_PULSE_KT}-kT population carrier exists. "
+            f"Create {hull.name} for phased 20k-colonist onion pulses; slot {slot} "
+            f"is {'dead/recyclable' if replace else 'free'}. Production waits for read-back.",
+        )
+    return None
 
 
 def synthesize_freighter_upgrade(state) -> NativeShipDesignPlan | None:
-    """Large Freighter only when bulk industrial mineral logistics justify it."""
+    """Create the best current bulk carrier when industrial work justifies it."""
     logistics=evaluate_logistics_capacity(state)
     if not logistics.large_freighter_valuable:
-        return None
-    hull=stock_native_hulls().get(LARGE_FREIGHTER_HULL_ID)
-    if hull is None or not _hull_unlocked(state,hull):
         return None
     current=_best_profile(state,"freighter")
     current_cargo=max(
         (int(d.get("cargo_capacity",0) or 0) for d in ((state.native or {}).get("design_profiles",[]) or []) if d.get("role")=="freighter"),
         default=0,
     )
-    if current_cargo>=hull.cargo:
-        return None
     engine_id=_engine_choice(state,"freighter")
     if engine_id is None:
         return None
-    target_slot=safe_recyclable_ship_slot(state,preferred_role="freighter")
-    if target_slot is None:
-        return None
-    slot,replace=target_slot
-    slots=_empty_slot_array(hull,engine_id)
-    if not _validate_candidate(state,hull,slots):
-        return None
-    design=EncodedShipDesign(
-        slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
-        turn_designed=max(0,int(state.year)-2400),slots=slots,
-        name="Bulk Freighter AI",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
-    )
-    return NativeShipDesignPlan(
-        design,"freighter",140,
-        (
-            f"Create Large Freighter for BULK industrial logistics, not routine population movement: "
-            f"transferable mineral pressure={logistics.bulk_transferable_kt} kT, active shipyard builds="
-            f"{logistics.active_shipyard_build_count}. Hull requires {hull.engine_count} identical engine(s); "
-            f"base cargo={hull.cargo} kT. Slot {slot} is {'dead/recyclable' if replace else 'free'}. "
-            "Production waits for next-M read-back."
-        ),
-    )
+    for hull in ranked_legal_ship_hulls(state,"freighter"):
+        if hull.cargo <= current_cargo:
+            continue
+        target_slot=safe_recyclable_ship_slot(state,preferred_role="freighter")
+        if target_slot is None:
+            return None
+        slot,replace=target_slot
+        slots=_empty_slot_array(hull,engine_id)
+        if not _validate_candidate(state,hull,slots):
+            continue
+        design=EncodedShipDesign(
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            turn_designed=max(0,int(state.year)-2400),slots=slots,
+            name="Bulk Freighter AI",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
+        )
+        return NativeShipDesignPlan(
+            design,"freighter",140,
+            (
+                f"Create {hull.name} for BULK industrial logistics, not routine population movement: "
+                f"transferable mineral pressure={logistics.bulk_transferable_kt} kT, active shipyard builds="
+                f"{logistics.active_shipyard_build_count}. Hull requires {hull.engine_count} identical engine(s); "
+                f"base cargo={hull.cargo} kT. Slot {slot} is {'dead/recyclable' if replace else 'free'}. "
+                "Production waits for next-M read-back."
+            ),
+        )
+    return None
 
 
 def synthesize_scout_upgrade(state) -> NativeShipDesignPlan | None:
@@ -490,28 +630,636 @@ def synthesize_scout_upgrade(state) -> NativeShipDesignPlan | None:
 
 
 ROLE_CATEGORY_WEIGHTS={
+    "scout":{SCANNER:12.0,ELECTRICAL:3.0,SHIELD:2.0,ARMOR:1.0},
     "combat":{BEAM:9.0,TORPEDO:9.0,SHIELD:6.0,ARMOR:5.0,ELECTRICAL:4.0,MECHANICAL:1.0,SCANNER:.5},
     "bomber":{BOMB:12.0,SHIELD:4.0,ARMOR:3.0,ELECTRICAL:2.0,MECHANICAL:1.0},
+    # Remote mining stays a dedicated planetary-mining architecture.  It may
+    # carry protection and range support, but never consumes combat fittings.
     "miner":{MINING_ROBOT:12.0,SHIELD:3.0,ARMOR:2.0,ELECTRICAL:2.0,MECHANICAL:1.0},
-    "minelayer":{MINE_LAYER:12.0,SHIELD:3.0,ARMOR:2.0,ELECTRICAL:2.0,MECHANICAL:1.0},
+    # A mine layer may fill weapon slots for self-defence, but mine capacity
+    # dominates its hull choice.  This avoids an under-filled cruiser when a
+    # Frigate can carry more dispensers for far fewer resources.
+    "minelayer":{MINE_LAYER:18.0,SHIELD:4.0,ARMOR:3.0,ELECTRICAL:2.0,SCANNER:2.0,MECHANICAL:1.0,BEAM:2.0,TORPEDO:1.0},
 }
 
-ROLE_HULL_PREFERENCE={
-    "combat":(10,9,8,7,6,5),
-    "bomber":(19,18,17,16),
-    "miner":(24,23,22,21,20),
-    # Space Demolition receives the dedicated hulls first. Every other race
-    # can fit standard Mine Dispensers into a compatible general-purpose hull;
-    # the Frigate is the economical first option and later hulls scale field
-    # capacity as construction improves.
-    "minelayer":(28,27,5,6,7,8,10,11,13,12,29),
+ROLE_DEFINING_CATEGORIES={
+    "scout":(SCANNER,),
+    "combat":(BEAM,TORPEDO),
+    "bomber":(BOMB,),
+    "miner":(MINING_ROBOT,),
+    "minelayer":(MINE_LAYER,),
+    "colony":(MECHANICAL,),
 }
 
 
-def _component_pool_for_role(state,role:str):
+def _hull_slot_value(hull:HullNativeSpec, role:str) -> float:
+    """Mission usefulness from legal slot geometry, before fitting parts."""
+    canonical=canonical_stock_hulls()[hull.hull_id]
+    weights=ROLE_CATEGORY_WEIGHTS.get(role,{})
+    fitting_value=sum(
+        int(slot.capacity)*max(
+            (float(weight) for category,weight in weights.items() if slot.allows(category)),
+            default=0.0,
+        )
+        for slot in canonical.slots[1:]
+    )
+    if role=="freighter":
+        return 8.0*float(hull.cargo)+0.75*float(hull.fuel)-0.20*float(hull.armor)
+    if role=="colony":
+        # Colonization is a single-use capability.  Once a world is founded,
+        # transporting the next settlement wave is a separate recurring
+        # logistics job, so cargo capacity must not make a Large Freighter
+        # with a module beat the inexpensive dedicated Colony Ship.
+        if int(hull.hull_id) == COLONY_SHIP_HULL_ID:
+            return 10_000.0
+        colony_slots=sum(
+            int(slot.capacity) for slot in canonical.slots[1:]
+            if slot.allows(MECHANICAL)
+        )
+        return 12.0*colony_slots+0.10*float(hull.cargo)+0.50*float(hull.fuel)-0.10*float(hull.armor)
+    if role=="minelayer":
+        # Mine capacity is the actual role output.  It must dominate broad
+        # empty weapon slots and cargo, otherwise a Cruiser with two mine
+        # dispensers displaced a Frigate that fits three dispensers and every
+        # support slot.  Cargo is still a strong negative: transport and mine
+        # layer are distinct architectures.
+        mine_capacity=sum(
+            int(slot.capacity) for slot in canonical.slots[1:]
+            if slot.allows(MINE_LAYER)
+        )
+        return (
+            100.0*mine_capacity
+            +fitting_value+0.20*float(hull.armor)+0.04*float(hull.fuel)
+            -0.20*float(hull.cargo)
+        )
+    return fitting_value+0.20*float(hull.armor)+0.04*float(hull.fuel)
+
+
+def ranked_legal_ship_hulls(
+    state,
+    role:str,
+    *,
+    desired_hull_id:int|None=None,
+    minimum_cargo_kt:int=0,
+) -> list[HullNativeSpec]:
+    """Rank all researched race-legal stock ship hulls that fit a role.
+
+    We do not maintain a small curated hull allow-list here.  A hull becomes a
+    candidate when it is legal for the race, has its required engine geometry,
+    has enough cargo for a freight request when applicable, and can hold the
+    role's defining component.  Final component/slot validation still happens
+    during synthesis.
+    """
+    role=str(role).casefold()
+    # AR's Colonization Module has a hard hull restriction.  General cargo
+    # ships may still carry colonists, but cannot become colony ships merely
+    # because they expose a Mechanical slot.
+    if (
+        role == "colony"
+        and _prt_id(state) == PRT_ALTERNATE_REALITY
+        and desired_hull_id is not None
+        and int(desired_hull_id) != COLONY_SHIP_HULL_ID
+    ):
+        return []
+    # Dedicated minefield doctrine starts with the Frigate: its three
+    # dispenser positions make it the first genuinely cost-effective general
+    # mine layer.  Before that, preserve scarce early design slots and
+    # resources for scouts, colonizers, and transport rather than fielding an
+    # underpowered Destroyer workaround.
+    if role == "minelayer":
+        frigate=stock_native_hulls().get(FRIGATE_HULL_ID)
+        if frigate is None or not _hull_unlocked(state,frigate):
+            return []
+    if desired_hull_id is not None:
+        pool=[stock_native_hulls().get(int(desired_hull_id))]
+    else:
+        pool=list(stock_native_hulls().values())
+    defining=ROLE_DEFINING_CATEGORIES.get(role,())
+    candidates=[]
+    for hull in pool:
+        if hull is None or not _hull_unlocked(state,hull):
+            continue
+        if (
+            role == "colony"
+            and _prt_id(state) == PRT_ALTERNATE_REALITY
+            and int(hull.hull_id) != COLONY_SHIP_HULL_ID
+        ):
+            continue
+        if int(hull.cargo)<int(minimum_cargo_kt):
+            continue
+        canonical=canonical_stock_hulls()[hull.hull_id]
+        if not canonical.slots or not canonical.slots[0].allows(ENGINE):
+            continue
+        if defining and not any(
+            slot.allows(category)
+            for slot in canonical.slots[1:]
+            for category in defining
+        ):
+            continue
+        # Higher mission utility wins.  With equal utility prefer fewer
+        # engines/mass, then deterministic hull ID ordering.
+        rank=(
+            -_hull_slot_value(hull,role),
+            int(hull.engine_count),
+            int(hull.armor),
+            int(hull.hull_id),
+        )
+        candidates.append((rank,hull))
+    # A dedicated mine layer is not a cargo/mine hybrid.  When a legal
+    # zero-cargo combat hull exists, prefer that family even if a Privateer
+    # happens to fit one more dispenser: the latter remains available for its
+    # distinct transport role.  This yields the inexpensive Destroyer before
+    # Frigate research and the three-dispenser Frigate thereafter.
+    if role == "minelayer" and any(int(hull.cargo) == 0 for _rank,hull in candidates):
+        candidates=[(rank,hull) for rank,hull in candidates if int(hull.cargo) == 0]
+    return [hull for _rank,hull in sorted(candidates,key=lambda row:row[0])]
+
+
+def best_legal_ship_hull(
+    state,
+    role:str,
+    *,
+    desired_hull_id:int|None=None,
+    minimum_cargo_kt:int=0,
+) -> HullNativeSpec|None:
+    """Return the top legal stock hull for a concrete ship mission."""
+    ranked=ranked_legal_ship_hulls(
+        state,role,desired_hull_id=desired_hull_id,
+        minimum_cargo_kt=minimum_cargo_kt,
+    )
+    return ranked[0] if ranked else None
+
+
+def _component_pool_for_role(
+    state,
+    role:str,
+    *,
+    combat_weapon_category:int|None=None,
+):
+    """Return researched fittings compatible with the requested architecture.
+
+    A standard combat line chooses one weapon family before individual slots
+    are populated.  That prevents an accidental beam/torpedo hybrid merely
+    because two slot masks happen to differ.  Sappers and mine munitions stay
+    out of the ordinary anti-ship line; a future dedicated sapper role can
+    deliberately request them instead.
+    """
     proven=proven_available_components(state)
     weights=ROLE_CATEGORY_WEIGHTS.get(role,{})
-    return [spec for spec in proven.values() if spec.category in weights]
+    return [
+        spec for spec in proven.values()
+        if spec.category in weights
+        and not (
+            role == "combat"
+            and spec.category in (BEAM,TORPEDO)
+            and (
+                not is_line_weapon(spec.category,spec.item_id)
+                or (
+                    combat_weapon_category is not None
+                    and spec.category != int(combat_weapon_category)
+                )
+            )
+        )
+    ]
+
+
+def _combat_weapon_slot_rating(canonical_hull, engine_id: int, component, count: int) -> float:
+    """Rate one prospective combat weapon in the actual ship-board context.
+
+    Category weight decides whether a slot is used for offense, defense, or a
+    mission component. Once two weapons are equally appropriate for a combat
+    slot, native item IDs are not a meaningful measure of battle value. Build
+    the smallest representative fitting instead: the selected hull, its
+    required engines, and this weapon at the slot's real capacity. This makes
+    weapon damage, range, firing initiative, torpedo accuracy, and the weapon
+    mass contribution to board movement visible to the selection.
+    """
+    if int(component.category) not in (BEAM, TORPEDO):
+        return 0.0
+    engine = component_spec(ENGINE, int(engine_id))
+    copies = max(1, int(count))
+    mass = (
+        int(canonical_hull.mass)
+        + int(engine.mass) * int(canonical_hull.engine_count)
+        + int(component.mass) * copies
+    )
+    return calculate_offensive_rating({
+        "hull_id": int(canonical_hull.hull_id),
+        "mass": mass,
+        "slots": [
+            {"category": ENGINE, "item_id": int(engine_id), "count": int(canonical_hull.engine_count)},
+            {"category": int(component.category), "item_id": int(component.item_id), "count": copies},
+        ],
+    }).rating
+
+
+def _role_component_choice_key(
+    role: str,
+    canonical_hull,
+    engine_id: int,
+    slot,
+    component,
+    *,
+    combat_weapon_category:int|None=None,
+    enemy_torpedo_pressure:float=0.0,
+) -> tuple[float, float, int, int]:
+    """Return a deterministic, mission-aware ordering for one legal fitting."""
+    role = str(role).casefold()
+    category_weight=float(ROLE_CATEGORY_WEIGHTS.get(role, {}).get(component.category, 0.0))
+    if role == "combat" and int(component.category) == ELECTRICAL:
+        if str(getattr(component,"name","")).startswith("Jammer ") and enemy_torpedo_pressure > 0:
+            # The exact enemy combat report is evidence, unlike generic
+            # caution. Retain one jammer before optional beam acceleration.
+            category_weight=9.0
+        elif int(combat_weapon_category or 0) == BEAM:
+            # One capacitor is a meaningful beam-line force multiplier; a
+            # computer remains useful for initiative after that first cap.
+            if int(component.item_id) in ENERGY_CAPACITORS:
+                category_weight=8.0
+            elif int(component.item_id) in BATTLE_COMPUTERS:
+                category_weight=7.0
+        elif int(combat_weapon_category or 0) == TORPEDO:
+            category_weight=8.0 if int(component.item_id) in BATTLE_COMPUTERS else 3.0
+    return (
+        category_weight,
+        _combat_weapon_slot_rating(canonical_hull, engine_id, component, slot.capacity)
+        if role == "combat" else 0.0,
+        int(component.item_id),
+        -int(component.mass),
+    )
+
+
+_MOBILITY_COMPONENT_IDS = frozenset({7, 8})  # Maneuvering Jet, Overthruster
+
+
+def _combat_design_offensive_rating(canonical_hull, slots: list[ComponentRef]) -> float:
+    """Evaluate the fitted design, including support-component synergies."""
+    mass = int(canonical_hull.mass)
+    for fitted in slots:
+        if int(fitted.count) <= 0:
+            continue
+        mass += int(component_spec(fitted.category, fitted.item_id).mass) * int(fitted.count)
+    return calculate_offensive_rating({
+        "hull_id": int(canonical_hull.hull_id),
+        "mass": mass,
+        "slots": [asdict(fitted) for fitted in slots],
+    }).rating
+
+
+def _weapon_count(slots: list[ComponentRef]) -> int:
+    return sum(
+        int(fitted.count) for fitted in slots
+        if int(fitted.category) in (BEAM, TORPEDO) and int(fitted.count) > 0
+    )
+
+
+def _refit_combat_support_components(
+    canonical_hull,
+    slots: list[ComponentRef],
+    available_components,
+    *,
+    combat_weapon_category:int|None=None,
+    enemy_torpedo_pressure:float=0.0,
+) -> list[ComponentRef]:
+    """Fit computer and mobility support only when it improves the whole ship.
+
+    A Battle Computer/Nexus is not independently an offensive item: its value
+    comes from every torpedo's improved hit chance and every weapon's earlier
+    initiative. Likewise, a jet or overthruster matters only if it changes the
+    board movement after hull, engine, and component mass are included. This
+    bounded hill-climb therefore evaluates a prospective replacement against
+    the complete design instead of assigning a static category score.
+
+    It may exchange a weapon-capable general slot for a computer if the full
+    design improves, but never spends the final weapon or removes an existing
+    shield/armor fitting merely to inflate an offensive-only metric.
+    """
+    result = list(slots)
+    support_components = [
+        component for component in available_components
+        if (
+            int(component.category) == ELECTRICAL
+            and (
+                int(component.item_id) in BATTLE_COMPUTERS
+                or (
+                    int(combat_weapon_category or 0) == BEAM
+                    and int(component.item_id) in ENERGY_CAPACITORS
+                )
+            )
+        ) or (
+            int(component.category) == MECHANICAL
+            and int(component.item_id) in _MOBILITY_COMPONENT_IDS
+        )
+    ]
+    if not support_components or _weapon_count(result) <= 0:
+        return result
+    dedicated_computer_capacity=sum(
+        int(slot.capacity) for slot in canonical_hull.slots[1:]
+        if int(slot.allowed_categories) == ELECTRICAL
+    )
+
+    # There are at most 16 design slots. Strictly improving replacements make
+    # this finite even when a flexible slot can hold several component types.
+    for _ in range(max(1, len(canonical_hull.slots) * len(support_components))):
+        baseline = _combat_design_offensive_rating(canonical_hull, result)
+        best: tuple[float, int, object, list[ComponentRef]] | None = None
+        for slot in canonical_hull.slots[1:]:
+            current = result[int(slot.index)]
+            # Do not trade durable protection for a scalar offense increase.
+            if (
+                int(current.count) > 0
+                and (
+                    int(current.category) in (SHIELD, ARMOR)
+                    or (
+                        enemy_torpedo_pressure > 0
+                        and int(current.category) == ELECTRICAL
+                        and int(current.item_id) not in BATTLE_COMPUTERS
+                        and int(current.item_id) not in ENERGY_CAPACITORS
+                    )
+                )
+            ):
+                continue
+            for component in support_components:
+                if not slot.allows(component.category):
+                    continue
+                if (
+                    int(combat_weapon_category or 0) == TORPEDO
+                    and dedicated_computer_capacity > 0
+                    and int(slot.allowed_categories) != ELECTRICAL
+                    and int(component.category) == ELECTRICAL
+                    and int(component.item_id) in BATTLE_COMPUTERS
+                ):
+                    continue
+                # A single capacitor is the economical standard beam package.
+                # Further copies may be tactically valid, but require an
+                # explicit high-end/counter-design request instead of silently
+                # displacing every defensive component in a general fitter.
+                if (
+                    int(component.item_id) in ENERGY_CAPACITORS
+                    and any(
+                        int(fitted.category) == ELECTRICAL
+                        and int(fitted.item_id) in ENERGY_CAPACITORS
+                        for fitted in result
+                    )
+                    and not (
+                        int(current.category) == ELECTRICAL
+                        and int(current.item_id) in ENERGY_CAPACITORS
+                    )
+                ):
+                    continue
+                candidate = list(result)
+                candidate[int(slot.index)] = ComponentRef(
+                    int(component.category), int(component.item_id), max(1, int(slot.capacity)),
+                )
+                if _weapon_count(candidate) <= 0:
+                    continue
+                candidate_rating = _combat_design_offensive_rating(canonical_hull, candidate)
+                if candidate_rating <= baseline + 1e-9:
+                    continue
+                tie_break = (
+                    candidate_rating,
+                    int(component.category) == ELECTRICAL,
+                    int(component.item_id),
+                    -int(component.mass),
+                )
+                if best is None or tie_break > (
+                    best[0],
+                    int(best[2].category) == ELECTRICAL,
+                    int(best[2].item_id),
+                    -int(best[2].mass),
+                ):
+                    best = (candidate_rating, int(slot.index), component, candidate)
+        if best is None:
+            break
+        result = best[3]
+    return result
+
+
+_COMBAT_ROLE_ALIASES={
+    "beam_interceptor":BEAM,
+    "beam_line":BEAM,
+    "torpedo_line":TORPEDO,
+    "capital_missile":TORPEDO,
+}
+
+
+def _observed_weapon_pressure(state) -> tuple[float,float]:
+    """Return observed (beam, torpedo) pressure without guessing unseen gear."""
+    rows=[]
+    for key in ("enemy_design_profiles","enemy_combat_profiles","enemy_designs"):
+        rows.extend((getattr(state,"native",{}) or {}).get(key,[]) or [])
+    beam=torpedo=0.0
+    for row in rows:
+        read=(lambda name, default=0: row.get(name,default)) if isinstance(row,dict) else (lambda name,default=0: getattr(row,name,default))
+        beam += float(read("beam_strength",0) or 0)
+        torpedo += float(read("torpedo_strength",0) or 0)
+        for raw in read("slots",[]) or []:
+            category=int(raw.get("category",0) if isinstance(raw,dict) else getattr(raw,"category",0))
+            count=max(0,int(raw.get("count",0) if isinstance(raw,dict) else getattr(raw,"count",0)))
+            if category == BEAM:
+                beam += count
+            elif category == TORPEDO:
+                torpedo += count
+    return beam,torpedo
+
+
+def _observed_counter_weapon_category(state) -> int|None:
+    """Use observed enemy composition when it makes the family choice clear."""
+    beam,torpedo=_observed_weapon_pressure(state)
+    if torpedo > beam * 1.20:
+        return BEAM
+    if beam > torpedo * 1.20:
+        return TORPEDO
+    return None
+
+
+def _preferred_combat_weapon_category(state) -> int|None:
+    """Choose a pure battle-line family from intel and active stock weapons."""
+    counter=_observed_counter_weapon_category(state)
+    available=proven_available_components(state)
+    beams=[
+        spec for spec in available.values()
+        if int(spec.category) == BEAM and is_line_weapon(spec.category,spec.item_id)
+    ]
+    torpedoes=[
+        spec for spec in available.values()
+        if int(spec.category) == TORPEDO and is_line_weapon(spec.category,spec.item_id)
+    ]
+    if counter == BEAM and beams:
+        return BEAM
+    if counter == TORPEDO and torpedoes:
+        return TORPEDO
+    if not beams:
+        return TORPEDO if torpedoes else None
+    if not torpedoes:
+        return BEAM
+
+    best_torp=max(torpedoes,key=lambda spec: (
+        int(spec.tech_required[1]),
+        float((weapon_stats(spec.category,spec.item_id) or object()).damage if weapon_stats(spec.category,spec.item_id) else 0.0),
+    ))
+    # Before a real beam package, a range-four Beta/Delta torpedo line is the
+    # useful early combat architecture.  Once capital missiles arrive they
+    # again form a distinct standoff line, especially on a BB with dedicated
+    # computer banks.  Between those breakpoints normal beams are the more
+    # dependable default against unknown opposition.
+    if int(state.tech.weapons or 0) < 8:
+        return TORPEDO
+    if int(best_torp.tech_required[1]) >= 12:
+        return TORPEDO
+    return BEAM
+
+
+def _raw_slots(record: dict) -> list[dict]:
+    return list((record or {}).get("slots", []) or [])
+
+
+def _slot_component_count(record: dict, category: int, item_id: int | None = None) -> int:
+    return sum(
+        max(0, int(raw.get("count", 0) or 0))
+        for raw in _raw_slots(record)
+        if int(raw.get("category", 0) or 0) == int(category)
+        and (item_id is None or int(raw.get("item_id", 0) or 0) == int(item_id))
+    )
+
+
+def _role_design_records(state, role: str) -> list[dict]:
+    """Return current design records for a strategic architecture family.
+
+    Native snapshots sometimes arrive before their derived design-profile role
+    has been refreshed.  Component signatures keep the family caps safe during
+    that one-turn interval, rather than trusting a name such as ``Colonizer
+    AI`` or a stale profile alone.
+    """
+    role = str(role).casefold()
+    raws = {
+        int(record.get("design_number", -1)): dict(record)
+        for record in _design_dicts(state)
+    }
+    # A few synthetic/read-back-incomplete states carry a role-only profile
+    # without the native design number.  It is useful descriptive data, but it
+    # must not become a phantom second architecture and block a safe upgrade.
+    profiles = {
+        int(record["design_number"]): dict(record)
+        for record in ((state.native or {}).get("design_profiles", []) or [])
+        if not bool(record.get("is_starbase", False))
+        and record.get("design_number") is not None
+        and int(record.get("design_number", -1)) >= 0
+    }
+    slots = sorted(set(raws) | set(profiles))
+    defining_category = {
+        "colony": MECHANICAL,
+        "miner": MINING_ROBOT,
+        "minelayer": MINE_LAYER,
+    }.get(role)
+    result: list[dict] = []
+    for slot in slots:
+        raw = raws.get(slot, {})
+        profile = profiles.get(slot, {})
+        merged = {**raw, **profile, "design_number": slot}
+        profile_role = str(profile.get("role", "")).casefold()
+        component_match = False
+        if role == "colony":
+            component_match = _slot_component_count(raw, MECHANICAL, 0) > 0
+        elif role == "combat":
+            component_match = any(
+                int(slot.get("category", 0) or 0) in (BEAM, TORPEDO)
+                and int(slot.get("count", 0) or 0) > 0
+                for slot in _raw_slots(raw)
+            )
+        elif defining_category is not None:
+            component_match = _slot_component_count(raw, defining_category) > 0
+        if profile_role == role or component_match:
+            result.append(merged)
+    return result
+
+
+def colony_design_records(state) -> list[dict]:
+    """Public policy view of every extant colony architecture."""
+    return _role_design_records(state, "colony")
+
+
+def _record_engine_id(record: dict) -> int | None:
+    value = record.get("engine_id")
+    if value is not None:
+        return int(value)
+    for raw in _raw_slots(record):
+        if int(raw.get("category", 0) or 0) == ENGINE and int(raw.get("count", 0) or 0) > 0:
+            return int(raw.get("item_id", 0) or 0)
+    return None
+
+
+def _record_cargo_capacity(record: dict) -> int:
+    declared = record.get("cargo_capacity")
+    if declared is not None:
+        return max(0, int(declared or 0))
+    hull_id = record.get("hull_id")
+    hull = stock_native_hulls().get(int(hull_id)) if hull_id is not None else None
+    return int(hull.cargo) if hull is not None else 0
+
+
+def _colony_upgrade_reason(
+    existing: list[dict], hull: HullNativeSpec, engine_id: int,
+) -> str | None:
+    """Explain a real improvement that justifies another colony design."""
+    if not existing:
+        return "initial dedicated colony architecture"
+    if len(existing) >= MAX_COLONY_DESIGN_TYPES:
+        return None
+    current = max(
+        existing,
+        key=lambda record: (
+            _record_cargo_capacity(record),
+            int(record.get("fuel_capacity", 0) or 0),
+            int(record.get("turn_designed", 0) or 0),
+        ),
+    )
+    current_cargo = _record_cargo_capacity(current)
+    current_engine = _record_engine_id(current)
+    if current_cargo <= 0:
+        return "replacement for a legacy non-cargo colony design"
+    if (
+        int(hull.hull_id) == COLONY_SHIP_HULL_ID
+        and not any(int(record.get("hull_id", -1) or -1) == COLONY_SHIP_HULL_ID for record in existing)
+    ):
+        return (
+            "replace general-purpose module freighters with the dedicated Colony Ship; "
+            "reusable transports carry the follow-up settlement population"
+        )
+    if int(hull.cargo) > current_cargo:
+        return f"cargo capacity improves {current_cargo}kT -> {int(hull.cargo)}kT"
+    if current_engine is not None and int(engine_id) != int(current_engine):
+        old_name = ENGINE_DATA.get(int(current_engine), (f"engine {current_engine}",))[0]
+        new_name = ENGINE_DATA.get(int(engine_id), (f"engine {engine_id}",))[0]
+        return f"engine architecture improves {old_name} -> {new_name}"
+    return None
+
+
+def _non_engine_slot_utilization(slots: tuple[ComponentRef, ...]) -> float:
+    if len(slots) <= 1:
+        return 1.0
+    filled = sum(1 for component in slots[1:] if int(component.count) > 0)
+    return filled / max(1, len(slots) - 1)
+
+
+def _weapon_requirement(slots) -> int:
+    """Highest Weapons-tech prerequisite represented by fitted armament."""
+    tier = 0
+    for raw in slots or ():
+        category = int(raw.get("category", 0) if isinstance(raw, dict) else raw.category)
+        item_id = int(raw.get("item_id", 0) if isinstance(raw, dict) else raw.item_id)
+        count = int(raw.get("count", 0) if isinstance(raw, dict) else raw.count)
+        if count <= 0 or category not in (BEAM, TORPEDO):
+            continue
+        tier = max(tier, int(component_spec(category, item_id).tech_required[1]))
+    return tier
+
+
+def _best_existing_combat_weapon_requirement(state) -> int:
+    return max(
+        (_weapon_requirement(_raw_slots(record)) for record in _role_design_records(state, "combat")),
+        default=0,
+    )
 
 
 def _best_engine_for_role(state,role:str)->int|None:
@@ -536,94 +1284,259 @@ def synthesize_role_design(state,role:str,*,desired_hull_id:int|None=None,name:s
     an unseen component is researched.  It instead queries the current M-file
     tech levels plus the official PRT/LRT gates before fitting any component.
     """
-    role=str(role).lower()
-    preferences=((desired_hull_id,) if desired_hull_id is not None else ROLE_HULL_PREFERENCE.get(role,()))
-    hull=None
-    for hid in preferences:
-        candidate=stock_native_hulls().get(int(hid))
-        if candidate is not None and _hull_unlocked(state,candidate):
-            hull=candidate; break
-    if hull is None: return None
+    requested_role=str(role).lower()
+    role="combat" if requested_role in _COMBAT_ROLE_ALIASES else requested_role
+    combat_weapon_category=(
+        _COMBAT_ROLE_ALIASES.get(requested_role)
+        if role == "combat" else None
+    )
+    if role == "combat" and combat_weapon_category is None:
+        combat_weapon_category=_preferred_combat_weapon_category(state)
+    if role == "combat" and combat_weapon_category is None:
+        return None
+    if role == "minelayer" and len(_role_design_records(state, "minelayer")) >= MAX_MINELAYER_DESIGN_TYPES:
+        return None
     engine_id=_best_engine_for_role(state,role) if engine_id is None else int(engine_id)
     if engine_id is None: return None
     if (ENGINE,int(engine_id)) not in proven_available_components(state):
         return None
-    canonical=canonical_stock_hulls()[hull.hull_id]
-    slots=[ComponentRef(0,0,0) for _ in range(hull.slot_count)]
-    slots[0]=ComponentRef(ENGINE,int(engine_id),int(hull.engine_count))
-    pool=_component_pool_for_role(state,role)
-    weights=ROLE_CATEGORY_WEIGHTS.get(role,{})
-    for ss in canonical.slots[1:]:
-        legal=[spec for spec in pool if ss.allows(spec.category)]
-        if not legal: continue
-        # Category mission value dominates. Within a category later observed
-        # item IDs are a weak proxy for a later component; lower mass breaks ties.
-        best=max(legal,key=lambda spec:(weights.get(spec.category,0.0),spec.item_id,-spec.mass))
-        slots[ss.index]=ComponentRef(best.category,best.item_id,max(1,int(ss.capacity)))
-    slots_t=tuple(slots)
-    if not _validate_candidate(state,hull,slots_t): return None
-    # Mission-specific designs must actually contain their defining equipment.
-    defining={"combat":(BEAM,TORPEDO),"bomber":(BOMB,),"miner":(MINING_ROBOT,),"minelayer":(MINE_LAYER,)}.get(role,())
-    if defining and not any(x.count>0 and x.category in defining for x in slots_t): return None
-    # A role is an architecture, not a new slot every turn.  In particular the
-    # same armed hull serves both escort and combat duty; exact architecture
-    # reuse leaves scarce slots for genuinely distinct logistics/mining ships.
-    if _architecture_already_exists(state,hull.hull_id,slots_t): return None
-    target=safe_recyclable_ship_slot(state,preferred_role=role)
-    if target is None: return None
-    slot,replace=target
-    design_name=name or {"combat":"Fleet Combat AI","bomber":"Strike Bomber AI","miner":"Remote Miner AI","minelayer":"Mine Layer AI"}.get(role,f"{role.title()} AI")
-    design=EncodedShipDesign(slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,turn_designed=max(0,int(state.year)-2400),slots=slots_t,name=design_name,staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace)
-    return NativeShipDesignPlan(design,role,priority,(
-        f"Canonical ship builder selected {hull.name} for {role}; every fitted component is available from the current tech levels and PRT/LRT gates, and every slot is checked against the StarsAPI-compatible hull mask. Slot {slot} is {'dead/recyclable' if replace else 'free'}."
-    ))
+    pool=_component_pool_for_role(
+        state,role,combat_weapon_category=combat_weapon_category,
+    )
+    _enemy_beam_pressure,enemy_torpedo_pressure=_observed_weapon_pressure(state)
+    defining=ROLE_DEFINING_CATEGORIES.get(role,())
+    for hull in ranked_legal_ship_hulls(
+        state,role,desired_hull_id=desired_hull_id,
+    ):
+        canonical=canonical_stock_hulls()[hull.hull_id]
+        slots=[ComponentRef(0,0,0) for _ in range(hull.slot_count)]
+        slots[0]=ComponentRef(ENGINE,int(engine_id),int(hull.engine_count))
+        dedicated_computer_capacity=sum(
+            int(slot.capacity) for slot in canonical.slots[1:]
+            if int(slot.allowed_categories) == ELECTRICAL
+        )
+        for ss in canonical.slots[1:]:
+            legal=[spec for spec in pool if ss.allows(spec.category)]
+            if (
+                role == "combat"
+                and int(combat_weapon_category or 0) == TORPEDO
+                and dedicated_computer_capacity > 0
+                and int(ss.allowed_categories) != ELECTRICAL
+            ):
+                # Capital missile hulls already provide dedicated computer
+                # banks. Preserve their flexible support positions for
+                # shields/mobility rather than wasting a seventh computer.
+                legal=[
+                    spec for spec in legal
+                    if not (
+                        int(spec.category) == ELECTRICAL
+                        and int(spec.item_id) in BATTLE_COMPUTERS
+                    )
+                ]
+            if role == "combat" and int(combat_weapon_category or 0) == BEAM:
+                # Keep the basic one-capacitor beam package economical and
+                # leave the next support position to shields/computers.
+                has_capacitor=any(
+                    int(fitted.category) == ELECTRICAL
+                    and int(fitted.item_id) in ENERGY_CAPACITORS
+                    for fitted in slots
+                )
+                if has_capacitor:
+                    legal=[
+                        spec for spec in legal
+                        if not (
+                            int(spec.category) == ELECTRICAL
+                            and int(spec.item_id) in ENERGY_CAPACITORS
+                        )
+                    ]
+            if role == "combat" and enemy_torpedo_pressure > 0:
+                has_jammer=any(
+                    int(fitted.category) == ELECTRICAL
+                    and int(fitted.item_id) not in BATTLE_COMPUTERS
+                    and int(fitted.item_id) not in ENERGY_CAPACITORS
+                    for fitted in slots
+                )
+                if has_jammer:
+                    legal=[
+                        spec for spec in legal
+                        if not (
+                            int(spec.category) == ELECTRICAL
+                            and str(spec.name).startswith("Jammer ")
+                        )
+                    ]
+            if not legal:
+                continue
+            # Category mission value dominates. Equal beam/torpedo combat
+            # options use the battle-board rating, not an accidental ordering
+            # of native item IDs. Item ID remains only a deterministic final
+            # tie-breaker for genuinely equal fits.
+            best=max(
+                legal,
+                key=lambda spec: _role_component_choice_key(
+                    role,canonical,engine_id,ss,spec,
+                    combat_weapon_category=combat_weapon_category,
+                    enemy_torpedo_pressure=enemy_torpedo_pressure,
+                ),
+            )
+            slots[ss.index]=ComponentRef(
+                best.category,best.item_id,max(1,int(ss.capacity)),
+            )
+        if role == "combat":
+            slots = _refit_combat_support_components(
+                canonical,slots,pool,
+                combat_weapon_category=combat_weapon_category,
+                enemy_torpedo_pressure=enemy_torpedo_pressure,
+            )
+        slots_t=tuple(slots)
+        if not _validate_candidate(state,hull,slots_t):
+            continue
+        # Mission-specific designs must actually contain their defining
+        # equipment.  A candidate that cannot fit an observed, researched
+        # scanner/bomb/weapon is skipped in favour of the next legal hull.
+        if defining and not any(
+            x.count>0 and x.category in defining for x in slots_t
+        ):
+            continue
+        # A costly specialist must be a complete usable hull.  Scouts are the
+        # deliberate exception: their small opening hull may have no current
+        # legal fitting beyond engine + scanner.  Combat, bombing, remote
+        # mining, and mine-laying designs must fill at least most of their
+        # available equipment slots.
+        utilization = _non_engine_slot_utilization(slots_t)
+        if role != "scout" and utilization < MIN_NON_ENGINE_SLOT_UTILIZATION:
+            continue
+        if role == "combat" and desired_hull_id is None:
+            existing_weapon_tier = _best_existing_combat_weapon_requirement(state)
+            candidate_weapon_tier = _weapon_requirement(slots_t)
+            if existing_weapon_tier:
+                # A new shield/armor layout with the same guns, engines, and
+                # hull economics is not a strategic upgrade.  Wait for the
+                # next race-legal armament capability, or keep the working
+                # combat family intact.  The research planner derives that
+                # capability from the stock component requirements; no fixed
+                # Weapons-level milestone is assumed here.
+                if candidate_weapon_tier <= existing_weapon_tier:
+                    continue
+        # A role is an architecture, not a new slot every turn.  In
+        # particular the same armed hull serves both escort and combat duty;
+        # exact architecture reuse leaves scarce slots for distinct designs.
+        if _architecture_already_exists(state,hull.hull_id,slots_t):
+            continue
+        target=safe_recyclable_ship_slot(state,preferred_role=role)
+        if target is None:
+            return None
+        slot,replace=target
+        design_name=name or {
+            "scout":"Long Range Scout AI",
+            "combat":"Fleet Combat AI",
+            "bomber":"Strike Bomber AI",
+            "miner":"Remote Miner AI",
+            "minelayer":"Mine Layer AI",
+        }.get(role,f"{role.title()} AI")
+        design=EncodedShipDesign(
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            turn_designed=max(0,int(state.year)-2400),slots=slots_t,
+            name=design_name,staging_name=_staging_shipclass_name(state,hull.name),
+            replace_existing=replace,
+        )
+        return NativeShipDesignPlan(design,role,priority,(
+            f"Canonical ship builder selected {hull.name} from every current "
+            f"research- and trait-legal stock hull for {role}; every fitted "
+            "component is available from the current tech levels and PRT/LRT "
+            f"gates, and every slot is checked against the StarsAPI-compatible "
+            f"hull mask. {'Pure beam' if combat_weapon_category == BEAM else 'Pure torpedo' if combat_weapon_category == TORPEDO else 'Non-combat'} doctrine; "
+            f"non-engine slot utilization={utilization:.0%}. Slot {slot} is "
+            f"{'dead/recyclable' if replace else 'free'}."
+        ))
+    return None
 
 
 
 def synthesize_colony_upgrade(
     state, *, desired_hull_id:int|None=None, name:str="Colonizer AI",
-    priority:int=122, engine_id:int|None=None,
+    priority:int=122, engine_id:int|None=None, require_demand:bool=True,
 )->NativeShipDesignPlan|None:
-    """Create an improved colonizer from the current race-legal inventory."""
+    """Create an improved colonizer from every current legal hull option."""
     designs=_design_dicts(state)
-    profiles=[d for d in ((state.native or {}).get("design_profiles",[]) or []) if d.get("role")=="colony"]
-    if not profiles: return None
+    # A colonizer blueprint is demand-driven.  The all-legal hull selector
+    # must not consume a design operation merely because an empty design slot
+    # exists in a snapshot with no known settlement opportunity.
+    if require_demand and not any(
+        colony_planet_is_eligible(state,planet)
+        for planet in state.planets
+    ):
+        return None
     # Colonization Module is Mechanical item 0 in stock Stars!.
     available=proven_available_components(state)
     if (MECHANICAL,0) not in available: return None
-    hull=None
-    hull_ids=((int(desired_hull_id),) if desired_hull_id is not None else (15,14))
-    for hid in hull_ids:
-        candidate=stock_native_hulls().get(hid)
-        if candidate is not None and _hull_unlocked(state,candidate): hull=candidate; break
-    if hull is None: return None
     engine_id=_best_engine_for_role(state,"colony") if engine_id is None else int(engine_id)
     if engine_id is None: return None
     if (ENGINE,int(engine_id)) not in available: return None
-    slots=[ComponentRef(0,0,0) for _ in range(hull.slot_count)]
-    slots[0]=ComponentRef(ENGINE,engine_id,hull.engine_count)
-    canonical=canonical_stock_hulls()[hull.hull_id]
-    target_slot_idx=next((ss.index for ss in canonical.slots[1:] if ss.allows(MECHANICAL)),None)
-    if target_slot_idx is None: return None
-    slots[target_slot_idx]=ComponentRef(MECHANICAL,0,1)
-    slots_t=tuple(slots)
-    if not _validate_candidate(state,hull,slots_t): return None
-    # Avoid duplicate architecture.
-    for d in designs:
-        if int(d.get("hull_id",-1))!=hull.hull_id: continue
-        raw=d.get("slots",[]) or []
-        if len(raw)!=len(slots_t): continue
-        same=True
-        for a,b in zip(raw,slots_t):
-            if (int(a.get("category",0)),int(a.get("item_id",0)),int(a.get("count",0)))!=(b.category,b.item_id,b.count): same=False; break
-        if same: return None
-    target=safe_recyclable_ship_slot(state,preferred_role="colony")
-    if target is None: return None
-    slot,replace=target
-    design=EncodedShipDesign(slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,turn_designed=max(0,int(state.year)-2400),slots=slots_t,name=name,staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace)
-    return NativeShipDesignPlan(design,"colony",priority,(
-        f"Colonizer synthesis fits the race-legal Colonization Module on {hull.name} with engine item {engine_id}; research and PRT/LRT component gates passed, slot geometry is canonical, and production waits for next-M design read-back."
-    ))
+    existing = colony_design_records(state)
+    # Colonization modules on a non-cargo hull cannot transport colonists and
+    # are therefore not a colony architecture at all.  The cargo requirement
+    # is deliberately semantic (positive capacity), rather than a brittle
+    # size cutoff.
+    if len(existing) >= MAX_COLONY_DESIGN_TYPES:
+        return None
+    for hull in ranked_legal_ship_hulls(
+        state,"colony",desired_hull_id=desired_hull_id,minimum_cargo_kt=1,
+    ):
+        upgrade_reason = _colony_upgrade_reason(existing, hull, engine_id)
+        if upgrade_reason is None:
+            continue
+        slots=[ComponentRef(0,0,0) for _ in range(hull.slot_count)]
+        slots[0]=ComponentRef(ENGINE,engine_id,hull.engine_count)
+        canonical=canonical_stock_hulls()[hull.hull_id]
+        target_slot_idx=next(
+            (ss.index for ss in canonical.slots[1:] if ss.allows(MECHANICAL)),
+            None,
+        )
+        if target_slot_idx is None:
+            continue
+        slots[target_slot_idx]=ComponentRef(MECHANICAL,0,1)
+        # A colony ship is retained for many turns.  Use every legal support
+        # fitting that is already researched instead of leaving a costly hull
+        # as an engine-plus-module shell.  A Colonization Module is singular;
+        # other mechanical slots prefer fuel tanks, then ordinary protection.
+        support_weights={MECHANICAL:5.0,SHIELD:4.0,ARMOR:3.0,ELECTRICAL:2.0}
+        support_pool=[
+            spec for spec in available.values()
+            if spec.category in support_weights
+            and not (spec.category == MECHANICAL and spec.item_id == 0)
+        ]
+        for ss in canonical.slots[1:]:
+            if slots[ss.index].count > 0:
+                continue
+            legal=[spec for spec in support_pool if ss.allows(spec.category)]
+            if not legal:
+                continue
+            best=max(legal,key=lambda spec:(
+                support_weights.get(spec.category, 0.0), spec.item_id, -spec.mass,
+            ))
+            slots[ss.index]=ComponentRef(best.category,best.item_id,max(1,int(ss.capacity)))
+        slots_t=tuple(slots)
+        if not _validate_candidate(state,hull,slots_t):
+            continue
+        if _architecture_already_exists(state,hull.hull_id,slots_t):
+            continue
+        target=safe_recyclable_ship_slot(state,preferred_role="colony")
+        if target is None:
+            return None
+        slot,replace=target
+        design=EncodedShipDesign(
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            turn_designed=max(0,int(state.year)-2400),slots=slots_t,name=name,
+            staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
+        )
+        return NativeShipDesignPlan(design,"colony",priority,(
+            f"Colonizer synthesis selected {hull.name}; the dedicated Colony Ship is preferred over "
+            f"general-purpose cargo hulls so reusable freighters deliver follow-up settlers. It fits the race-legal Colonization Module with "
+            f"engine item {engine_id}; research and PRT/LRT component gates passed, "
+            f"slot geometry is canonical. Architecture justification: {upgrade_reason}. "
+            "Production waits for next-M design read-back."
+        ))
+    return None
 
 
 def _engine_id_for_requested_name(state, requested:str|None)->int|None:
@@ -689,9 +1602,41 @@ STARBASE_SUPPORT_CATEGORY_WEIGHTS = {
     ELECTRICAL: 3.0,
 }
 
+STARBASE_DEFENSE_CATEGORY_WEIGHTS = {
+    # A defensive base is a long-lived, stationary combat asset.  It should
+    # use the weapon and protection capacity already paid for by its hull,
+    # rather than resemble a lightly fitted expansion dock.
+    BEAM: 20.0,
+    TORPEDO: 20.0,
+    SHIELD: 12.0,
+    ARMOR: 11.0,
+    ORBITAL: 8.0,
+    ELECTRICAL: 5.0,
+}
 
-def _choose_starbase_component(state, slot) -> ComponentRef | None:
-    """Pick one economical, researched fitting legal for a base slot.
+
+def _starbase_component_offensive_rating(component) -> float:
+    """Evaluate one prospective weapon with the starbase battle modifiers.
+
+    A synthetic Orbital Fort is enough here: its stock initiative and the
+    universal starbase +1 weapon range are both applied, while hull armor is
+    deliberately irrelevant to a component choice.  Non-weapons return zero
+    so the role-category policy remains responsible for support equipment.
+    """
+    if int(component.category) not in (BEAM, TORPEDO):
+        return 0.0
+    return calculate_offensive_rating({
+        "hull_id": 32,
+        "slots": [{
+            "category": int(component.category),
+            "item_id": int(component.item_id),
+            "count": 1,
+        }],
+    }).rating
+
+
+def _choose_starbase_component(state, slot, *, purpose: str = "support") -> ComponentRef | None:
+    """Pick a researched fitting suitable for a support or defensive base.
 
     Component availability is already constrained by the official stock MOD
     research requirements and Stars! PRT/LRT gates.  One unit per slot is
@@ -700,19 +1645,26 @@ def _choose_starbase_component(state, slot) -> ComponentRef | None:
     may select a stronger custom architecture instead of silently overwriting
     it.
     """
+    weights = (
+        STARBASE_DEFENSE_CATEGORY_WEIGHTS
+        if str(purpose).casefold() == "defense"
+        else STARBASE_SUPPORT_CATEGORY_WEIGHTS
+    )
     candidates = [
         component for component in proven_available_components(state).values()
         if slot.allows(component.category)
-        and component.category in STARBASE_SUPPORT_CATEGORY_WEIGHTS
+        and component.category in weights
     ]
     if not candidates:
         return None
     best = max(candidates, key=lambda component: (
-        STARBASE_SUPPORT_CATEGORY_WEIGHTS[component.category],
+        weights[component.category],
+        _starbase_component_offensive_rating(component),
         int(component.item_id),
         -int(component.mass),
     ))
-    return ComponentRef(int(best.category), int(best.item_id), 1)
+    count = max(1, int(slot.capacity)) if str(purpose).casefold() == "defense" else 1
+    return ComponentRef(int(best.category), int(best.item_id), count)
 
 
 def synthesize_starbase_design_proposal(
@@ -732,9 +1684,12 @@ def synthesize_starbase_design_proposal(
     if hull is None or canonical is None or not canonical.is_starbase or not canonical_hull_unlocked(canonical, state):
         return None
 
+    purpose = str(payload.get("purpose", "support")).casefold()
+    if purpose not in {"support", "defense"}:
+        return None
     slots = [ComponentRef(0, 0, 0) for _ in range(hull.slot_count)]
     for slot in canonical.slots:
-        fitting = _choose_starbase_component(state, slot)
+        fitting = _choose_starbase_component(state, slot, purpose=purpose)
         if fitting is not None:
             slots[int(slot.index)] = fitting
     slots_t = tuple(slots)
@@ -763,11 +1718,18 @@ def synthesize_starbase_design_proposal(
         staging_name=_staging_shipclass_name(state, hull.name), is_starbase=True,
     )
     component_count = sum(1 for fitted in slots_t if fitted.count > 0)
+    offensive_rating = calculate_offensive_rating({
+        "hull_id": int(hull.hull_id),
+        "slots": [asdict(fitted) for fitted in slots_t],
+    })
     return NativeShipDesignPlan(
         design, "starbase", priority,
         (
-            f"Custom {hull.name} support-base design uses {component_count}/{hull.slot_count} "
-            "economical researched fittings. The hull grants ship construction and refueling; "
+            f"Custom {hull.name} {purpose}-base design uses {component_count}/{hull.slot_count} "
+            f"{'fully stocked defensive' if purpose == 'defense' else 'economical support'} researched fittings. "
+            f"Battle-board offensive rating={offensive_rating.display_rating} "
+            f"({offensive_rating.expected_damage_per_volley:.1f} expected damage/volley). "
+            "The hull grants ship construction and refueling; "
             "each fitting passed current StarsAPI stock-MOD research, PRT/LRT, and canonical slot checks. "
             f"Starbase design slot {slot} is free and awaits next-M read-back before construction is queued."
         ),
@@ -801,8 +1763,13 @@ def synthesize_generic_design_proposal(state,payload:dict[str,Any])->NativeShipD
     if role=="colony":
         return synthesize_colony_upgrade(
             state,desired_hull_id=hull.hull_id,name=name,priority=priority,
-            engine_id=engine_id,
+            engine_id=engine_id,require_demand=False,
         )
+
+    if role=="miner" and not _remote_mining_targets(state):
+        # Remote miners are an expensive dedicated asset, never a generic
+        # hull filler.  Require an observed planetary mining assignment.
+        return None
 
     if role=="freighter":
         slots=_empty_slot_array(hull,engine_id)

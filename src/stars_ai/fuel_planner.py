@@ -329,6 +329,39 @@ def apply_fuel_safety(state,orders):
         cap=float(fp.get('fuel_capacity',0) or 0)
         cur=float(fp.get('fuel',0) or 0)
 
+        # The native M record is authoritative about an already-accepted
+        # destination.  Do not replace that route with a refuel detour: the
+        # writer intentionally refuses synthetic retargeting, and a repeated
+        # fuel calculation must not turn a live Colonize/Transport waypoint
+        # into an unencodable command.  Route-speed maintenance has already
+        # had an opportunity to refresh the same target earlier in the turn.
+        # This is particularly important for colony ships whose current cargo
+        # mass is higher than it was when Stars! accepted the original route.
+        active_destination=getattr(f,'destination_planet_id',None)
+        if (
+            not target_is_fleet
+            and active_destination is not None
+            and int(active_destination)==int(target.id)
+        ):
+            # Preserve speed as well as destination/task.  A low-fuel fleet
+            # can have an accepted Warp-4 waypoint; replacing it with the
+            # planner's normal Warp-7 preference is an unnecessary Type-5
+            # mutation and can strand it.  A later native read-back may safely
+            # re-evaluate the route once fuel is available again.
+            active_warp=getattr(f,'destination_warp',None)
+            if active_warp is not None and 0 <= int(active_warp) <= 9:
+                o.payload['warp']=int(active_warp)
+            o.payload['fuel_plan']={
+                'policy':'preserve_active_native_waypoint',
+                'fuel':round(cur,2),
+                'capacity':round(cap,2),
+                'distance':round(d,2),
+                'mission':mission,
+                'reason':'The same native destination is already active; retain it instead of issuing an unsafe synthetic retarget.',
+            }
+            kept.append(o)
+            continue
+
         # v7.1: reconnaissance is a one-way campaign. Never replace a valid scan
         # with an automatic refuel detour. The exploration router itself may
         # explicitly create refuel_for_scan only when the detour unlocks a

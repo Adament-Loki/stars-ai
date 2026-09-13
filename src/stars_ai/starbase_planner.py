@@ -15,12 +15,25 @@ from .planet_economy import (
     mineral_surface_stock,
     working_mineral_reserve,
 )
+from .combat_doctrine import calculate_offensive_rating
 from .starsapi_items import stock_component_database
+from .territorial_defense import assess_territorial_defense
 from .util import distance
 
 STARBASE_QUEUE_SLOT_OFFSET = 16
 STARBASE_DESIGN_LIMIT = 10
 MAX_NEW_SUPPORT_BASES_PER_TURN = 2
+
+# Alternate Reality citizens live in orbit, so these are habitat capacities as
+# well as starbase hull statistics.  They are intentionally kept with the base
+# planner rather than inferred from a planet's normal habitability.
+AR_STARBASE_POPULATION_CAPACITY = {
+    32: 250_000,   # Orbital Fort / starter habitat
+    33: 500_000,   # Space Dock
+    34: 1_000_000, # Space Station
+    35: 2_000_000, # Ultra Station
+    36: 3_000_000, # Death Star
+}
 
 
 @dataclass(frozen=True)
@@ -96,7 +109,7 @@ def _support_designs(state) -> dict[int, dict]:
     }
 
 
-def _preferred_support_design(state) -> dict | None:
+def _preferred_support_design(state, *, prefer_defensive: bool = False) -> dict | None:
     designs = list(_support_designs(state).values())
     if not designs:
         return None
@@ -108,6 +121,18 @@ def _preferred_support_design(state) -> dict | None:
     legal = [d for d in designs if has_isb or int(d.get("hull_id", -1)) not in (33, 35)]
     if not legal:
         return None
+    if prefer_defensive:
+        armed = [design for design in legal if calculate_offensive_rating(design).weapon_count > 0]
+        if armed:
+            return max(
+                armed,
+                key=lambda design: (
+                    calculate_offensive_rating(design).rating,
+                    calculate_offensive_rating(design).expected_damage_per_volley,
+                    int(design.get("hull_id", -1) or -1),
+                    -int(design.get("design_number", 999)),
+                ),
+            )
     return min(
         legal,
         key=lambda d: (
@@ -117,6 +142,129 @@ def _preferred_support_design(state) -> dict | None:
             int(d.get("design_number", 999)),
         ),
     )
+
+
+def _starbase_weapon_count(profile: dict | None) -> int:
+    """Return fitted orbital weapons, rather than treating hull size as defense."""
+    return sum(
+        max(0, int(slot.get("count", 0) or 0))
+        for slot in ((profile or {}).get("slots", []) or [])
+        if int(slot.get("category", 0) or 0) in (16, 32)
+    )
+
+
+def _starbase_defense_strength(profile: dict | None) -> float:
+    """Return a defensive selection value led by actual orbital offense.
+
+    The stock battle-board offensive rating handles weapon damage, beam range,
+    torpedo accuracy, initiative, battle computers and the starbase +1 range
+    rule.  The remaining terms preserve the existing hull/utility protection
+    preference; this is a design-selection value, not a combat resolver.
+    """
+    profile = profile or {}
+    weapons = _starbase_weapon_count(profile)
+    fittings = sum(
+        max(0, int(slot.get("count", 0) or 0))
+        for slot in (profile.get("slots", []) or [])
+    )
+    hull_id = int(profile.get("hull_id", -1) or -1)
+    hull_cost = _stock_starbase_hull_costs().get(hull_id, {})
+    offensive = calculate_offensive_rating(profile).rating
+    # The stock hull's resource bill is a stable proxy for its inherent armor
+    # when compact native profile records do not expose armor directly.
+    hull_protection = math.sqrt(max(0, int(hull_cost.get("resources", 0) or 0)))
+    return offensive + 0.65 * max(0, fittings - weapons) + hull_protection
+
+
+def _alternate_reality_habitat_gain(planet, current_hull: int, target_hull: int, economy) -> tuple[float, dict]:
+    """Return the economic value of an AR base upgrade at this specific world."""
+    if not bool(economy.alternate_reality):
+        return 0.0, {}
+    current_capacity = int(AR_STARBASE_POPULATION_CAPACITY.get(current_hull, 0))
+    target_capacity = int(AR_STARBASE_POPULATION_CAPACITY.get(target_hull, 0))
+    added_capacity = max(0, target_capacity - current_capacity)
+    if not current_capacity or not added_capacity:
+        return 0.0, {
+            "current_capacity": current_capacity,
+            "target_capacity": target_capacity,
+            "added_capacity": added_capacity,
+        }
+    # Capacity matters most where the present orbital habitat is becoming
+    # crowded; an empty new colony should not rush a Death Star merely because
+    # the hull is available.  Express the gain in 100k-colonist habitats so it
+    # can be compared transparently with the defensive readiness score.
+    population_pressure = max(0.0, float(int(planet.population or 0)) / current_capacity)
+    economic_value = (added_capacity / 100_000.0) * population_pressure
+    return economic_value, {
+        "current_capacity": current_capacity,
+        "target_capacity": target_capacity,
+        "added_capacity": added_capacity,
+        "population_pressure": population_pressure,
+    }
+
+
+def _defensive_design_for_world(state, planet, *, installed_slot: int | None) -> tuple[dict | None, dict]:
+    """Choose the defensive refit with the best protection-ready-time value.
+
+    A larger base is not automatically better at a threatened world: the old
+    base protects the colony while a replacement is being built, so a compact
+    armed refit often gives the earlier and higher-value safety improvement.
+    A much stronger larger hull can still win once its added protection repays
+    its construction delay.
+    """
+    profiles = list(_support_designs(state).values())
+    installed = next(
+        (
+            profile for profile in (state.native or {}).get("starbase_profiles", []) or []
+            if installed_slot is not None
+            and int(profile.get("design_number", -1)) == int(installed_slot)
+        ),
+        None,
+    )
+    current_strength = _starbase_defense_strength(installed)
+    economy = decode_race_economy(state.race)
+    resources = max(1, int(estimated_operating_resources(planet, economy)["estimated_resources"]))
+    candidates = []
+    for profile in profiles:
+        slot = int(profile.get("design_number", -1) or -1)
+        if slot < 0 or slot == installed_slot or _starbase_weapon_count(profile) <= 0:
+            continue
+        cost = support_base_design_cost(profile)
+        build_turns = max(1, int(math.ceil(int(cost["resources"]) / resources)))
+        strength = _starbase_defense_strength(profile)
+        habitat_value, habitat = _alternate_reality_habitat_gain(
+            planet,
+            int((installed or {}).get("hull_id", -1) or -1),
+            int(profile.get("hull_id", -1) or -1),
+            economy,
+        )
+        # A design's value is the protection it adds while accounting for the
+        # time the existing orbital cover must carry the world on its own. AR
+        # capacity is a first-class economic gain, not a cosmetic tie-breaker.
+        readiness = (strength - current_strength + habitat_value) / build_turns
+        candidates.append((readiness, strength, -build_turns, -int(cost["resources"]), profile, build_turns, habitat))
+    if not candidates:
+        return None, {
+            "current_strength": current_strength,
+            "resources": resources,
+            "reason": "no armed, already-defined support-base refit is available",
+        }
+    _readiness, strength, _neg_turns, _neg_cost, profile, build_turns, habitat = max(candidates)
+    if _readiness <= 0:
+        return None, {
+            "current_strength": current_strength,
+            "resources": resources,
+            "reason": "no armed refit improves protection enough to repay its construction time",
+        }
+    return profile, {
+        "current_strength": current_strength,
+        "target_strength": strength,
+        "build_turns": build_turns,
+        "resource_cost": int(support_base_design_cost(profile)["resources"]),
+        "resources": resources,
+        "readiness_gain": _readiness,
+        "alternate_reality_habitat": habitat,
+    }
 
 
 def desired_support_base_count(state) -> int:
@@ -251,6 +399,10 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
     this planner treats it exactly like any player-authored starbase design.
     """
     support_designs = _support_designs(state)
+    territorial = assess_territorial_defense(state, plan)
+    # Network expansion still selects the economical support design. Defensive
+    # replacement work below evaluates each threatened world's production rate
+    # and installed base rather than blindly selecting the largest hull.
     preferred = _preferred_support_design(state)
     if preferred is None:
         return []
@@ -298,6 +450,69 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
                 "shipyard/refuel bases."
             ),
         ))
+
+    # A base replacement is safe overlap protection: the installed base stays
+    # active until the new design completes.  Select at most one replacement
+    # at a time, both for an immediate threat and for a newly read-back
+    # current-tech design.  The latter is what lets a mature empire retire a
+    # starter station with obsolete lasers/shields instead of treating any
+    # already-armed base as permanently good enough.
+    if owned:
+        upgrades = []
+        for planet in owned:
+            if int(planet.id) in queued_planets:
+                continue
+            native = planet.native or {}
+            if not bool(native.get("has_starbase", native.get("starbase", False))):
+                continue
+            installed_slot = native.get("starbase_design")
+            installed_slot = None if installed_slot is None else int(installed_slot)
+            defensive_design, assessment = _defensive_design_for_world(
+                state, planet, installed_slot=installed_slot,
+            )
+            if defensive_design is None:
+                continue
+            # Worlds which are economic hubs or nearer observed hostiles are
+            # represented by territorial defense; the readiness gain provides
+            # the local cost/time comparison.
+            upgrades.append((
+                float(assessment["readiness_gain"]),
+                int(planet.population or 0),
+                planet,
+                defensive_design,
+                assessment,
+            ))
+        if upgrades:
+            _gain, _population, planet, defensive_design, assessment = max(upgrades)
+            slot = int(defensive_design["design_number"])
+            emergency = bool(territorial.needs_response)
+            out.append(SupportBaseBuild(
+                planet_id=int(planet.id),
+                design_slot=slot,
+                design_name=str(defensive_design.get("name") or defensive_design.get("hull_name") or f"Starbase #{slot + 1}"),
+                hull_name=str(defensive_design.get("hull_name") or "Defensive starbase"),
+                priority=190 if emergency else 160,
+                reason=(
+                    f"{'defensive' if emergency else 'current-tech'} starbase refit at {planet.name}: retain the installed base as orbital cover "
+                    f"while building this armed replacement. Protection score "
+                    f"{assessment['current_strength']:.1f}->{assessment['target_strength']:.1f}; "
+                    f"estimated build time={assessment['build_turns']} turn(s) at "
+                    f"{assessment['resources']} resources/turn, design resource cost={assessment['resource_cost']}. "
+                    + (
+                        f"Selected for protection gained per construction turn; {territorial.reason}"
+                        if emergency else
+                        "Selected as the strongest ready current-tech replacement; keep one modernization in progress before considering another."
+                    )
+                    + (
+                        f" Alternate Reality habitat capacity "
+                        f"{assessment['alternate_reality_habitat']['current_capacity']:,}->"
+                        f"{assessment['alternate_reality_habitat']['target_capacity']:,} "
+                        f"(+{assessment['alternate_reality_habitat']['added_capacity']:,}) is included as economic value."
+                        if assessment.get("alternate_reality_habitat", {}).get("added_capacity", 0)
+                        else ""
+                    )
+                ),
+            ))
 
     deficit = max(0, int(target) - len(operational) - len(queued_planets))
     # A distant Orbital Fort is not a shipyard/refuel hub.  Permit one upgrade

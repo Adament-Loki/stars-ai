@@ -1,0 +1,20 @@
+{
+  "game_name": "GAME",
+  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5small",
+  "templates": {
+    "1": "C:\\Dev\\repos\\stars-ai\\.x-template-decision-review-v119\\template.x1",
+    "2": "C:\\Dev\\repos\\stars-ai\\.x-template-decision-review-v119\\template.x2"
+  },
+  "template_sources": {
+    "1": {
+      "path": "C:\\Dev\\repos\\stars-ai\\.x-template-decision-review-v119\\template.x1",
+      "source": "existing persistent template"
+    },
+    "2": {
+      "path": "C:\\Dev\\repos\\stars-ai\\.x-template-decision-review-v119\\template.x2",
+      "source": "existing persistent template"
+    }
+  },
+  "play_on": true,
+  "note": "Immutable bootstrap templates. Live GAME.x# files are regenerated each turn."
+}

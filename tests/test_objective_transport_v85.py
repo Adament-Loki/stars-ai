@@ -22,18 +22,27 @@ def _state(bulk=False):
     })
 
 
-def test_general_freighter_pick_for_population_prefers_compact_privateer():
-    assert _pick(_state(False),"freighter")["name"]=="Onion Privateer"
+def test_general_freighter_pick_for_population_uses_available_cargo_capacity():
+    assert _pick(_state(False),"freighter")["name"]=="LF"
 
 
-def test_population_demand_builds_compact_transport_even_when_expansion_adds_bulk_freight():
+def test_population_demand_builds_transport_that_can_use_current_surplus():
     req=plan_objective_ship_builds(_state(False))
     freight=[x for x in req if x.role=="freighter"]
-    # Population lanes use the compact Privateer.  With four visible colony
-    # claims the aggressive policy may also add a distinct Large Freighter for
-    # the mineral/bootstrap program, but it must not replace population duty.
-    population=[x for x in freight if "sized for repeated 20,000-colonist pulses" in x.reason]
-    assert population and all(x.design_slot==1 for x in population)
+    # The homeworld can currently give 40k colonists and the child needs more,
+    # so a 1,200 kT carrier is useful even without an artificial packet cap.
+    population=[x for x in freight if "strategic colony backlog" in x.reason]
+    assert population and all(x.design_slot==2 for x in population)
+
+
+def test_overfull_homeworld_population_demand_builds_high_capacity_transport():
+    state=_state(False)
+    state.planets[0].population=650_000
+
+    freight=[x for x in plan_objective_ship_builds(state) if x.role=="freighter"]
+
+    population=[x for x in freight if "strategic colony backlog" in x.reason]
+    assert population and all(x.design_slot==2 for x in population)
 
 
 def test_bulk_industrial_pressure_can_request_large_freighter():

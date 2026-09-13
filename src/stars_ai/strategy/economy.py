@@ -5,14 +5,24 @@ from ..persona import StrategicPlan
 from ..util import distance
 from ..colony_planner import score_colony_candidates, reserved_colony_target_ids
 from ..warp_policy import mission_warp
-from ..fuel_planner import mission_reachable, mission_reachable_with_planned_cargo
-from ..objective_production import BuildRequest, plan_objective_ship_builds
+from ..fuel_planner import (
+    fastest_fuel_safe_warp,
+    mission_reachable,
+    mission_reachable_with_planned_cargo,
+    profile_with_planned_cargo,
+)
+from ..objective_production import (
+    BuildRequest,
+    IMMEDIATE_SHIP_QUEUE_HORIZON,
+    plan_objective_ship_builds,
+)
 from ..cargo_planner import derive_cargo_plan
 from ..starbase_planner import (
     plan_support_base_builds,
     plan_support_base_material_demands,
     STARBASE_QUEUE_SLOT_OFFSET,
 )
+from ..starbase_capabilities import can_starbase_build_ship
 from ..expansion_network import evaluate_expansion_network
 from ..planet_economy import (decode_race_economy, installation_status, estimated_operating_resources,
                               estimated_mineral_output, mineral_surface_stock,
@@ -56,7 +66,52 @@ def _colony_source_reserve(state: GameState) -> int:
     return colony_source_reserve_for_turn(turn)
 
 
-def _distribute_ship_builds(shipyards, requests, promotion_by_planet):
+def _can_launch_colony_after_refuel(fleet, launch_world, target, population_kt: int) -> bool:
+    """Test a colony leg from a particular refuel-capable launch world."""
+    native=getattr(fleet,"native",{}) or {}
+    profile=native.get("fuel_profile")
+    if not profile:
+        return True
+    planned=profile_with_planned_cargo(profile,{"population":int(population_kt)})
+    capacity=float(planned.get("fuel_capacity",0) or 0)
+    if capacity<=0:
+        return False
+    planned["fuel"]=capacity
+    planned["effective_fuel"]=capacity
+    planned["at_starbase"]=True
+    flags=native.get("race_fuel_flags",{}) or {}
+    return fastest_fuel_safe_warp(
+        planned,
+        distance(launch_world.position,target.position),
+        "colonize",
+        ife=bool(flags.get("ife")),
+        ce=bool(flags.get("ce")),
+    ) is not None
+
+
+def _shipyard_can_build_design(world, ship_mass_kt):
+    """Apply a starbase's design-mass limit when native capability data exists.
+
+    The no-capability fallback keeps this small planning helper usable with
+    synthetic worlds in callers/tests.  Live shipyards are selected only from
+    decoded ``starbase_capabilities`` and therefore always take the strict
+    path below.
+    """
+    capabilities=(getattr(world,"native",None) or {}).get(
+        "starbase_capabilities"
+    )
+    if not capabilities:
+        return True
+    return can_starbase_build_ship(capabilities,ship_mass_kt)
+
+
+def _distribute_ship_builds(
+    shipyards,
+    requests,
+    promotion_by_planet,
+    *,
+    design_masses_kt=None,
+):
     """Spread strategic builds across operational yards.
 
     A ship build request is an empire requirement, not an instruction to make
@@ -76,18 +131,26 @@ def _distribute_ship_builds(shipyards, requests, promotion_by_planet):
     assigned={int(p.id):[] for p in ordered}
     if not ordered:
         return assigned
+    design_masses_kt=design_masses_kt or {}
     for request in requests:
+        ship_mass_kt=design_masses_kt.get(int(request.design_slot))
+        eligible=[
+            world for world in ordered
+            if _shipyard_can_build_design(world,ship_mass_kt)
+        ]
+        if not eligible:
+            continue
         remaining=max(0,int(request.quantity))
         lane_index=0
-        shares={int(world.id):0 for world in ordered}
+        shares={int(world.id):0 for world in eligible}
         # One ship to each lane first gives the greatest immediate strategic
         # throughput.  Extra copies cycle from the strongest yard outward.
         while remaining:
-            world=ordered[lane_index % len(ordered)]
+            world=eligible[lane_index % len(eligible)]
             shares[int(world.id)]+=1
             lane_index+=1
             remaining-=1
-        for world in ordered:
+        for world in eligible:
             quantity=shares[int(world.id)]
             if quantity:
                 assigned[int(world.id)].append(BuildRequest(
@@ -97,7 +160,12 @@ def _distribute_ship_builds(shipyards, requests, promotion_by_planet):
     return assigned
 
 
-def _prioritize_economic_infrastructure(queue, *, opening_growth:bool=False):
+def _prioritize_economic_infrastructure(
+    queue,
+    *,
+    opening_growth:bool=False,
+    colony_launch_priority:bool=False,
+):
     """Put operable mines and factories ahead of discretionary projects.
 
     A queue is a commitment to an order, not a claim that all of its mineral
@@ -139,7 +207,67 @@ def _prioritize_economic_infrastructure(queue, *, opening_growth:bool=False):
                 ),
             )
         ]
+    if colony_launch_priority:
+        colony=[
+            item for item in other
+            if item.get("item")=="ship_design" and item.get("role")=="colony"
+        ]
+        other=[item for item in other if item not in colony]
+        # A two-hull launch horizon has a larger immediate return than another
+        # batch of installations while the empire has viable worlds but no
+        # functioning colony pipeline.  Infrastructure resumes immediately
+        # after those launch hulls.
+        return [*colony,*mines,*factories,*other]
     return [*mines,*factories,*other]
+
+
+def _preserved_ship_queue_items(
+    state,
+    existing_queue,
+    *,
+    colony_launch_priority:bool,
+    shipyard=None,
+):
+    """Keep only a short executable ship horizon from an old serial queue."""
+    profiles={
+        int(profile.get("design_number",-1)):profile
+        for profile in (state.native or {}).get("design_profiles",[])
+    }
+    old=[]
+    remaining=IMMEDIATE_SHIP_QUEUE_HORIZON
+    for q in existing_queue:
+        if remaining<=0:
+            break
+        if (
+            int(q.get('item_type',0))!=4
+            or not 0<=int(q.get('item_id',0))<STARBASE_QUEUE_SLOT_OFFSET
+            or int(q.get('count',0))<=0
+        ):
+            continue
+        slot=int(q.get('item_id',0))
+        profile=profiles.get(slot) or {}
+        if shipyard is not None and not _shipyard_can_build_design(
+            shipyard,
+            profile.get("dry_mass"),
+        ):
+            # A design queued before the base was demoted to a Space Dock (or
+            # before this restriction was enforced) cannot be allowed to
+            # block the serial queue indefinitely.
+            continue
+        role=str(profile.get("role") or "")
+        if colony_launch_priority and role!="colony":
+            continue
+        quantity=min(remaining,int(q.get('count',0)))
+        old.append({
+            'item':'ship_design',
+            'design_slot':slot,
+            'design_name':profile.get('name',f'Design #{slot+1}'),
+            'quantity':quantity,
+            'role':role,
+            'preserved_existing':True,
+        })
+        remaining-=quantity
+    return old
 
 def add_economic_orders(
     state: GameState,
@@ -147,7 +275,20 @@ def add_economic_orders(
     plan: StrategicPlan | None = None,
     research_decision: ResearchDecision | None = None,
 ) -> None:
-    owned=[p for p in state.planets if p.owner==state.player_id]
+    # Persistent intelligence can retain a formerly owned world's last known
+    # owner when a sparse M file omits it.  It remains useful strategic
+    # information, but only the adapter's current-M allow-list can authorize
+    # a local queue, cargo source, or starbase decision.
+    current_owned=(state.native or {}).get("current_m_owned_planet_ids")
+    authorized_ids=(
+        {int(value) for value in current_owned}
+        if current_owned is not None else None
+    )
+    owned=[
+        p for p in state.planets
+        if p.owner==state.player_id
+        and (authorized_ids is None or int(p.id) in authorized_ids)
+    ]
     develop=plan.objective("develop") if plan else 1.0
     defense_w=plan.planet("defenses") if plan else 1.0
 
@@ -183,9 +324,37 @@ def add_economic_orders(
         )
     }
     shipyards=[p for p in owned if bool(((p.native or {}).get('starbase_capabilities') or {}).get('can_build_ships'))]
+    design_masses_kt={
+        int(profile.get("design_number")) : int(profile.get("dry_mass"))
+        for profile in (state.native or {}).get("design_profiles",[])
+        if profile.get("design_number") is not None
+        and profile.get("dry_mass") is not None
+    }
     ship_builds_by_planet=_distribute_ship_builds(
-        shipyards,ship_builds,promotion_by_planet,
+        shipyards,
+        ship_builds,
+        promotion_by_planet,
+        design_masses_kt=design_masses_kt,
     )
+    # Keep a visible explanation for a request that no operational base can
+    # construct, rather than silently assigning an impossible heavy hull to a
+    # Space Dock.
+    state.native["shipyard_mass_blocks"]=[
+        {
+            "design_slot":int(request.design_slot),
+            "design_name":str(request.design_name),
+            "ship_mass_kt":design_masses_kt.get(int(request.design_slot)),
+            "quantity":int(request.quantity),
+            "reason":"No operational shipyard can construct this design within its mass limit.",
+        }
+        for request in ship_builds
+        if not any(
+            _shipyard_can_build_design(
+                yard,design_masses_kt.get(int(request.design_slot)),
+            )
+            for yard in shipyards
+        )
+    ]
     existing=state.native.get('production_by_planet',{})
     research_posture=str(
         getattr(research_decision,"posture","") or ""
@@ -211,6 +380,14 @@ def add_economic_orders(
             research_decision.protected_production_planet_ids if research_decision is not None else ()
         )
     )
+    # Keep the research decision robust even if it originated from an older
+    # memory snapshot: an ungraduated P1/P2 must retain its development queue.
+    growth_hub_ids={
+        int(hub.planet_id)
+        for hub in promotion_network.hubs
+        if int(getattr(hub,"promotion_tier",3) or 3) in (1,2)
+        and not bool(getattr(hub,"graduated",False))
+    }
 
     # The empirically validated leftover-only flag protects critical shipyards
     # during a 25% sprint without clearing their colony/scout/defense work.
@@ -256,45 +433,47 @@ def add_economic_orders(
 
         # Existing custom ships are strategic commitments. Preserve them at
         # every operational shipyard so parallel production never erases work
-        # that was previously assigned to a secondary yard.
+        # that was previously assigned to a secondary yard.  A queue is serial,
+        # though, so keep only its near executable horizon.  When a colony
+        # launch is required, obsolete probe/defense backlogs yield to it.
         if int(p.id) in ship_builds_by_planet:
-            old=[]
-            for q in existing.get(str(p.id),existing.get(p.id,[])):
-                if (
-                    int(q.get('item_type',0))==4
-                    and 0 <= int(q.get('item_id',0)) < STARBASE_QUEUE_SLOT_OFFSET
-                    and int(q.get('count',0))>0
-                ):
-                    slot=int(q.get('item_id',0))
-                    dp=next(
-                        (
-                            d for d in state.native.get('design_profiles',[])
-                            if int(d.get('design_number',-1))==slot
-                        ),
-                        None,
-                    )
-                    old.append({
-                        'item':'ship_design',
-                        'design_slot':slot,
-                        'design_name':dp.get('name',f'Design #{slot+1}') if dp else f'Design #{slot+1}',
-                        'quantity':int(q.get('count',0)),
-                        'preserved_existing':True,
-                    })
+            requested=ship_builds_by_planet[int(p.id)]
+            colony_launch_priority=any(request.role=="colony" for request in requested)
+            old=_preserved_ship_queue_items(
+                state,
+                existing.get(str(p.id),existing.get(p.id,[])),
+                colony_launch_priority=colony_launch_priority,
+                shipyard=p,
+            )
             queue.extend(old)
             preserved={int(x['design_slot']):x for x in old}
-            for req in ship_builds_by_planet[int(p.id)]:
+            for req in requested:
+                quantity=int(req.quantity)
+                if req.role=="colony":
+                    queued_colonies=sum(
+                        int(item.get("quantity",0))
+                        for item in old if item.get("role")=="colony"
+                    )
+                    quantity=min(
+                        quantity,
+                        max(0,IMMEDIATE_SHIP_QUEUE_HORIZON-queued_colonies),
+                    )
+                if quantity<=0:
+                    continue
                 if req.design_slot in preserved:
                     item=preserved[req.design_slot]
-                    item['quantity']=int(item.get('quantity',0))+int(req.quantity)
+                    item['quantity']=int(item.get('quantity',0))+quantity
                     item['role']=req.role
-                    item['objective_top_up']=int(req.quantity)
+                    item['objective_top_up']=quantity
                     reasons.append(
-                        f"{req.reason} Add {req.quantity} to the preserved "
+                        f"{req.reason} Add {quantity} to the preserved "
                         f"{req.design_name} queue."
                     )
                     strategic_priority=max(strategic_priority,req.priority)
                 else:
-                    queue.append(req.queue_item())
+                    item=req.queue_item()
+                    item['quantity']=quantity
+                    queue.append(item)
                     reasons.append(req.reason)
                     strategic_priority=max(strategic_priority,req.priority)
 
@@ -354,10 +533,33 @@ def add_economic_orders(
                 amount is not None and int(amount)<(12 if is_core else 8 if promoted_p2 else 4)
                 for amount in mineral_output["estimated_mineral_output"].values()
             )
+            # A core's status alone is not a reason to keep adding mines.  A
+            # mature homeworld can have a deep mineral reserve and enough
+            # operating mines to support the next factory batch, while its
+            # factory base is still far below the population-operable limit.
+            # In that state another mine delays both resources and ships for
+            # no strategic return.  Compare installed capacity with the
+            # factory expansion this turn rather than relying on a fixed mine
+            # count.
+            mineral_base_secure=(
+                not germanium_short
+                and not any(mineral_deficits.values())
+                and not output_shortfall
+            )
+            mine_capacity_ahead_of_factory_growth=(
+                operated_mines >= int(p.factories) + max(1,factory_batch)
+            )
+            defer_core_mines_for_factory_growth=bool(
+                is_core
+                and factory_headroom>0
+                and factory_batch>0
+                and mineral_base_secure
+                and mine_capacity_ahead_of_factory_growth
+            )
             needs_mining=bool(
                 mine_headroom>0
                 and (
-                    is_core
+                    (is_core and not defer_core_mines_for_factory_growth)
                     or promoted_p2
                     or germanium_short
                     or any(mineral_deficits.values())
@@ -408,11 +610,16 @@ def add_economic_orders(
 
             # Non-core colonies still develop toward their current operating
             # cap even when their stock report is incomplete.
-            if mine_headroom>0 and not needs_mining:
+            if mine_headroom>0 and not needs_mining and not defer_core_mines_for_factory_growth:
                 infrastructure.append({
                     'item':'mine','quantity':mine_batch,'reason':'mine_capacity'
                 })
                 reasons.append(f"baseline mine capacity: {mine_batch} mines")
+            elif defer_core_mines_for_factory_growth:
+                reasons.append(
+                    "factory-first core growth: mineral reserve and operating mine capacity already cover "
+                    "the next factory batch"
+                )
 
             # Defenses are not a default sink for excess resources. Only a
             # persona with an explicitly elevated defense posture spends on them;
@@ -469,7 +676,13 @@ def add_economic_orders(
 
         is_research_contributor=int(p.id) in research_contributors
         generated_critical=any(q.get('item') in ('ship_design','starbase_design') for q in queue)
-        if is_research_contributor and (current_has_custom or generated_critical):
+        if is_research_contributor and int(p.id) in growth_hub_ids:
+            is_research_contributor=False
+            orders.notes.append(
+                f"RELAY MATURATION: {p.name} remains on its P{promotion_tier} growth queue "
+                "instead of being cleared for a research sprint."
+            )
+        elif is_research_contributor and (current_has_custom or generated_critical):
             is_research_contributor=False
             orders.notes.append(
                 f"RESEARCH PROTECTION: {p.name} was not cleared for the "
@@ -506,9 +719,21 @@ def add_economic_orders(
         # protects against future queue additions above (or a preserved custom
         # ship build) accidentally placing an unaffordable ship ahead of the
         # mine/factory work that restores its mineral supply.
+        colony_launch_priority=(
+            max(0,int(state.year)-2400)<20
+            and any(
+                item.get("item")=="ship_design" and item.get("role")=="colony"
+                for item in queue
+            )
+        )
+        if colony_launch_priority:
+            reasons.append(
+                "opening colony launch priority: keep the next two colony hulls ahead of routine infrastructure"
+            )
         queue=_prioritize_economic_infrastructure(
             queue,
             opening_growth=max(0,int(state.year)-2400)<10,
+            colony_launch_priority=colony_launch_priority,
         )
 
         mineral_reserve=working_mineral_reserve(
@@ -622,6 +847,8 @@ def add_economic_orders(
         p for p in owned
         if bool((((p.native or {}).get("starbase_capabilities") or {}).get("can_refuel")))
     ]
+    launch_worlds=[p for p in loading_worlds if p in refuel_worlds]
+    colony_range_blocks=[]
 
     def staging_world(fleet):
         choices=loading_worlds or refuel_worlds
@@ -643,11 +870,23 @@ def add_economic_orders(
         aboard=int(fleet.cargo_population or 0)
         population_to_load=max(0,COLONY_LOAD_COLONISTS-aboard)
         population_to_load_kt=cargo_kt_from_colonists(population_to_load)
+        # Candidate scoring includes safe-transit time.  At a verified refuel
+        # base, score the pending colony leg from the host-provided full tank,
+        # not the stale fuel amount serialized before the base refuel occurs.
+        if source is not None and source in refuel_worlds:
+            profile=(fleet.native or {}).get("fuel_profile")
+            if profile:
+                capacity=float(profile.get("fuel_capacity",0) or 0)
+                if capacity>0:
+                    profile["fuel"]=max(float(profile.get("fuel",0) or 0),capacity)
+                    profile["effective_fuel"]=capacity
+                    profile["at_starbase"]=True
         raw_ranked=[
             c for c in score_colony_candidates(state,fleet,plan)
             if c.planet_id not in assigned
         ]
         ranked=[]
+        refuel_launches={}
         for candidate in raw_ranked:
             target=next(p for p in state.planets if p.id==candidate.planet_id)
             reachable=(
@@ -659,29 +898,75 @@ def add_economic_orders(
             )
             if reachable:
                 ranked.append(candidate)
+                continue
+            if aboard<COLONY_LOAD_COLONISTS:
+                supported=[
+                    world for world in launch_worlds
+                    if _can_launch_colony_after_refuel(
+                        fleet,world,target,population_to_load_kt
+                    )
+                ]
+                if supported:
+                    refuel_launches[int(candidate.planet_id)]=supported
 
         if not ranked:
             # Do not create a movement order just to keep a colony ship busy.
             # If useful colony intelligence exists, however, stage an empty
             # hull at the best population/refuel world so it is launch-ready.
-            home=staging_world(fleet) if raw_ranked and aboard<COLONY_LOAD_COLONISTS else None
-            if home is not None and (source is None or source.id!=home.id):
-                orders.add(
-                    "move_fleet",
-                    {
-                        "fleet_id":fleet.id,
-                        "destination_planet_id":home.id,
-                        "warp":mission_warp(fleet,home.position,"return_for_colonists"),
-                        "mission":"return_for_colonists",
-                        "cargo_population_before":aboard,
-                    },
-                    f"{plan.persona_name + ': ' if plan else ''}stage empty colony ship at {home.name}; "
-                    f"known viable claims exist, but none is fuel-safe with the planned "
-                    f"{COLONY_LOAD_KT} kT / {COLONY_LOAD_COLONISTS:,}-colonist load. "
-                    f"Prepare at the best population/refuel hub while support expands.",
-                    priority=int(118*expand),
+            launch_candidate=next(
+                (candidate for candidate in raw_ranked if int(candidate.planet_id) in refuel_launches),
+                None,
+            )
+            launch_options=(
+                refuel_launches.get(int(launch_candidate.planet_id),[])
+                if launch_candidate is not None else []
+            )
+            home=(
+                max(
+                    launch_options,
+                    key=lambda p:(int(p.population or 0),-distance(fleet.position,p.position)),
                 )
-            continue
+                if launch_options else
+                (staging_world(fleet) if raw_ranked and aboard<COLONY_LOAD_COLONISTS else None)
+            )
+            if (
+                launch_candidate is not None
+                and home is not None
+                and source is not None
+                and int(source.id)==int(home.id)
+            ):
+                profile=(fleet.native or {}).get("fuel_profile")
+                if profile:
+                    capacity=float(profile.get("fuel_capacity",0) or 0)
+                    if capacity>0:
+                        profile["fuel"]=max(float(profile.get("fuel",0) or 0),capacity)
+                        profile["effective_fuel"]=capacity
+                        profile["at_starbase"]=True
+                ranked.append(launch_candidate)
+            elif raw_ranked and not launch_options:
+                colony_range_blocks.append({
+                    "fleet_id":int(fleet.id),
+                    "candidate_planet_ids":[int(candidate.planet_id) for candidate in raw_ranked[:4]],
+                    "reason":"No owned population/refuel launch world can make a fuel-safe loaded colony leg with this design.",
+                })
+            if not ranked:
+                if home is not None and (source is None or source.id!=home.id):
+                    orders.add(
+                        "move_fleet",
+                        {
+                            "fleet_id":fleet.id,
+                            "destination_planet_id":home.id,
+                            "warp":mission_warp(fleet,home.position,"return_for_colonists"),
+                            "mission":"return_for_colonists",
+                            "cargo_population_before":aboard,
+                        },
+                        f"{plan.persona_name + ': ' if plan else ''}stage empty colony ship at {home.name}; "
+                        f"known viable claims exist, but none is fuel-safe with the planned "
+                        f"{COLONY_LOAD_KT} kT / {COLONY_LOAD_COLONISTS:,}-colonist load. "
+                        f"Prepare at the best population/refuel hub while support expands.",
+                        priority=int(118*expand),
+                    )
+                continue
 
         best=ranked[0]
         loaded=aboard>=COLONY_LOAD_COLONISTS
@@ -781,6 +1066,11 @@ def add_economic_orders(
                 priority=int(120*expand),
             )
 
+
+    state.native["colony_range_blocked_fleet_ids"]=sorted({
+        int(block["fleet_id"]) for block in colony_range_blocks
+    })
+    state.native["colony_range_blocks"]=colony_range_blocks
 
     # Population and mineral freight share one fleet-level ranked schedule.
     # The scheduler consumes the just-created production queues so a selected

@@ -8,6 +8,7 @@ from .models import GameState
 from .util import distance
 from .goals import Goal
 from .diplomacy import DiplomacyPolicy
+from .phase_strategy import StrategicPhaseManager
 
 
 class Objective(str, Enum):
@@ -41,6 +42,11 @@ class StrategicPlan:
     notes: tuple[str, ...] = ()
     goal_progress: dict[str, float] = field(default_factory=dict)
     diplomacy: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # Persist the macro controller's decision with the plan so all downstream
+    # planners and playtest traces can explain *why* their priorities changed.
+    phase: str = "unclassified"
+    phase_reason: str = ""
+    phase_assessment: dict[str, float | int] = field(default_factory=dict)
 
     def objective(self, name: Objective | str, default: float = 1.0) -> float:
         key = name.value if isinstance(name, Objective) else str(name)
@@ -113,6 +119,39 @@ class StrategicPersona:
         diplomacy_views = self.diplomacy_policy.evaluate_all(state)
         diplomacy = {pid: view.to_dict() for pid, view in diplomacy_views.items()}
 
+        # Apply the phase exactly once to each strategic dimension.  Several
+        # consumers multiply an objective by a mission weight, so phase
+        # multipliers belong on objectives (not both) to avoid squaring a
+        # transition such as expansion or reconnaissance.
+        phase_decision = StrategicPhaseManager().decide(state, self)
+        phase_policy = phase_decision.policy
+        objective_phase_weights = {
+            Objective.SCOUT.value: phase_policy.explore_weight,
+            Objective.EXPAND.value: phase_policy.expand_weight,
+            Objective.DEVELOP.value: phase_policy.develop_weight,
+            Objective.DEFEND.value: phase_policy.fortify_weight,
+            Objective.ATTACK.value: phase_policy.attack_weight,
+            Objective.RESEARCH.value: phase_policy.research_weight,
+            Objective.LOGISTICS.value: max(
+                0.65,
+                (phase_policy.expand_weight * phase_policy.develop_weight) ** 0.5,
+            ),
+        }
+        for objective, multiplier in objective_phase_weights.items():
+            objectives[objective] = objectives.get(objective, 1.0) * multiplier
+        for field_name in research:
+            research[field_name] *= phase_policy.research_weight
+        planets["factories"] = planets.get("factories", 1.0) * phase_policy.develop_weight
+        planets["mines"] = planets.get("mines", 1.0) * phase_policy.develop_weight
+        planets["defenses"] = planets.get("defenses", 1.0) * phase_policy.fortify_weight
+        planets["ships"] = planets.get("ships", 1.0) * max(
+            phase_policy.fortify_weight, phase_policy.attack_weight,
+        )
+        planets["research"] = planets.get("research", 1.0) * phase_policy.research_weight
+        notes.append(
+            f"STRATEGIC PHASE: {phase_decision.phase.value}; {phase_decision.reason}"
+        )
+
         owned = [p for p in state.planets if p.owner == state.player_id]
         unknown = [p for p in state.planets if not p.observed]
         hostiles = [f for f in state.fleets if f.owner != state.player_id]
@@ -166,6 +205,17 @@ class StrategicPersona:
             notes=tuple(notes),
             goal_progress=goal_progress,
             diplomacy=diplomacy,
+            phase=phase_decision.phase.value,
+            phase_reason=phase_decision.reason,
+            phase_assessment={
+                "explored_fraction": phase_decision.assessment.explored_fraction,
+                "owned_planets": phase_decision.assessment.owned_planets,
+                "known_enemy_players": phase_decision.assessment.known_enemy_players,
+                "contested_frontier_fraction": phase_decision.assessment.contested_frontier_fraction,
+                "open_frontier_fraction": phase_decision.assessment.open_frontier_fraction,
+                "frontier_pressure": phase_decision.assessment.frontier_pressure,
+                "expansion_saturation": phase_decision.assessment.expansion_saturation,
+            },
         )
 
 

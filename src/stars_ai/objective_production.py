@@ -10,9 +10,33 @@ from .population_units import (
 )
 from .colony_planner import colony_planet_is_eligible, colonization_policy
 from .expansion_network import evaluate_expansion_network
-from .logistics_capacity import evaluate_logistics_capacity, POPULATION_PULSE_KT
+from .logistics_capacity import (
+    BULK_LARGE_FREIGHTER_TRIGGER_KT,
+    POPULATION_PULSE_COLONISTS,
+    POPULATION_PULSE_KT,
+    evaluate_logistics_capacity,
+)
+from .population_invasion import population_capture_targets
 from .scout_policy import enemy_contact_summary, custom_scout_missions
 from .territorial_defense import assess_territorial_defense
+
+
+# Stars! production queues are serial at a given yard.  Counting every ship
+# buried in one as a usable asset made the expansion planner believe that a
+# twenty-ship Mayflower backlog was a twenty-ship colony force.  Only the next
+# small horizon can reasonably affect the current strategic decision.
+IMMEDIATE_SHIP_QUEUE_HORIZON = 2
+LOW_TECH_ESCORT_WEAPONS = 6
+LOW_TECH_ESCORT_CAP = 2
+# A new weapon/hull generation needs a tiny real-world proving force, but it
+# must not authorize a second full fleet while the prior generation remains
+# available.  The rest of the force turns over through losses, retirement, and
+# ordinary force growth.
+MODERNIZATION_SEED_HULLS = 2
+# Colony hulls are useful only when tied to an active settlement program.  This
+# is a deliberate strategic policy bound (not a per-shipment mass limit): at
+# most this many uncommitted hulls may wait ahead of source-backed claims.
+COLONY_PIPELINE_SURPLUS_CAP = 3
 
 
 @dataclass
@@ -53,6 +77,24 @@ def _queued(state):
     return out
 
 
+def _immediate_queued(state, horizon:int=IMMEDIATE_SHIP_QUEUE_HORIZON):
+    """Count only ships that are near the front of each serial yard queue."""
+    out={}
+    for qs in state.native.get('production_by_planet',{}).values():
+        remaining=max(0,int(horizon))
+        for q in qs:
+            if remaining<=0:
+                break
+            if int(q.get('item_type',0))!=4 or not 0<=int(q.get('item_id',0))<16:
+                continue
+            slot=int(q.get('item_id',0))
+            quantity=min(remaining,max(0,int(q.get('count',0) or 0)))
+            if quantity:
+                out[slot]=out.get(slot,0)+quantity
+                remaining-=quantity
+    return out
+
+
 def _role_count(ds,counts,role):
     return sum(n for s,n in counts.items() if ds.get(s,{}).get('role')==role)
 
@@ -79,9 +121,10 @@ def _combat_component_score(design)->int:
 def _selected_role_gap(ds,counts,role,selected,desired,role_assets)->tuple[int,str]:
     """Return the build gap for the selected design, not merely its role.
 
-    When an upgraded hull arrives, old ships must not satisfy the new design's
-    production target.  The AI builds a current generation alongside the old
-    fleet; it does not scrap working ships just to modernize.
+    When an upgraded hull arrives, retain a small proving force of the new
+    design but do not treat the whole target force as vacant.  Old ships still
+    defend, escort, and absorb attrition; replacing every one immediately
+    creates an uneconomical duplicate fleet of the same mission.
     """
     selected_slot=int(selected['design_number'])
     selected_assets=int(counts.get(selected_slot,0) or 0)
@@ -93,12 +136,23 @@ def _selected_role_gap(ds,counts,role,selected,desired,role_assets)->tuple[int,s
         and _design_generation(design)<selected_generation
     )
     if selected_generation>0 and older_assets>0:
-        return max(0,int(desired)-selected_assets),(
-            f"modernization target: newest {role} generation T{selected_generation} has "
-            f"{selected_assets} live/queued; {older_assets} older hull(s) do not satisfy its target"
+        # The seed permits a newly researched weapons/hull architecture to be
+        # field-tested even when the old force already meets the territorial
+        # target.  Once it exists, all generations share the same hard force
+        # ceiling.  This prevents a W10/W12 upgrade from duplicating an entire
+        # fleet of early escorts.
+        ceiling=int(desired) + (
+            MODERNIZATION_SEED_HULLS
+            if selected_assets < MODERNIZATION_SEED_HULLS else 0
+        )
+        return max(0,ceiling-int(role_assets)),(
+            f"modernization throttle: newest {role} generation T{selected_generation} has "
+            f"{selected_assets} live/imminent; {older_assets} older hull(s) remain useful. "
+            f"Total force ceiling={ceiling} (base target={desired}, proving seed="
+            f"{MODERNIZATION_SEED_HULLS} only until fielded)"
         )
     return max(0,int(desired)-int(role_assets)),(
-        f"role target: {role_assets} live/queued {role} hull(s) satisfy current generation demand"
+        f"role target: {role_assets} live/imminent {role} hull(s) satisfy current generation demand"
     )
 
 
@@ -116,10 +170,33 @@ def _freighter_profiles(state):
 
 
 def _pick_freighter_for_population(state):
-    """Prefer compact long-range 20k-pulse carriers over bulk freighters."""
+    """Choose a population carrier appropriate to current source surplus.
+
+    The choice is driven by the largest load a source can currently give to a
+    child that still needs it.  Ordinary lanes favour economical compact hulls;
+    a larger hull is preferred only when its extra hold can be used now.
+    """
     ds=[d for d in _freighter_profiles(state) if int(d.get('cargo_capacity',0) or 0)>=POPULATION_PULSE_KT]
     if not ds:
         return None
+    logistics=evaluate_logistics_capacity(state)
+    useful_load_kt=max((
+        min(
+            int(status.exportable_population or 0),
+            int(status.downstream_backlog or 0),
+        ) // 100
+        for status in logistics.exporter_status
+    ), default=0)
+    if useful_load_kt > 0:
+        ife=has_ife(state.race)
+        return max(ds,key=lambda d:(
+            min(int(d.get('cargo_capacity',0) or 0), useful_load_kt),
+            -max(0, int(d.get('cargo_capacity',0) or 0) - useful_load_kt),
+            _design_generation(d),
+            best_range_ly(d,7,ife),
+            float(d.get('fuel_capacity',0) or 0)/max(1,int(d.get('dry_mass',1) or 1)),
+            -int(d.get('dry_mass',999999) or 999999),
+        ))
     compact=[d for d in ds if int(d.get('cargo_capacity',0) or 0)<1000]
     pool=compact or ds
     ife=has_ife(state.race)
@@ -185,19 +262,27 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
     unknown=sum(1 for p in state.planets if not p.observed)
     contact=enemy_contact_summary(state)
     custom_missions=custom_scout_missions(state)
+    scout_weight=plan.objective('scout') if plan else 1.0
+    late_posture=bool(plan and getattr(plan,'phase','') in {
+        'fortification','opportunistic_war','tech_acceleration','industrial_buildout',
+    })
     if contact["enemy_contact"]:
         # Contact changes where scouts fly; it must not end expansion.  We
         # retain a real border screen while continuing to map uncontested
         # space.  This is deliberately a much larger force than the old
         # contact-limited two-scout policy.
-        required=min(6,len(custom_missions))
-        coverage=math.ceil(unknown/8) if unknown>0 else 0
-        desired=min(24,max(6 if unknown>0 else 0,required,coverage))
+        required=min(8,len(custom_missions))
+        coverage=math.ceil(unknown/6) if unknown>0 else 0
+        # A mature defensive/attack posture retains border intelligence but
+        # stops treating every foreign sighting as an expansion-race demand.
+        phase_floor=2 if late_posture else 8
+        desired=min(24,max(phase_floor if unknown>0 else 0,required,coverage))
         purposes=", ".join(str(m["id"]) for m in custom_missions[:6]) or "open-frontier coverage"
         return desired,(
             "foreign contact is established; maintain an expansion-race scout screen for "
             f"uncontested exploration and border intelligence [{purposes}]. "
-            f"Target force={desired}; exploration continues with persistent contact-aware coverage."
+            f"Target force={desired}; exploration continues with persistent contact-aware coverage"
+            + (" while the mature posture reserves production for defense/attack." if late_posture else ".")
         )
     if unknown<=0: return 0,"galaxy fully observed"
     turn=max(0,int(state.year)-2400); deadline=int(milestone.get('deadline_turn',turn+10))
@@ -211,7 +296,12 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
     # soon enough to exploit them.  The minimum is intentionally aggressive:
     # an empire should field a meaningful screen before the first milestone
     # sees it fall behind.
-    persona_floor=7 if (plan and plan.objective('scout')>1.15) else 6
+    if late_posture:
+        persona_floor=2
+    elif scout_weight>1.15:
+        persona_floor=9
+    else:
+        persona_floor=8
     desired=max(persona_floor,throughput_force); pressure=float(watchdog.get('exploration_pressure',1.0))
     if pressure>=1.75: desired+=6
     elif pressure>=1.45: desired+=4
@@ -219,8 +309,9 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
     # The milestone is a minimum completion obligation.  Abundant unexplored
     # space is its own opportunity, so density can lift the program beyond the
     # deadline calculation instead of treating that calculation as a ceiling.
-    opportunity_force=math.ceil(unknown/8)
-    desired=min(24,max(6,int(desired),opportunity_force)); desired=min(desired,unknown)
+    opportunity_force=math.ceil(unknown/6)
+    minimum=2 if late_posture else 8
+    desired=min(24,max(minimum,int(desired),opportunity_force)); desired=min(desired,unknown)
     return desired,(f"exploration milestone needs {gap} more known worlds by T{deadline} (~{required_rate:.2f}/turn); "
                     f"measured scout productivity ~{productivity:.2f} discoveries/scout-turn; target scout force={desired}")
 
@@ -244,25 +335,39 @@ def _desired_colony_force(state,viable,plan)->tuple[int,str]:
     concurrency_cap=15 if turn<=5 else 24 if turn<=15 else 32
     if pressure>=1.75: concurrency_cap+=10
     elif pressure>=1.45: concurrency_cap+=6
-    # Keep at most one speculative empty colony hull when no source can
-    # currently supply even one validated 25-kT colonization packet. Once
-    # population export exists, allow a small build-ahead buffer so ships can
-    # arrive at breeder worlds just before the next packet is ready.
-    if export_packets<=0 and loaded<=0:
-        supported=1
-    else:
-        supported=max(8,loaded+min(export_packets,concurrency_cap)+12)
-    base_pipeline=8 if turn<=10 else 12
-    # A completed milestone is not a reason to idle hull capacity.  Where
-    # viable claims and source population exist, keep enough colonizers in the
-    # pipeline to exploit all supported concurrent opportunities.
-    opportunity_force=loaded+min(export_packets,concurrency_cap)+12
-    desired=max(base_pipeline,throughput_force,opportunity_force)
-    desired=min(len(viable),concurrency_cap,supported,desired)
+    active_claim_ids={
+        int(f.destination_planet_id)
+        for f in state.fleets
+        if f.owner==state.player_id
+        and f.role=='colony'
+        and f.destination_planet_id is not None
+    }
+    committed_claims=len(active_claim_ids)
+    uncommitted_claims=max(0,len(viable)-committed_claims)
+    # A colony that is not already assigned must have a real near-term source
+    # packet.  The milestone rate determines how many of those claims need to
+    # be worked now; it does not authorize a standing Mayflower backlog.
+    source_backed_uncommitted=min(
+        uncommitted_claims,
+        max(0,export_packets-loaded),
+        # A force-rate estimate is not a count of active claims.  Treating it
+        # as one inflated the fleet plan by six hulls per deadline turn.
+        max(1,settlement_gap),
+    )
+    active_colony_need=committed_claims+source_backed_uncommitted
+    # With no committed or source-backed claim, retain at most one exploratory
+    # empty hull; the normal policy cap applies only to a real active program.
+    speculative_allowance=(
+        COLONY_PIPELINE_SURPLUS_CAP if active_colony_need else 1
+    )
+    pipeline_ceiling=active_colony_need+speculative_allowance
+    desired=max(active_colony_need,throughput_force)
+    desired=min(len(viable),concurrency_cap,pipeline_ceiling,desired)
     reason=(f"{len(viable)} phase-eligible unowned claims under {colonization_policy(state,plan).stage}; {export_packets} exportable colony population packets "
             f"({COLONY_LOAD_KT} kT / {COLONY_LOAD_COLONISTS:,} colonists each); source reserve={source_reserve:,}; "
             f"milestone needs {settlement_gap} more colonies by T{deadline} (~{required_rate:.2f}/turn); {loaded} colony ships already loaded; "
-            f"target concurrent colony force={desired}")
+            f"active colony need={active_colony_need} ({committed_claims} committed claim(s) + {source_backed_uncommitted} source-backed uncommitted claim(s)); "
+            f"pipeline ceiling=need+{speculative_allowance}={pipeline_ceiling}; target concurrent colony force={desired}")
     return int(desired),reason
 
 
@@ -281,6 +386,47 @@ def _freighter_asset_counts(ds, counts):
         elif cargo>=POPULATION_PULSE_KT:
             population+=int(n)
     return population,bulk,total
+
+
+def _idle_empty_freighters(state):
+    """Return empty, destinationless freight hulls parked at an owned world.
+
+    A transport already waiting at *any* owned planet is usable capacity.  Do
+    not build another hull simply because it is not at the homeworld or does
+    not match this turn's first selected lane.
+    """
+    owned = [p for p in state.planets if p.owner == state.player_id]
+    idle_ids: list[int] = []
+    idle_hulls = 0
+    for fleet in state.fleets:
+        if fleet.owner != state.player_id or fleet.role != "freighter":
+            continue
+        if fleet.destination_planet_id is not None:
+            continue
+        cargo = (fleet.native or {}).get("cargo", {}) or {}
+        if any(int(cargo.get(key, 0) or 0) for key in ("ironium", "boranium", "germanium", "population")):
+            continue
+        capacity = int(
+            getattr(fleet, "cargo_capacity", 0)
+            or (fleet.native or {}).get("cargo_capacity", 0)
+            or 0
+        )
+        if capacity <= 0:
+            continue
+        parked = any(
+            int((fleet.native or {}).get("position_object_id", -1)) == int(planet.id)
+            or (
+                abs(float(fleet.position.x) - float(planet.position.x)) <= 0.5
+                and abs(float(fleet.position.y) - float(planet.position.y)) <= 0.5
+            )
+            for planet in owned
+        )
+        if not parked:
+            continue
+        idle_ids.append(int(fleet.id))
+        hulls = sum(max(0, int(count or 0)) for count in ((fleet.native or {}).get("ship_count", []) or []))
+        idle_hulls += max(1, hulls)
+    return tuple(sorted(idle_ids)), int(idle_hulls)
 
 
 def _desired_freighter_forces(state,viable_claim_count:int=0)->tuple[int,int,str,object]:
@@ -322,13 +468,18 @@ def _desired_freighter_forces(state,viable_claim_count:int=0)->tuple[int,int,str
 def plan_objective_ship_builds(state,plan=None):
     ds=_designs(state)
     if not ds: return []
-    cur=_current(state); que=_queued(state); counts={k:cur.get(k,0)+que.get(k,0) for k in set(cur)|set(que)}; req=[]
+    cur=_current(state)
+    deep_queued=_queued(state)
+    imminent_queued=_immediate_queued(state)
+    counts={k:cur.get(k,0)+imminent_queued.get(k,0) for k in set(cur)|set(imminent_queued)}
+    req=[]
     viable=[p for p in state.planets if colony_planet_is_eligible(state,p,plan)]
 
     colony_assets=_role_count(ds,counts,'colony')
     active_claims=[int(f.destination_planet_id) for f in state.fleets if f.owner==state.player_id and f.role=='colony' and f.destination_planet_id is not None]
     duplicate_commitments=max(0,len(active_claims)-len(set(active_claims))); effective_colony_assets=max(0,colony_assets-duplicate_commitments)
     desired_colonies,colony_reason=_desired_colony_force(state,viable,plan)
+    colony_launch_shortfall=max(0,desired_colonies-effective_colony_assets)
     if d:=_pick(state,'colony'):
         gap,generation_reason=_selected_role_gap(
             ds,counts,'colony',d,desired_colonies,effective_colony_assets,
@@ -336,13 +487,27 @@ def plan_objective_ship_builds(state,plan=None):
         if gap:
             pressure=float(((state.native or {}).get('strategic_watchdog') or {}).get('colonization_pressure',1.0))
             priority=200 if pressure>=1.45 else 182
-            req.append(BuildRequest('colony',int(d['design_number']),d['name'],min(8,gap),priority,
-                f"{colony_reason}; available/queued={colony_assets}; effective distinct-claim pipeline={effective_colony_assets}; duplicate active commitments={duplicate_commitments}; {generation_reason}."))
+            req.append(BuildRequest('colony',int(d['design_number']),d['name'],min(IMMEDIATE_SHIP_QUEUE_HORIZON,gap),priority,
+                f"{colony_reason}; live/imminent={colony_assets}; effective distinct-claim pipeline={effective_colony_assets}; duplicate active commitments={duplicate_commitments}; deep queue total={_role_count(ds,deep_queued,'colony')}; {generation_reason}."))
 
     unknown=sum(1 for p in state.planets if not p.observed); scout_assets=_role_count(ds,counts,'scout')
     scout_contact=enemy_contact_summary(state)
     scout_custom_missions=custom_scout_missions(state)
     desired_scouts,scout_reason=_desired_scout_force(state,plan,scout_assets)
+    if viable and colony_launch_shortfall:
+        # Colony launches must not consume the whole early production window,
+        # but a two-scout ceiling repeatedly left both empires blind.  Let the
+        # size of the unexplored frontier set the protected survey screen; a
+        # large map can therefore sustain its full required scout force while
+        # a small one does not create a speculative probe backlog.
+        frontier_screen=math.ceil(math.sqrt(max(0,unknown)))
+        scout_cap=max(_role_count(ds,cur,'scout'),min(desired_scouts,frontier_screen))
+        if desired_scouts>scout_cap:
+            desired_scouts=scout_cap
+            scout_reason+=(
+                f" Colony-compatible frontier screen={scout_cap}: {colony_launch_shortfall} "
+                "colony hull(s) are still missing from the live/imminent pipeline."
+            )
     state.native["scout_build_policy"]={
         **scout_contact,
         "classic_exploration_enabled":True,
@@ -363,25 +528,80 @@ def plan_objective_ship_builds(state,plan=None):
         if scout_contact["enemy_contact"] and scout_custom_missions:
             priority=max(priority,max(int(m.get("priority",110) or 110) for m in scout_custom_missions))
         req.append(BuildRequest('scout',int(d['design_number']),d['name'],min(6,scout_gap),priority,
-            f"{unknown} worlds remain unknown; {scout_reason}; available/queued={scout_assets}. "
+            f"{unknown} worlds remain unknown; {scout_reason}; live/imminent={scout_assets}. "
             f"Existing scout choice favors the newest mission-capable design and efficient Warp-7 range; {generation_reason}."))
 
-    # Population freight and industrial bulk freight are separate jobs. Opening
-    # population capacity is deliberately handled by a small aggressively cycled
-    # Privateer/Medium-Freighter-class fleet; Large Freighters are added only
-    # when bulk mineral concentration at shipyards justifies them.
+    # Population freight and industrial bulk freight are separate jobs, but a
+    # a source with a large usable population surplus can justify a
+    # high-capacity carrier instead of several smaller departures.
     population_assets,_bulk_assets,total_freighter_assets=_freighter_asset_counts(ds,counts)
     desired_population,desired_bulk,freighter_reason,logistics=_desired_freighter_forces(
         state,len(viable),
     )
+    idle_freighter_ids, idle_freighter_hulls = _idle_empty_freighters(state)
+    population_backlog = sum(
+        int(status.downstream_backlog or 0)
+        for status in logistics.exporter_status
+    )
+    # A population hull is justified by a real unserved lane, not an arbitrary
+    # number of 20k packets.  Bulk freight retains its separate industrial
+    # material threshold.
+    significant_freight_backlog = bool(
+        (population_backlog > 0 and population_assets < desired_population)
+        or int(logistics.bulk_transferable_kt) >= BULK_LARGE_FREIGHTER_TRIGGER_KT
+    )
+    freighter_build_authorized = bool(
+        not idle_freighter_ids and significant_freight_backlog
+    )
+    state.native["freighter_build_policy"] = {
+        "idle_empty_freighter_ids": list(idle_freighter_ids),
+        "idle_empty_freighter_hulls": idle_freighter_hulls,
+        "population_backlog_colonists": population_backlog,
+        "bulk_transferable_kt": int(logistics.bulk_transferable_kt),
+        "significant_backlog": significant_freight_backlog,
+        "build_authorized": freighter_build_authorized,
+        "reason": (
+            "existing empty transport capacity is parked at an owned planet"
+            if idle_freighter_ids
+            else "no idle empty transport; backlog must justify a new hull"
+        ),
+    }
 
     population_gap=max(0,desired_population-population_assets)
-    if population_gap and (d:=_pick_freighter_for_population(state)):
+    if population_gap and freighter_build_authorized and (d:=_pick_freighter_for_population(state)):
         req.append(BuildRequest(
             'freighter',int(d['design_number']),d['name'],min(4,population_gap),174,
-            f"{freighter_reason}; compact population transports available/queued={population_assets}; "
+            f"{freighter_reason}; population transports available/queued={population_assets}; "
             f"selected {d['name']} cargo={int(d.get('cargo_capacity',0) or 0)} kT, "
-            "sized for repeated 20,000-colonist pulses rather than maximum hull size."
+            "selected from current protected source surplus and strategic colony backlog."
+        ))
+
+    # A visible small foreign colony is a legitimate expansion target for one
+    # large transport.  This does not create a fighter program: population
+    # capture is gated by an empty 800+ kT hull and the scheduler's breeder,
+    # range, population-estimate, and Alternate Reality safeguards.
+    capture_targets=population_capture_targets(state)
+    capture_capacity=max((int(d.get('cargo_capacity',0) or 0) for d in ds.values() if d.get('role')=='freighter'),default=0)
+    live_capture_capacity=max(
+        (int(getattr(f,'cargo_capacity',0) or (getattr(f,'native',{}) or {}).get('cargo_capacity',0) or 0)
+        for f in state.fleets if f.owner==state.player_id and f.role=='freighter'),
+        default=0,
+    )
+    needed_capture_capacity=min((target.required_kt for target in capture_targets),default=0)
+    if (
+        freighter_build_authorized
+        and
+        needed_capture_capacity
+        and live_capture_capacity<needed_capture_capacity
+        and capture_capacity>=needed_capture_capacity
+        and (d:=_pick_freighter_for_bulk(state)) is not None
+        and int(d.get('cargo_capacity',0) or 0)>=needed_capture_capacity
+    ):
+        req.append(BuildRequest(
+            'freighter',int(d['design_number']),d['name'],1,178,
+            f"{len(capture_targets)} small observed foreign colony target(s) qualify for guarded population capture; "
+            f"no live freighter has the required {needed_capture_capacity}kT capacity. Build one {d['name']} "
+            "rather than expanding an early low-tech combat fleet."
         ))
 
     # Compact hulls can perform mineral runs too.  Reserve every currently
@@ -396,7 +616,12 @@ def plan_objective_ship_builds(state,plan=None):
     industrial_assets=max(0,total_freighter_assets-population_reserved)
     bulk_gap=max(0,desired_bulk-industrial_assets)
     bulk_design=_pick_freighter_for_bulk(state)
-    if bulk_gap and bulk_design is not None and int(bulk_design.get('cargo_capacity',0) or 0)>=POPULATION_PULSE_KT:
+    if (
+        bulk_gap
+        and freighter_build_authorized
+        and bulk_design is not None
+        and int(bulk_design.get('cargo_capacity',0) or 0)>=POPULATION_PULSE_KT
+    ):
         req.append(BuildRequest(
             'freighter',int(bulk_design['design_number']),bulk_design['name'],min(4,bulk_gap),
             176 if population_reserved>=total_freighter_assets else 166,
@@ -438,11 +663,43 @@ def plan_objective_ship_builds(state,plan=None):
     military_contact=enemy_contact_summary(state)
     combat_assets=_role_count(ds,counts,'combat')
     owned_count=sum(1 for planet in state.planets if planet.owner==state.player_id)
-    baseline_combat=(min(24,max(8,math.ceil(owned_count/2))) if military_contact['enemy_contact'] else 0)
+    # Seeing a distant foreign ship is intelligence, not a reason to queue an
+    # eight-hull defense program ahead of an empty colony pipeline. Explicit
+    # territorial violations below still get the required response.
+    phase_name=str(getattr(plan,'phase','') or '')
+    phase_force_floor=(
+        min(24,max(4,math.ceil(owned_count*0.75)))
+        if phase_name=='fortification'
+        else min(24,max(6,owned_count))
+        if phase_name=='opportunistic_war'
+        else 0
+    )
+    contact_only_deferral=bool(
+        military_contact['enemy_contact']
+        and colony_launch_shortfall
+        and not territorial.needs_response
+        and owned_count<8
+        and phase_force_floor<=0
+    )
+    baseline_combat=(
+        min(24,max(8,math.ceil(owned_count/2)))
+        if military_contact['enemy_contact'] and not contact_only_deferral else 0
+    )
     desired_combat=max(
         baseline_combat,
+        phase_force_floor,
         min(24, 4 + 2 * int(territorial.desired_patrols)) if territorial.needs_response else 0,
     )
+    low_tech_escort_doctrine=int(state.tech.weapons or 0)<LOW_TECH_ESCORT_WEAPONS
+    if low_tech_escort_doctrine and phase_force_floor<=0:
+        desired_combat=min(LOW_TECH_ESCORT_CAP,desired_combat)
+    state.native['objective_combat_policy']={
+        'phase':phase_name or 'unclassified',
+        'phase_force_floor':phase_force_floor,
+        'contact_only_deferral':contact_only_deferral,
+        'low_tech_escort_doctrine':low_tech_escort_doctrine,
+        'desired_combat':desired_combat,
+    }
     if d:=_pick(state,'combat'):
         combat_gap,generation_reason=_selected_role_gap(
             ds,counts,'combat',d,desired_combat,combat_assets,
@@ -453,10 +710,15 @@ def plan_objective_ship_builds(state,plan=None):
     if combat_gap and (d:=_pick(state,'combat')):
         req.append(BuildRequest(
             'combat',int(d['design_number']),d['name'],min(6,combat_gap),170,
-            f"foreign contact is established (fleets={military_contact['foreign_fleet_count']}, "
-            f"planets={military_contact['foreign_planet_count']}); shared combat/escort hulls "
-            f"available or queued={combat_assets}, desired defensive force={desired_combat}; "
+            f"{('phase='+phase_name+' requires a standing combat force' if phase_force_floor else 'foreign contact is established')} "
+            f"(fleets={military_contact['foreign_fleet_count']}, planets={military_contact['foreign_planet_count']}); shared combat/escort hulls "
+            f"live/imminent={combat_assets}, desired defensive force={desired_combat}; "
             f"territorial patrol objectives={territorial.desired_patrols}; {generation_reason}."
+            +(
+                f" Low-tech escort doctrine holds the fleet at {LOW_TECH_ESCORT_CAP} hulls until "
+                f"Weapons {LOW_TECH_ESCORT_WEAPONS}; research efficiency takes precedence over a mass early-fighter build."
+                if low_tech_escort_doctrine else ""
+            )
         ))
 
     req.sort(key=lambda r:r.priority,reverse=True)

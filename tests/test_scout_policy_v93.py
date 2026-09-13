@@ -34,7 +34,7 @@ def test_foreign_contact_keeps_expansion_race_scout_force():
     assert contact["enemy_contact"] is True
     assert custom_scout_missions(state)==[]
     desired,reason=_desired_scout_force(state,None,0)
-    assert desired==6
+    assert desired==8
     assert "uncontested exploration and border intelligence" in reason
     requests=[r for r in plan_objective_ship_builds(state) if r.role=="scout"]
     assert len(requests)==1
@@ -46,8 +46,24 @@ def test_foreign_contact_keeps_expansion_race_scout_force():
 def test_foreign_contact_includes_named_custom_missions_in_scout_screen():
     state=_contact_state(mission=True)
     desired,reason=_desired_scout_force(state,None,0)
-    assert desired==6
+    assert desired==8
     assert "border-lane-7" in reason
     requests=[r for r in plan_objective_ship_builds(state) if r.role=="scout"]
     assert len(requests)==1
     assert "expansion-race scout screen" in requests[0].reason
+
+
+def test_colony_launch_shortfall_keeps_a_frontier_sized_scout_screen():
+    state=_contact_state()
+    state.planets.append(
+        Planet(3,"Claim",Position(30,0),owner=None,observed=True,habitability=75)
+    )
+    for index in range(4,40):
+        state.planets.append(
+            Planet(index,f"Unknown {index}",Position(index*10,0),owner=None,observed=False)
+        )
+
+    requests=[r for r in plan_objective_ship_builds(state) if r.role=="scout"]
+
+    assert requests and requests[0].quantity==6
+    assert "Colony-compatible frontier screen" in requests[0].reason

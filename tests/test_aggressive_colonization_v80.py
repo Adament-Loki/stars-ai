@@ -139,6 +139,33 @@ def test_multiple_colony_loads_share_one_population_budget():
     assert colony_orders[0].payload["source_population_after_load"] == 11_500
 
 
+def test_colony_ship_at_verified_launch_base_uses_refuelled_range_not_stale_m_fuel():
+    home = _world(0, "Home", 0, owner=1, pop=100_000)
+    home.native["starbase_capabilities"] = {"can_refuel": True, "can_build_ships": True}
+    target = _world(1, "Target", 50)
+    fleet = Fleet(
+        11, "Colony", 1, Position(0, 0), role="colony",
+        native={
+            "position_object_id": 0,
+            "fuel_profile": {
+                "fuel": 1, "effective_fuel": 1, "fuel_capacity": 100,
+                "cargo_mass": 0,
+                "groups": [{"engine_id": 4, "mass": 100}],
+            },
+            "race_fuel_flags": {"ife": False, "ce": False},
+        },
+    )
+    state = _state([home, target], [fleet])
+    orders = OrderSet("g", state.year, 1)
+
+    add_economic_orders(state, orders)
+
+    colony = next(order for order in orders.orders if order.kind == "colony_operation")
+    assert colony.payload["destination_planet_id"] == 1
+    assert colony.payload["load_25kt_population"] is True
+    assert fleet.native["fuel_profile"]["at_starbase"] is True
+
+
 def test_max_terraform_is_a_native_supported_production_item():
     assert _encode_queue_item("max_terraform", 1) == bytes.fromhex("01 14 02 00")
     decoded = parse_production_change(_production_block(0, [{
@@ -212,6 +239,26 @@ def test_probe_route_clears_close_home_region_before_distant_cluster():
     assert route.planet_ids[0] == 1
 
 
+def test_local_recon_preempts_an_idle_scouts_old_outer_route():
+    home = _world(0, "Home", 0, owner=1, pop=50_000)
+    hell = _world(121, "Hell", 90, observed=False, hab=None)
+    distant = _world(122, "Distant", 700, observed=False, hab=None)
+    scout = Fleet(5, "Scout", 1, Position(0, 0), role="scout")
+    state = _state([home, hell, distant], [scout])
+    memory = AgentMemory()
+    memory.set_scout_route(5, [122], state.year, expected_discoveries=1, total_distance=700)
+
+    orders = OrderSet("g", state.year, 1)
+    add_exploration_orders(state, orders, memory=memory)
+
+    scan = next(order for order in orders.orders if order.payload.get("mission") == "scan")
+    assert scan.payload["destination_planet_id"] == 121
+    assert scan.payload["route_planet_ids"] == [121]
+    policy = state.native["scout_exploration_policy"]
+    assert policy["home_neighborhood_unknown_ids"] == [121]
+    assert policy["deferred_outer_persistent_route_ids"] == [122]
+
+
 def test_t25_milestone_and_colony_force_match_aggressive_expansion_goal():
     milestone = _next_milestone(25, 288)
     assert milestone["new_colonies_min"] == 13
@@ -230,6 +277,31 @@ def test_t25_milestone_and_colony_force_match_aggressive_expansion_goal():
     desired, reason = _desired_colony_force(state, viable, None)
     assert desired >= 7
     assert "milestone needs 7 more colonies" in reason
+
+
+def test_colony_force_never_exceeds_active_need_plus_three_hulls():
+    home = _world(0, "Home", 0, owner=1, pop=1_000_000)
+    viable = [_world(i, f"P{i}", i * 10) for i in range(1, 31)]
+    committed = Fleet(
+        1, "Committed", 1, Position(0, 0), role="colony",
+        destination_planet_id=1,
+    )
+    state = _state(
+        [home, *viable], [committed], year=2410,
+        watchdog={
+            "new_colonies": 0,
+            "colonization_pressure": 1.75,
+            "milestone": {"deadline_turn": 10, "new_colonies_optimal": 2},
+        },
+    )
+
+    desired, reason = _desired_colony_force(state, viable, None)
+
+    # One committed target plus the two milestone/source-backed targets is the
+    # active program.  The policy permits only three uncommitted hulls beyond
+    # it, regardless of the homeworld's very large population surplus.
+    assert desired <= 6
+    assert "pipeline ceiling=need+3" in reason
 
 
 def test_duplicate_active_claims_do_not_satisfy_pipeline_or_block_queue_top_up():
@@ -274,5 +346,41 @@ def test_duplicate_active_claims_do_not_satisfy_pipeline_or_block_queue_top_up()
         if o.kind == "set_planet_queue" and o.payload["planet_id"] == 0
     )
     preserved = next(item for item in queue if item.get("design_slot") == 0)
-    assert preserved["quantity"] == 3
-    assert preserved["objective_top_up"] == 2
+    # A serial shipyard retains a small executable colony horizon instead of
+    # treating a deep queue as a real colony force.
+    assert preserved["quantity"] == 2
+    assert preserved["objective_top_up"] == 1
+
+
+def test_colony_launch_replaces_deep_scout_backlog_at_a_serial_shipyard():
+    home = _world(0, "Home", 0, owner=1, pop=100_000)
+    home.native["starbase_capabilities"] = {"can_build_ships": True, "can_refuel": True}
+    targets = [_world(i, f"P{i}", i * 20) for i in range(1, 5)]
+    state = _state(
+        [home, *targets], year=2410,
+        watchdog={
+            "new_colonies": 0,
+            "colonization_pressure": 1.75,
+            "milestone": {"deadline_turn": 10, "new_colonies_optimal": 4},
+        },
+    )
+    state.native["design_profiles"] = [
+        {"design_number": 0, "name": "Mayflower", "role": "colony", "dry_mass": 65, "fuel_capacity": 200, "engine_id": 4},
+        {"design_number": 1, "name": "Probe", "role": "scout", "dry_mass": 25, "fuel_capacity": 300, "engine_id": 4},
+    ]
+    state.native["production_by_planet"] = {
+        "0": [{"item_id": 1, "item_type": 4, "count": 14}],
+    }
+
+    requests = plan_objective_ship_builds(state)
+    colony = next(request for request in requests if request.role == "colony")
+    assert colony.quantity == 2
+    assert "deep queue total=0" in colony.reason
+
+    orders = OrderSet("g", state.year, 1)
+    add_economic_orders(state, orders)
+    queue = next(o.payload["queue"] for o in orders.orders if o.kind == "set_planet_queue")
+    assert queue[0]["item"] == "ship_design"
+    assert queue[0]["role"] == "colony"
+    assert queue[0]["quantity"] == 2
+    assert not any(item.get("role") == "scout" for item in queue)

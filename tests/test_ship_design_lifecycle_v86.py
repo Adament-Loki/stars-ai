@@ -1,5 +1,6 @@
 import pytest
 
+import stars_ai.design_development as design_development_module
 from stars_ai.design_development import add_design_development_orders, plan_design_development
 from stars_ai.design_legality import ComponentRef
 from stars_ai.models import Fleet, GameState, OrderSet, Planet, Position, RaceProfile, Tech
@@ -131,6 +132,25 @@ def test_full_slots_recycle_is_delete_only_then_wait_for_readback():
     assert executable[0].kind == "delete_ship_design"
     assert "next-M" in executable[0].reason
     assert all(o.kind != "replace_ship_design" for o in executable)
+
+
+def test_unbuilt_combat_design_is_retained_during_territorial_response(monkeypatch):
+    state=_base_state()
+    state.native["designs"]=[
+        {"design_number":2,"name":"Old Combat","is_starbase":False,"total_remaining":0,"turn_designed":10},
+        {"design_number":8,"name":"New Combat","is_starbase":False,"total_remaining":0,"turn_designed":25},
+    ]
+    state.native["design_profiles"]=[
+        {"design_number":2,"name":"Old Combat","role":"combat"},
+        {"design_number":8,"name":"New Combat","role":"combat"},
+    ]
+    monkeypatch.setattr(
+        design_development_module,
+        "assess_territorial_defense",
+        lambda current: type("Assessment", (), {"needs_response": True})(),
+    )
+
+    assert design_development_module._unbuilt_superseded_combat_design(state) is None
 
 
 def test_fuel_mizer_scout_is_not_proposed_when_best_existing_w7_scout_is_better():

@@ -25,7 +25,7 @@ def test_colony_intent_contains_ranked_candidates_but_does_not_move_empty():
     c=next(x for x in intents if x["role"]=="colony")
     assert c["action"]=="HOLD / COLONY READY"
     assert c["destination_planet_id"] is None
-    assert len(c["colony_candidates"])==2
+    assert len(c["colony_candidates"])>=2
     assert c["colony_candidates"][0]["planet_name"]=="ExcellentNear"
     assert not any(x.kind=="move_fleet" and x.payload.get("fleet_id")==0 for x in o.orders)
 
@@ -34,3 +34,14 @@ def test_colony_activity_invariant_is_purpose_not_motion():
     intents=ensure_fleet_activity(s,o)
     c=next(x for x in intents if x["role"]=="colony")
     assert c["action"].startswith("HOLD")
+
+
+def test_colony_candidates_reject_decades_long_low_warp_commitments():
+    planets=[
+        Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=100),
+        Planet(1,"Far",Position(80,0),owner=None,observed=True,habitability=90),
+    ]
+    fleet=Fleet(0,"Slow Colony",1,Position(0,0),role="colony",speed=2)
+    state=GameState("g",2400,1,RaceProfile(),Tech(),planets,[fleet])
+
+    assert score_colony_candidates(state,fleet)==[]

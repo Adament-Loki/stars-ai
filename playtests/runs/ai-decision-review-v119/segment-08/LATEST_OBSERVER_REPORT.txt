@@ -1,0 +1,60 @@
+Stars! AI Observer Report - Turn 10 / Year 2480
+==================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+P5 Golem has a clear lead. Observer score gap over second place: 65.7%.
+Yes - fighting/conquest has begun. 8 enemy planet capture(s) occurred in the reporting window.
+
+CURRENT STANDINGS
+-----------------
+1. P5 Golem [Hyper Expansion] - 61 planets, pop 115,528, 9434 factories, 247 ships / 0 fleet mass, tech total 72, 28 starbases.
+2. P6 Picardi [Packet Physics] - 35 planets, pop 113,154, 5077 factories, 231 ships / 0 fleet mass, tech total 60, 22 starbases.
+3. P4 Loraxoid [Inner Strength] - 2 planets, pop 19,134, 2671 factories, 24 ships / 0 fleet mass, tech total 66, 2 starbases.
+4. P1 SuperRabits [Interstellar Traveler / Balanced] - 12 planets, pop 23,067, 2222 factories, 59 ships / 0 fleet mass, tech total 37, 6 starbases.
+5. P2 S2 [Inner Strength / Balanced] - 5 planets, pop 18,941, 1763 factories, 24 ships / 0 fleet mass, tech total 39, 5 starbases.
+6. P3 Ferret [Super Stealth] - 1 planets, pop 9,263, 925 factories, 33 ships / 0 fleet mass, tech total 66, 1 starbases.
+
+CHANGE SINCE TURN 0
+-----------------------------
+P5: planets +3, population +41,408, factories +3453, ships +94, fleet mass +0, tech total +16.
+P6: planets +1, population +26,175, factories +1849, ships +72, fleet mass +0, tech total +4.
+P4: planets -1, population +658, factories +65, ships +4, fleet mass +0, tech total +3.
+P1: planets -4, population +3,086, factories +325, ships -3, fleet mass +0, tech total +5.
+P2: planets -3, population +1,197, factories +215, ships -15, fleet mass +0, tech total +1.
+P3: planets +0, population +92, factories +9, ships -26, fleet mass +0, tech total +3.
+
+WAR & CONTACT
+-------------
+- P5 captured planet #93 from P1.
+- P5 captured planet #3 from P2.
+- P5 captured planet #23 from P2.
+- P5 captured planet #54 from P6.
+- P5 captured planet #76 from P4.
+- P5 captured planet #97 from P1.
+- P5 captured planet #127 from P1.
+- P5 captured planet #121 from P1.
+- P3 suffered a major net fleet loss during Turn 5 / Year 2475 (ships 59->28; fleets 10->9; net loss 31 ships). Observed fleet change: fleet ID 3 disappeared (31 ships; last seen at (1142, 1552)). Cause is not decoded.
+- P3 suffered a major net fleet loss during Turn 6 / Year 2476 (ships 28->20; fleets 9->12; net loss 8 ships). Observed fleet change: fleet ID 11 disappeared (9 ships; last seen at (1387, 1277)); fleet ID 0 disappeared (4 ships; last seen at (1355, 1382)). Cause is not decoded.
+- P2 suffered a major net fleet loss during Turn 10 / Year 2480 (ships 32->24; fleets 20->19; net loss 8 ships). Observed fleet change: fleet ID 2 disappeared (8 ships; last seen at (1486, 1712)). Cause is not decoded.
+
+WHO IS STRONGEST?
+-----------------
+- Territory: P5 with 61 planets.
+- Population: P5 with 115,528.
+- Industry: P5 with 9434 factories.
+- Fleet by mass: P5 with 0.
+- Technology: P5 with tech total 72.
+
+MOMENTUM / RISK
+---------------
+- Current leader: P5 Golem.
+- Current last place: P3 Ferret.
+- P4 is materially behind the leader (<60% of leader observer score).
+- P1 is materially behind the leader (<60% of leader observer score).
+- P2 is materially behind the leader (<60% of leader observer score).
+- P3 is materially behind the leader (<60% of leader observer score).
+
+INTERPRETATION
+--------------
+Observer score is a transparent diagnostic composite, not the Stars! built-in score. Planet captures are strong evidence of war; abrupt fleet losses are treated as probable combat but can also reflect scrapping/merging until battle blocks are fully decoded.

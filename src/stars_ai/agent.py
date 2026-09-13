@@ -16,6 +16,7 @@ from .fuel_planner import apply_fuel_safety
 from .warp_policy import optimize_active_route_warps
 from .design_development import add_design_development_orders
 from .strategic_watchdog import evaluate_strategic_watchdog
+from .fleet_management import add_tactical_fleet_management
 
 
 class StarsAgent:
@@ -66,6 +67,12 @@ class StarsAgent:
         plan = self.persona.build_plan(self.state)
         self.last_plan = plan
         orders.notes.append(f"Persona: {plan.persona_name}")
+        self.state.native["strategic_phase"] = {
+            "phase": plan.phase,
+            "reason": plan.phase_reason,
+            "assessment": dict(plan.phase_assessment),
+        }
+        orders.notes.append(f"PHASE: {plan.phase} — {plan.phase_reason}")
         orders.notes.append(
             f"PERSISTENT INTEL: current M observed={intel_diag['current_m_observed']}, "
             f"ever observed={intel_diag['ever_observed']}/{intel_diag['total_planets']}, "
@@ -91,6 +98,7 @@ class StarsAgent:
 
         add_diplomacy_orders(self.state, orders, plan)
         add_military_orders(self.state, orders, plan)
+        add_tactical_fleet_management(self.state, orders, plan)
         add_economic_orders(self.state, orders, plan, research_decision=research_decision)
         add_exploration_orders(self.state, orders, plan, memory=self.memory)
         add_research_orders(self.state, orders, plan, decision=research_decision)

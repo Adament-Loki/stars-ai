@@ -1,0 +1,444 @@
+[
+  {
+    "turn": 1,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2441,
+    "year_after": 2442,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 2,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2442,
+    "year_after": 2443,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 3,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2443,
+    "year_after": 2444,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 4,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2444,
+    "year_after": 2445,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 5,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2445,
+    "year_after": 2446,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 6,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2446,
+    "year_after": 2447,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 7,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2447,
+    "year_after": 2448,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 8,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2448,
+    "year_after": 2449,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 9,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2449,
+    "year_after": 2450,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 10,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2450,
+    "year_after": 2451,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 11,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2451,
+    "year_after": 2452,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 12,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2452,
+    "year_after": 2453,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 13,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2453,
+    "year_after": 2454,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 14,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2454,
+    "year_after": 2455,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 15,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2455,
+    "year_after": 2456,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 16,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2456,
+    "year_after": 2457,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 17,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2457,
+    "year_after": 2458,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 18,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2458,
+    "year_after": 2459,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 19,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2459,
+    "year_after": 2460,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 20,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2460,
+    "year_after": 2461,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 21,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2461,
+    "year_after": 2462,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 22,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2462,
+    "year_after": 2463,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 23,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2463,
+    "year_after": 2464,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 24,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2464,
+    "year_after": 2465,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 25,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2465,
+    "year_after": 2466,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 26,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2466,
+    "year_after": 2467,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 27,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2467,
+    "year_after": 2468,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 28,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2468,
+    "year_after": 2469,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 29,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2469,
+    "year_after": 2470,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 30,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2470,
+    "year_after": 2471,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 31,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2471,
+    "year_after": 2472,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 32,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2472,
+    "year_after": 2473,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 33,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2473,
+    "year_after": 2474,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 34,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-combat-cap-v117\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2474,
+    "year_after": 2475,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  }
+]

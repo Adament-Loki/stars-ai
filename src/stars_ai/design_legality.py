@@ -22,6 +22,15 @@ class ComponentCategory(IntFlag):
     MECHANICAL = 0x1000
 
 
+# Stars! PRT IDs and the stock hull identity are stable game rules, not an AI
+# heuristic.  Alternate Reality may fit a Colonization Module only to the
+# regular Colony Ship; general-purpose Mechanical slots remain available for
+# ordinary equipment such as fuel tanks.
+PRT_ALTERNATE_REALITY = 8
+COLONY_SHIP_HULL_ID = 15
+COLONIZATION_MODULE_ITEM_ID = 0
+
+
 CATEGORY_NAMES = {
     int(ComponentCategory.ENGINE): "Engine",
     int(ComponentCategory.SCANNER): "Scanner",
@@ -133,6 +142,7 @@ def validate_design(
     *,
     available_components: set[tuple[int, int]] | None = None,
     hull_rules: dict[int, HullRule] | None = None,
+    prt_id: int | None = None,
 ) -> ValidationResult:
     rules = HULL_RULES if hull_rules is None else hull_rules
     hull = rules.get(hull_id)
@@ -204,6 +214,21 @@ def validate_design(
                     idx,
                     "component_not_known_available",
                     f"Slot {idx} uses {_category_label(comp.category)} item {comp.item_id}, which is not in the player's known-available component set.",
+                )
+            )
+
+        if (
+            prt_id is not None
+            and int(prt_id) == PRT_ALTERNATE_REALITY
+            and int(hull_id) != COLONY_SHIP_HULL_ID
+            and int(comp.category) == int(ComponentCategory.MECHANICAL)
+            and int(comp.item_id) == COLONIZATION_MODULE_ITEM_ID
+        ):
+            issues.append(
+                ValidationIssue(
+                    idx,
+                    "alternate_reality_colonizer_hull",
+                    "Alternate Reality may fit a Colonization Module only to the Colony Ship hull.",
                 )
             )
 

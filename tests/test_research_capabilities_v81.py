@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 import stars_ai.research_planner as research_planner_module
 from stars_ai.memory import AgentMemory
@@ -7,6 +8,9 @@ from stars_ai.native.orders import parse_research_change
 from stars_ai.native.x_writer import _planet_leftover_research_block, _research_change_block
 from stars_ai.persona import BalancedPersona
 from stars_ai.research_planner import plan_research
+from stars_ai.research_planner import _contributors
+from stars_ai.research_capabilities import ResearchCapability
+from stars_ai.starsapi_items import BEAM, ENGINE
 from stars_ai.strategy.economy import add_economic_orders
 
 
@@ -114,12 +118,59 @@ def test_opening_military_demand_does_not_override_growth_lock():
     assert decision.allocation_percent == 15
 
 
+def test_fielded_combat_family_targets_next_race_legal_weapon_upgrade_before_same_gun_hull_variants():
+    state=_state(year=2435, hostile=True, tech=Tech(
+        energy=6, weapons=6, propulsion=6, construction=6, electronics=6, biotechnology=4,
+    ))
+    state.native["strategic_watchdog"]={}
+    state.native["designs"]=[{
+        "design_number": 2, "name": "W6 Escort", "hull_id": 5,
+        "is_starbase": False,
+        "slots": [
+            {"category": ENGINE, "item_id": 2, "count": 1},
+            {"category": BEAM, "item_id": 3, "count": 1},
+            {"category": 0, "item_id": 0, "count": 0},
+            {"category": 0, "item_id": 0, "count": 0},
+        ],
+    }]
+    state.native["design_profiles"].append({
+        "design_number":2, "name":"W6 Escort", "role":"combat", "hull_id":5,
+    })
+    state.fleets.append(Fleet(
+        3,"Fleet",1,Position(0,0),role="combat",combat_power=300,
+        native={"ship_count":[0,0,4]},
+    ))
+
+    decision=plan_research(state,_plan(state))
+
+    # At the current non-Weapons tech levels, the stock component table makes
+    # Blackjack the next legal combat weapon after the fitted W6 armament.
+    # This target is derived from that table, not from a fixed W10/W12 rule.
+    assert decision.capability_id == "military:weapons_upgrade:7"
+    assert decision.requirements == {"weapons": 7}
+    assert decision.current_field == "weapons"
+    assert "same-gun" in decision.reason
+
+
 def test_sprints_are_available_from_turn_10():
     state=_state(year=2410)
     decision=plan_research(state,_plan(state))
     assert decision.capability_id=="hull:2"
     assert decision.posture=="SPRINT"
     assert decision.allocation_percent==25
+
+
+def test_ungraduated_promoted_hub_is_not_used_as_a_research_sprint_lab():
+    state=_state(year=2412)
+    # This is a high-quality ring-one P1.  Its population is large enough that
+    # the old generic contributor selector cleared its queue, but it has not
+    # yet graduated into a support/breeder hub.
+    state.planets[1].position=Position(120,0)
+    state.planets[1].population=90_000
+    contributors,protected=_contributors(state,True,False,False)
+
+    assert 1 not in contributors
+    assert 1 in protected
 
 
 def _demand(capability_id,score_scale,field="electronics",level=2,utilization=1.0):
@@ -191,6 +242,26 @@ def test_native_research_nibbles_and_leftover_only_bytes():
     assert parsed.current_field_code==3
     assert parsed.next_field_code==4
     assert _planet_leftover_research_block(40).data==bytes.fromhex("28 00 01 00 00 00")
+
+
+def test_terraform_value_excludes_foreign_worlds(monkeypatch):
+    state=_state(tech=Tech(energy=0))
+    state.planets.append(Planet(9,"Foreign",Position(30,0),owner=2,observed=True,native={"terraform_base":100}))
+    for planet in state.planets:
+        planet.native["terraform_base"]=int(planet.native.get("terraform_base",0) or 0)
+    monkeypatch.setattr(
+        research_planner_module,
+        "evaluate_terraforming",
+        lambda current, planet: SimpleNamespace(
+            tech_habitability=int((planet.native or {}).get("terraform_base",0) or 0)+int(current.tech.energy)
+        ),
+    )
+    capability=ResearchCapability("terraform:test","Test terraform","terraforming",{"energy":1},"test","test")
+
+    value, improved=research_planner_module._terraform_value(state,capability)
+
+    assert improved==2
+    assert value==pytest.approx(2/35)
 
 
 def test_research_and_planet_mode_commands_are_status_aware():

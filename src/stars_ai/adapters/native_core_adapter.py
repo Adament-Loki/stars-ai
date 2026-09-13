@@ -18,7 +18,8 @@ from ..native.player_state import PlayerState
 from ..fuel_planner import design_fuel_profile, fleet_fuel_profile, has_ife, has_ce
 from ..starbase_capabilities import starbase_capabilities
 from ..population_units import colonists_from_cargo_kt
-from ..starsapi_items import MINE_LAYER
+from ..design_legality import COLONIZATION_MODULE_ITEM_ID
+from ..starsapi_items import MECHANICAL, MINE_LAYER, stock_hulls
 
 
 def _infer_xy(m_path: Path) -> Path | None:
@@ -49,13 +50,31 @@ def _role_for_design(d) -> str:
     """Classify a design from fitted components for high-level planning."""
     armed=any(s.count>0 and s.category in (16,32,64) for s in d.slots)
     has_mine_layer=any(s.count>0 and s.category==MINE_LAYER for s in d.slots)
-    if d.hull_id in (14,15): return 'colony'
+    has_colonization_module=any(
+        s.count > 0
+        and s.category == MECHANICAL
+        and s.item_id == COLONIZATION_MODULE_ITEM_ID
+        for s in d.slots
+    )
+    hull=stock_hulls().get(int(d.hull_id))
+    # A Colonization Module is the role-defining equipment, not a particular
+    # hull ID.  General cargo hulls with the module were previously decoded as
+    # freighters after native read-back, which hid live colonizers from the
+    # expansion and production planners.  A non-cargo hull still cannot carry
+    # settlers, so it remains outside the colony role.
+    if has_colonization_module and hull is not None and int(hull.cargo) > 0:
+        return 'colony'
     if d.hull_id==4: return 'scout'
     if d.hull_id in (20,21,22,23,24): return 'miner'
     # Dedicated SD hulls and compatible general-purpose hulls both need an
     # actual Mine Layer component before they can establish a field.
     if has_mine_layer: return 'minelayer'
-    if d.hull_id in (0,1,2,3,11,12,13,25,26): return 'freighter'
+    # Inner Strength Fuel Xports are strategic fleet tenders: their fuel and
+    # annual in-fleet repair effect must not be hidden in generic logistics.
+    # A mixed combat+tender fleet remains ``combat`` in ``_fleet_role`` below,
+    # so it preserves its defensive mission after the Type-37 attachment.
+    if d.hull_id in (25,26): return 'tender'
+    if d.hull_id in (0,1,2,3,11,12,13): return 'freighter'
     if armed: return 'combat'
     return 'unknown'
 
@@ -66,7 +85,7 @@ def _design_roles(native: PlayerState, player_id: int) -> dict[int,str]:
 def _fleet_role(ship_count: list[int], roles: dict[int, str]) -> str:
     """Choose the dominant strategic role represented in a mixed fleet."""
     present = {roles.get(i, 'unknown') for i, count in enumerate(ship_count) if count}
-    for preferred in ('colony', 'combat', 'minelayer', 'miner', 'scout', 'freighter'):
+    for preferred in ('colony', 'combat', 'minelayer', 'miner', 'scout', 'tender', 'freighter'):
         if preferred in present:
             return preferred
     return 'unknown'
@@ -125,7 +144,6 @@ def _normalize_active_waypoint(waypoints) -> dict:
     """Normalize native waypoint #1 without guessing undocumented task values."""
     result={
         'destination_planet_id':None,
-        'destination_fleet_id':None,
         'destination_warp':None,
         'destination_task':None,
         'destination_mission':None,
@@ -444,6 +462,18 @@ class NativeCoreTurnAdapter(TurnAdapter):
             class _Shim: pass
             shim=_Shim(); shim.ship_count=list(f.ship_count); shim.native={'ship_count':list(f.ship_count),'cargo':{'ironium':f.ironium,'boranium':f.boranium,'germanium':f.germanium,'population':f.population},'fuel':f.fuel}
             fuel_profile=fleet_fuel_profile(shim,design_profiles,at_starbase=at_starbase) if owner==player_id else {}
+            # Some native fleet records expose zero in the legacy ``mass``
+            # field even for an owned, fully decoded combat design.  A zero
+            # made every escort fail the defensive-strength comparison and
+            # silently converted an available patrol screen into HOLD orders.
+            # For our own explicitly armed role, use decoded dry mass as a
+            # conservative readiness proxy only when native mass is absent.
+            reported_mass=float(f.mass or 0)
+            combat_readiness=(
+                reported_mass if reported_mass>0 else
+                float(fuel_profile.get('dry_mass',0) or 0)
+                if owner==player_id and role=='combat' else 0.0
+            )
             fleets.append(Fleet(
                 id=fid,
                 name=f'Fleet #{fid + 1}',
@@ -454,7 +484,7 @@ class NativeCoreTurnAdapter(TurnAdapter):
                 # Fleet cargo is native kT: one kT carries 100 colonists.
                 cargo_population=colonists_from_cargo_kt(f.population),
                 cargo_capacity=int(fuel_profile.get('cargo_capacity',0)),
-                combat_power=float(f.mass or 0),
+                combat_power=combat_readiness,
                 speed=speed,
                 destination_warp=active_waypoint['destination_warp'],
                 destination_task=active_waypoint['destination_task'],
@@ -483,11 +513,15 @@ class NativeCoreTurnAdapter(TurnAdapter):
                     'population_raw_kt': int(f.population or 0),
                     'observed_warp': observed_warp,
                     'native_destination_planet_id':active_waypoint['destination_planet_id'],
-                    'native_destination_fleet_id':active_waypoint['destination_fleet_id'],
+                    'native_destination_fleet_id':active_waypoint.get('destination_fleet_id'),
                     'native_destination_warp':active_waypoint['destination_warp'],
                     'native_destination_task':active_waypoint['destination_task'],
                     'native_destination_mission':active_waypoint['destination_mission'],
                     'mass': fuel_profile.get('mass',f.mass),
+                    'combat_readiness_source':(
+                        'native_mass' if reported_mass>0 else
+                        'decoded_armed_dry_mass' if combat_readiness>0 else 'unavailable'
+                    ),
                     'fuel_profile': fuel_profile,
                     'cargo_capacity': int(fuel_profile.get('cargo_capacity',0)),
                     'cargo_capacity_confidence': fuel_profile.get('cargo_capacity_confidence','unknown'),

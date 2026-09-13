@@ -1,16 +1,40 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, asdict
+import math
 from .models import GameState
 from .util import distance
 from .empire_geometry import distance_from_homeworld
 from .terraforming import evaluate_terraforming
 from .expansion_network import evaluate_expansion_network
+from .warp_policy import mission_warp
 
 
 OPENING_COLONY_SUPPORT_DISTANCE=300.0
 MAX_COLONY_SUPPORT_DISTANCE=650.0
 MIN_COLONY_SCORE=0.0
+
+
+def colony_transit_year_budget(state:GameState) -> int:
+    """Bound a one-way colony commitment by the current expansion stage.
+
+    A support-distance check alone can approve a target that a low-fuel colony
+    hull reaches at Warp 2 over decades.  Native waypoint replacement is
+    intentionally fail-closed, so those commitments cannot be usefully
+    retargeted when another empire claims the world first.
+    """
+    turn=max(0,int(state.year)-2400)
+    if turn<=15:
+        return 8
+    if turn<=40:
+        return 12
+    return 16
+
+
+def colony_transit_years(fleet, target_position) -> int:
+    """Estimate Stars!' one-way travel years at this fleet's safe warp."""
+    warp=max(1,int(mission_warp(fleet,target_position,"colonize")))
+    return max(1,math.ceil(distance(fleet.position,target_position)/(warp*warp)))
 
 
 def reserved_colony_target_ids(state:GameState) -> set[int]:
@@ -184,6 +208,7 @@ class ColonyCandidate:
     distance_from_fleet:float
     distance_from_nearest_owned:float
     distance_from_homeworld:float
+    transit_years:int
     population:int
     resources:int
     score:float
@@ -221,6 +246,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
     # applies first, so the AI never settles a bad world just to hit a quota.
     turn=max(0,int(state.year)-2400)
     layer1_needed=max(0,promotion_network.layer1_target_count-len(p1_hubs))
+    transit_budget=colony_transit_year_budget(state)
 
     for p in state.planets:
         if p.owner is not None or not p.observed:
@@ -228,6 +254,9 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
         native=p.native or {}
 
         travel=distance(fleet.position,p.position)
+        transit_years=colony_transit_years(fleet,p.position)
+        if transit_years>transit_budget:
+            continue
         nearest_owned=min(
             (distance(p.position,q.position) for q in owned),
             default=travel,
@@ -326,6 +355,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"mineral concentrations={conc[:3] if mineral_known else 'unknown'} "
                 f"add {mineral_bonus+known_bonus:.1f}; "
                 f"fleet distance {travel:.1f} costs {travel_penalty:.1f}; "
+                f"safe transit={transit_years}y (budget={transit_budget}y); "
                 f"support distance {nearest_owned:.1f} costs {support_penalty:.1f}; "
                 f"nearby expansion cluster adds {cluster_bonus:.1f}; "
                 f"home distance {home_distance:.1f} adds {home_bonus:.1f} and costs {home_penalty:.1f}; "
@@ -363,6 +393,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"mineral concentrations={conc[:3] if mineral_known else 'unknown'} "
                 f"add {mineral_bonus:.1f}; "
                 f"fleet distance {travel:.1f} costs {travel_penalty:.1f}; "
+                f"safe transit={transit_years}y (budget={transit_budget}y); "
                 f"support distance {nearest_owned:.1f} costs {support_penalty:.1f}; "
                 f"strategic cluster adds {cluster_bonus:.1f}; "
                 f"home distance {home_distance:.1f} adds {home_bonus:.1f} and costs {home_penalty:.1f}; "
@@ -384,6 +415,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 distance_from_fleet=travel,
                 distance_from_nearest_owned=nearest_owned,
                 distance_from_homeworld=home_distance,
+                transit_years=transit_years,
                 population=p.population,
                 resources=mineral_sum,
                 score=score,

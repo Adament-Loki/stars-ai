@@ -28,8 +28,8 @@ def test_transport_sequence():
     bs=_transport_mineral_blocks(_state(),{"fleet_id":1,"destination_planet_id":2,"warp":6})
     assert [b.type_id for b in bs]==[1,4,5]
     assert bs[-1].data[10:12]==bytes.fromhex("61 51")
-    assert bs[-1].data[-10:]==bytes.fromhex(
-        "00 20 00 20 00 20 00 20 00 70"
+    assert bs[-1].data[-8:]==bytes.fromhex(
+        "00 20 00 20 00 20 00 20"
     )
 
 def test_strategy_emits_colony_and_shared_transport_operations():

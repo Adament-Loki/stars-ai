@@ -1,0 +1,132 @@
+[
+  {
+    "turn": 1,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2480,
+    "year_after": 2481,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 2,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2481,
+    "year_after": 2482,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 3,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2482,
+    "year_after": 2483,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 4,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2483,
+    "year_after": 2484,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 5,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2484,
+    "year_after": 2485,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 6,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2485,
+    "year_after": 2486,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 7,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2486,
+    "year_after": 2487,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 8,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2487,
+    "year_after": 2488,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 9,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2488,
+    "year_after": 2489,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 10,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox-ai-decision-review-v119\\GAME.x2"
+    ],
+    "host_returncode": 0,
+    "year_before": 2489,
+    "year_after": 2490,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  }
+]

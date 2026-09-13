@@ -1,0 +1,50 @@
+Stars! AI Observer Report - Turn 10 / Year 2450
+==================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+P5 Golem has a clear lead. Observer score gap over second place: 37.2%.
+No clear evidence of player-vs-player fighting yet; expansion and buildup still dominate.
+
+CURRENT STANDINGS
+-----------------
+1. P5 Golem [Hyper Expansion] - 54 planets, pop 24,673, 2245 factories, 43 ships / 0 fleet mass, tech total 45, 6 starbases.
+2. P6 Picardi [Packet Physics] - 31 planets, pop 40,721, 1780 factories, 61 ships / 0 fleet mass, tech total 36, 12 starbases.
+3. P1 SuperRabits [Interstellar Traveler / Balanced] - 16 planets, pop 13,588, 1312 factories, 52 ships / 0 fleet mass, tech total 27, 5 starbases.
+4. P4 Loraxoid [Inner Strength] - 3 planets, pop 15,966, 1681 factories, 17 ships / 0 fleet mass, tech total 51, 2 starbases.
+5. P2 S2 [Inner Strength / Balanced] - 11 planets, pop 14,387, 1389 factories, 37 ships / 0 fleet mass, tech total 34, 4 starbases.
+6. P3 Ferret [Super Stealth] - 1 planets, pop 8,821, 879 factories, 60 ships / 0 fleet mass, tech total 52, 1 starbases.
+
+CHANGE SINCE TURN 0
+-----------------------------
+P5: planets +4, population +12,167, factories +1280, ships +26, fleet mass +0, tech total +7.
+P6: planets +3, population +16,117, factories +503, ships +13, fleet mass +0, tech total +6.
+P1: planets +1, population +2,877, factories +454, ships +13, fleet mass +0, tech total +3.
+P4: planets +0, population +3,732, factories +365, ships +8, fleet mass +0, tech total +5.
+P2: planets +0, population +1,703, factories +265, ships +0, fleet mass +0, tech total +5.
+P3: planets +0, population +337, factories +36, ships +2, fleet mass +0, tech total +7.
+
+WAR & CONTACT
+-------------
+- No captures or major net fleet-loss events detected in this reporting window.
+
+WHO IS STRONGEST?
+-----------------
+- Territory: P5 with 54 planets.
+- Population: P6 with 40,721.
+- Industry: P5 with 2245 factories.
+- Fleet by mass: P5 with 0.
+- Technology: P3 with tech total 52.
+
+MOMENTUM / RISK
+---------------
+- Current leader: P5 Golem.
+- Current last place: P3 Ferret.
+- P1 is materially behind the leader (<60% of leader observer score).
+- P4 is materially behind the leader (<60% of leader observer score).
+- P2 is materially behind the leader (<60% of leader observer score).
+- P3 is materially behind the leader (<60% of leader observer score).
+
+INTERPRETATION
+--------------
+Observer score is a transparent diagnostic composite, not the Stars! built-in score. Planet captures are strong evidence of war; abrupt fleet losses are treated as probable combat but can also reflect scrapping/merging until battle blocks are fully decoded.

@@ -19,6 +19,14 @@ class ResearchCapability:
     source: str
     executable: bool = True
     tags: tuple[str, ...] = ()
+    # These fields make a research target an operational capability rather
+    # than an isolated technology number.  They intentionally default empty
+    # so existing data-driven expansion/terraforming capabilities remain
+    # backward compatible.
+    unlocks: tuple[str, ...] = ()
+    enables_roles: tuple[str, ...] = ()
+    requires_production_plan: bool = False
+    expiry_condition: str = ""
 
     def remaining(self, tech) -> dict[str, int]:
         return {
@@ -32,6 +40,13 @@ class ResearchCapability:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+# The strategic specification calls these CapabilityGoals.  Retain the
+# repository's established ResearchCapability name while exporting the more
+# descriptive term for callers and reports; both refer to the same immutable
+# operational contract.
+CapabilityGoal = ResearchCapability
 
 
 def _requirements(values: Iterable[int]) -> dict[str, int]:
@@ -86,6 +101,9 @@ def stock_capability_catalog(
             # discount (but not invent) this otherwise authoritative capability.
             executable=False,
             tags=("hull", "expansion_enabler") if category in ("logistics", "expansion") else ("hull",),
+            unlocks=(hull.name,),
+            enables_roles=("freighter",) if category == "logistics" else ("starbase",),
+            requires_production_plan=True,
         ))
 
     if include_ife:
@@ -98,6 +116,9 @@ def stock_capability_catalog(
             source="bundled IFE doctrine and validated stock requirement",
             executable=False,
             tags=("engine", "expansion_enabler"),
+            unlocks=("Fuel Mizer",),
+            enables_roles=("scout", "freighter", "colony"),
+            requires_production_plan=True,
         ))
 
     if total_terraforming:

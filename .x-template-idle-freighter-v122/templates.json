@@ -1,0 +1,20 @@
+{
+  "game_name": "GAME",
+  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5small",
+  "templates": {
+    "1": "C:\\Dev\\repos\\stars-ai\\.x-template-idle-freighter-v122\\template.x1",
+    "2": "C:\\Dev\\repos\\stars-ai\\.x-template-idle-freighter-v122\\template.x2"
+  },
+  "template_sources": {
+    "1": {
+      "path": "C:\\Dev\\repos\\stars-ai\\sandbox-idle-freighter-v122\\GAME.x1",
+      "source": "validated staged X"
+    },
+    "2": {
+      "path": "C:\\Dev\\repos\\stars-ai\\sandbox-idle-freighter-v122\\GAME.x2",
+      "source": "validated staged X"
+    }
+  },
+  "play_on": false,
+  "note": "Immutable bootstrap templates. Live GAME.x# files are regenerated each turn."
+}

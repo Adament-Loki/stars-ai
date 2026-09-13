@@ -109,7 +109,17 @@ class ComponentSpec:
     tech_required:tuple[int,int,int,int,int,int]=(0,0,0,0,0,0)
     required_prt:int|None=None
     required_lrt:str|None=None
+    resource_cost:int=0
+    ironium:int=0
+    boranium:int=0
+    germanium:int=0
+    mystery_trader_bit:int|None=None
     def key(self)->tuple[int,int]: return (int(self.category),int(self.item_id))
+
+    @property
+    def is_mystery_trader_item(self)->bool:
+        """Whether this component needs an actual Mystery Trader acquisition."""
+        return self.mystery_trader_bit is not None
 
 
 def component_mass(category:int,item_id:int)->tuple[int,bool]:
@@ -187,6 +197,25 @@ LRT_FORBIDDEN_COMPONENT_NAMES={
     "OBRM":frozenset({"Robo-Miner","Robo-Maxi-Miner","Robo-Super-Miner"}),
 }
 
+# The player record stores acquired Mystery Trader rewards in ``mt_mask``.
+# These are component rewards only: Mini Morph, Genesis Device, Jump Gate and
+# Ship are rewards too, but are not design-slot components and therefore do
+# not belong in this equipment catalog.  Keep the map name-based and validate
+# it against the active MOD so an item-ID shift cannot silently make an item
+# available.  StarsAPI's PlayerBlock.setMtMask writes this mask as a big-endian
+# two-byte integer, while the bit numbers below are the normal MT reward bits.
+MYSTERY_TRADER_COMPONENT_BITS={
+    "Multi Cargo Pod":0,
+    "Multi Function Pod":1,
+    "Langston Shell":2,
+    "Mega Poly Shell":3,
+    "Alien Miner":4,
+    "Hush-a-Boom":5,
+    "Anti Matter Torpedo":6,
+    "Multi Contained Munition":7,
+    "Enigma Pulsar":9,
+}
+
 
 @lru_cache(maxsize=1)
 def _component_trait_maps():
@@ -221,6 +250,75 @@ def _component_trait_maps():
     return prt,required_lrt,forbidden_lrt
 
 
+@lru_cache(maxsize=1)
+def _mystery_trader_component_bits() -> dict[tuple[int,int],int]:
+    """Return the active-catalog component key for every MT equipment reward."""
+    db=stock_component_database()
+    by_name={spec.name:(int(spec.category),int(spec.item_id)) for spec in db.components.values()}
+    missing=sorted(set(MYSTERY_TRADER_COMPONENT_BITS)-set(by_name))
+    if missing:
+        raise RuntimeError(
+            "Stock UNEDITED.MOD is missing Mystery Trader components: "
+            f"{missing}"
+        )
+    return {
+        by_name[name]:int(bit)
+        for name,bit in MYSTERY_TRADER_COMPONENT_BITS.items()
+    }
+
+
+def mystery_trader_component_bits() -> dict[tuple[int,int],int]:
+    """Public immutable-by-convention map of MT component keys to reward bits."""
+    return dict(_mystery_trader_component_bits())
+
+
+def _known_component_keys(state:Any) -> set[tuple[int,int]]:
+    """Read an optional normalized component-acquisition overlay.
+
+    Native M-file input supplies the authoritative ``race.native.mt_mask``.
+    The overlay is for adapters/tests that already normalize individual known
+    components, and accepts either stock names, ``(category, item_id)`` pairs,
+    or mappings with ``category`` and ``item_id``.
+    """
+    values=(getattr(state,"native",{}) or {}).get("known_components")
+    if values is None:
+        values=(getattr(getattr(state,"race",None),"native",{}) or {}).get("known_components",())
+    keys:set[tuple[int,int]]=set()
+    if not values:
+        return keys
+    by_name={spec.name:key for key,spec in stock_component_database().components.items()}
+    for value in values:
+        if isinstance(value,str):
+            key=by_name.get(value)
+            if key is not None:
+                keys.add((int(key[0]),int(key[1])))
+        elif isinstance(value,dict) and "category" in value and "item_id" in value:
+            keys.add((int(value["category"]),int(value["item_id"])))
+        elif isinstance(value,(tuple,list)) and len(value)>=2:
+            keys.add((int(value[0]),int(value[1])))
+    return keys
+
+
+def mystery_trader_acquired_component_keys(state:Any) -> set[tuple[int,int]]:
+    """Return MT equipment actually acquired by this player.
+
+    Meeting the MOD's six research requirements is deliberately not enough.
+    A component becomes usable only after its bit is present in the decoded
+    player record (or in a normalized component-acquisition overlay).
+    """
+    race_native=(getattr(getattr(state,"race",None),"native",{}) or {})
+    raw_mask=race_native.get("mt_mask",(getattr(state,"native",{}) or {}).get("mt_mask",0))
+    try:
+        mask=int(raw_mask or 0)
+    except (TypeError,ValueError):
+        mask=0
+    known=_known_component_keys(state)
+    return {
+        key for key,bit in _mystery_trader_component_bits().items()
+        if mask & (1 << bit) or key in known
+    }
+
+
 def component_spec(category:int,item_id:int,name:str|None=None)->ComponentSpec:
     key=(int(category),int(item_id))
     mod=stock_component_database().component(*key)
@@ -237,6 +335,11 @@ def component_spec(category:int,item_id:int,name:str|None=None)->ComponentSpec:
         mass,exact,fuel_bonus=fuel,
         tech_required=(mod.tech_required if mod is not None else (0,0,0,0,0,0)),
         required_prt=trait_prt.get(key),required_lrt=trait_lrt.get(key),
+        resource_cost=(int(mod.resource_cost) if mod is not None else 0),
+        ironium=(int(mod.ironium) if mod is not None else 0),
+        boranium=(int(mod.boranium) if mod is not None else 0),
+        germanium=(int(mod.germanium) if mod is not None else 0),
+        mystery_trader_bit=_mystery_trader_component_bits().get(key),
     )
 
 
@@ -318,6 +421,7 @@ def researched_available_components(state:Any)->dict[tuple[int,int],ComponentSpe
     trait_prt,trait_lrt,forbidden_lrt=_component_trait_maps()
     race_prt=prt_id(state)
     race_lrts=lrts(state)
+    acquired_mt=mystery_trader_acquired_component_keys(state)
     out={}
     for key in sorted(available):
         needed_prt=trait_prt.get(key)
@@ -328,6 +432,8 @@ def researched_available_components(state:Any)->dict[tuple[int,int],ComponentSpe
         if needed_lrt is not None and needed_lrt not in race_lrts:
             continue
         if denied_lrt is not None and denied_lrt in race_lrts:
+            continue
+        if key in _mystery_trader_component_bits() and key not in acquired_mt:
             continue
         out[key]=component_spec(*key)
     return out
