@@ -40,7 +40,7 @@
   "auto_merge_history": true,
   "require_history_sync": true,
   "stop_on_missing_x": true,
-  "host_timeout_seconds": 180,
+  "host_timeout_seconds": 360,
   "personas": {
     "1": "Balanced",
     "2": "Balanced",

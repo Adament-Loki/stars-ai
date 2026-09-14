@@ -42,6 +42,7 @@ from stars_ai.native.population_transport import (
 )
 from stars_ai.planet_economy import theoretical_max_population, planet_population_capacity, population_capacity_fraction, projected_population_growth, projected_next_population
 from stars_ai.ship_design_synth import synthesize_generic_design_proposal
+from stars_ai.terraforming import evaluate_terraforming
 
 ORDER_BLOCK_TYPES = {
     1,2,3,4,5,10,19,23,24,25,27,29,34,35,36,37,38,40,42,44,46
@@ -960,6 +961,19 @@ def _colonize_blocks(state:Any,payload:dict)->list[NativeBlock]:
         state,fleet_id=fid,destination_planet_id=pid,warp=warp,task=2,object_type=route_type
     ))
     return out
+
+
+def _current_colony_target_habitability(state:Any, planet_id:int)->int|None:
+    """Return the target's current racial habitability for writer validation."""
+    target=next(
+        (planet for planet in state.planets if int(planet.id)==int(planet_id)),
+        None,
+    )
+    if target is None:
+        return None
+    if bool((state.race.native or {}).get("universal_hab",False)):
+        return 100
+    return evaluate_terraforming(state,target).current_habitability
 
 
 # Controlled Stars!-generated Transport waypoint policy:
@@ -2126,6 +2140,24 @@ def write_ai_turn(
                 fid=int(o.payload["fleet_id"])
                 if fid in touched_fleets:
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                destination_planet_id=int(o.payload["destination_planet_id"])
+                current_habitability=_current_colony_target_habitability(
+                    state,destination_planet_id
+                )
+                if current_habitability is None or current_habitability<=0:
+                    touched_fleets.add(fid)
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            "Refusing native colonization: target has no known positive "
+                            f"current racial habitability (current={current_habitability})."
+                        ),
+                        "payload":{
+                            **o.payload,
+                            "native_current_habitability":current_habitability,
+                        },
+                    })
                     continue
                 movement_payload={**o.payload,"mission":"colonize"}
                 diagnostic=_native_waypoint_decision(

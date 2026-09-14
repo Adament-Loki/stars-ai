@@ -12,6 +12,15 @@ def _safe_list(value):
     return list(value) if isinstance(value, (list, tuple)) else None
 
 
+def _safe_int(value):
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class AgentMemory:
     """
@@ -161,6 +170,10 @@ class AgentMemory:
             "germanium": int(planet.germanium or 0),
             "has_starbase": bool(native.get("has_starbase", False)),
             "starbase_hull_id": native.get("starbase_hull_id"),
+            "population_estimate": _safe_int(native.get("population_estimate")),
+            "defenses_estimate": _safe_int(native.get("defenses_estimate")),
+            "owner_prt_id": _safe_int(native.get("owner_prt_id", native.get("prt_id"))),
+            "owner_prt_name": native.get("owner_prt_name", native.get("prt_name")),
         }
         # A post-capture M record commonly reveals the new owner but omits the
         # former colony's population, installations, and surface minerals.
@@ -469,6 +482,9 @@ class AgentMemory:
                     p.native["original_environment"]=list(intel["original_environment"])
                 if intel.get("mineral_concentrations") is not None:
                     p.native["mineral_concentrations"]=list(intel["mineral_concentrations"])
+                for name in ("population_estimate", "defenses_estimate", "owner_prt_id", "owner_prt_name"):
+                    if intel.get(name) is not None:
+                        p.native[name]=intel[name]
                 last_seen=int(intel.get("last_seen_year",year))
                 p.native["observed_turn"]=last_seen-2400
                 p.native["intel_source"]="current_m_unowned"
@@ -497,6 +513,9 @@ class AgentMemory:
                 p.native["original_environment"] = list(intel["original_environment"])
             if intel.get("mineral_concentrations") is not None:
                 p.native["mineral_concentrations"] = list(intel["mineral_concentrations"])
+            for name in ("population_estimate", "defenses_estimate", "owner_prt_id", "owner_prt_name"):
+                if intel.get(name) is not None:
+                    p.native[name] = intel[name]
 
             last_seen = int(intel.get("last_seen_year", year))
             p.native["observed_turn"] = last_seen - 2400

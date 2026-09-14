@@ -1,63 +1,64 @@
-Stars! AI Observer Report - Turn 30 / Year 2430
+Stars! AI Observer Report - Turn 35 / Year 2435
 ==================================================================
 
 EXECUTIVE SUMMARY
 -----------------
-P7 Felite has a clear lead. Observer score gap over second place: 34.8%.
-No clear evidence of player-vs-player fighting yet; expansion and buildup still dominate.
+P7 Felite has a clear lead. Observer score gap over second place: 81.7%.
+Likely fighting has begun: major fleet losses are visible, although no enemy planet changed hands in this window.
 
 CURRENT STANDINGS
 -----------------
-1. P7 Felite [Hyper Expansion] - 41 planets, pop 5,215, 339 factories, 20 ships / 0 fleet mass, tech total 22, 1 starbases.
-2. P10 Tritizoid [Alternate Reality] - 23 planets, pop 6,457, 0 factories, 8 ships / 0 fleet mass, tech total 28, 23 starbases.
-3. P4 Kilingons [War Monger / Balanced] - 13 planets, pop 8,405, 411 factories, 33 ships / 0 fleet mass, tech total 24, 1 starbases.
-4. P2 S2 [Inner Strength / Balanced] - 17 planets, pop 7,625, 258 factories, 33 ships / 0 fleet mass, tech total 20, 1 starbases.
-5. P8 Picardi [Inner Strength] - 4 planets, pop 7,251, 822 factories, 2 ships / 0 fleet mass, tech total 23, 1 starbases.
-6. P3 Romulans [Super Stealth / Balanced] - 11 planets, pop 8,302, 366 factories, 36 ships / 0 fleet mass, tech total 16, 1 starbases.
-7. P9 Hawk [Packet Physics] - 15 planets, pop 6,180, 71 factories, 15 ships / 0 fleet mass, tech total 22, 2 starbases.
-8. P6 Nairnian [Super Stealth] - 10 planets, pop 6,243, 399 factories, 13 ships / 0 fleet mass, tech total 17, 1 starbases.
-9. P5 Humanoid [Jack of All Trades / Balanced] - 12 planets, pop 4,444, 134 factories, 22 ships / 0 fleet mass, tech total 22, 1 starbases.
-10. P11 Ubert [Super Stealth] - 5 planets, pop 6,033, 564 factories, 13 ships / 0 fleet mass, tech total 18, 1 starbases.
-11. P1 SuperRabits [Interstellar Traveler / Balanced] - 11 planets, pop 3,214, 29 factories, 3 ships / 0 fleet mass, tech total 18, 2 starbases.
+1. P7 Felite [Hyper Expansion] - 64 planets, pop 9,445, 590 factories, 14 ships / 0 fleet mass, tech total 32, 1 starbases.
+2. P10 Tritizoid [Alternate Reality] - 26 planets, pop 7,551, 0 factories, 9 ships / 0 fleet mass, tech total 33, 26 starbases.
+3. P6 Nairnian [Super Stealth] - 12 planets, pop 7,450, 675 factories, 10 ships / 0 fleet mass, tech total 26, 1 starbases.
+4. P8 Picardi [Inner Strength] - 4 planets, pop 9,248, 1025 factories, 2 ships / 0 fleet mass, tech total 30, 1 starbases.
+5. P4 Kilingons [War Monger / Balanced] - 7 planets, pop 10,629, 621 factories, 33 ships / 0 fleet mass, tech total 28, 1 starbases.
+6. P9 Hawk [Packet Physics] - 18 planets, pop 8,981, 104 factories, 27 ships / 0 fleet mass, tech total 24, 2 starbases.
+7. P3 Romulans [Super Stealth / Balanced] - 6 planets, pop 10,030, 555 factories, 46 ships / 0 fleet mass, tech total 24, 1 starbases.
+8. P5 Humanoid [Jack of All Trades / Balanced] - 10 planets, pop 6,676, 405 factories, 38 ships / 0 fleet mass, tech total 22, 1 starbases.
+9. P11 Ubert [Super Stealth] - 6 planets, pop 7,110, 676 factories, 11 ships / 0 fleet mass, tech total 26, 1 starbases.
+10. P2 S2 [Inner Strength / Balanced] - 8 planets, pop 9,914, 504 factories, 33 ships / 0 fleet mass, tech total 20, 1 starbases.
+11. P1 SuperRabits [Interstellar Traveler / Balanced] - 13 planets, pop 5,264, 244 factories, 20 ships / 0 fleet mass, tech total 18, 2 starbases.
 
-CHANGE SINCE TURN 25
+CHANGE SINCE TURN 30
 -----------------------------
-P7: planets +5, population +1,663, factories +182, ships +6, fleet mass +0, tech total +5.
-P10: planets +4, population +1,561, factories +0, ships +2, fleet mass +0, tech total +7.
-P4: planets +3, population +2,489, factories +125, ships +1, fleet mass +0, tech total +4.
-P2: planets +4, population +1,500, factories +125, ships +10, fleet mass +0, tech total +5.
-P8: planets +1, population +2,336, factories +262, ships +0, fleet mass +0, tech total +3.
-P3: planets +2, population +1,961, factories +125, ships +17, fleet mass +0, tech total +4.
-P9: planets +2, population +2,352, factories +11, ships +6, fleet mass +0, tech total +5.
-P6: planets +4, population +1,582, factories +208, ships +0, fleet mass +0, tech total +4.
-P5: planets +1, population +1,683, factories +122, ships +11, fleet mass +0, tech total +1.
-P11: planets +0, population +1,431, factories +227, ships +3, fleet mass +0, tech total +5.
-P1: planets +0, population +951, factories +4, ships +0, fleet mass +0, tech total +0.
+P7: planets +8, population +3,709, factories +244, ships -5, fleet mass +0, tech total +4.
+P10: planets +3, population +1,055, factories +0, ships +3, fleet mass +0, tech total +5.
+P6: planets +2, population +1,120, factories +219, ships -3, fleet mass +0, tech total +9.
+P8: planets +0, population +1,997, factories +203, ships +0, fleet mass +0, tech total +8.
+P4: planets +1, population +2,394, factories +156, ships -1, fleet mass +0, tech total +5.
+P9: planets +3, population +2,738, factories +34, ships +12, fleet mass +0, tech total +3.
+P3: planets +1, population +1,924, factories +176, ships +13, fleet mass +0, tech total +7.
+P5: planets +1, population +2,207, factories +125, ships +16, fleet mass +0, tech total +3.
+P11: planets +1, population +1,077, factories +112, ships -2, fleet mass +0, tech total +10.
+P2: planets +2, population +2,021, factories +125, ships +0, fleet mass +0, tech total +6.
+P1: planets +1, population +1,646, factories +147, ships +15, fleet mass +0, tech total +1.
 
 WAR & CONTACT
 -------------
-- No captures or major net fleet-loss events detected in this reporting window.
+- P7 suffered a major net fleet loss during Turn 33 / Year 2433 (ships 19->16; fleets 19->16; net loss 3 ships). Observed fleet change: fleet ID 15 disappeared (1 ships; last seen at (1303, 2401)); fleet ID 16 disappeared (1 ships; last seen at (1339, 1974)); fleet ID 20 disappeared (1 ships; last seen at (1177, 2460)). Cause is not decoded.
 
 WHO IS STRONGEST?
 -----------------
-- Territory: P7 with 41 planets.
-- Population: P4 with 8,405.
-- Industry: P8 with 822 factories.
+- Territory: P7 with 64 planets.
+- Population: P4 with 10,629.
+- Industry: P8 with 1025 factories.
 - Fleet by mass: P7 with 0.
-- Technology: P10 with tech total 28.
+- Technology: P10 with tech total 33.
 
 MOMENTUM / RISK
 ---------------
 - Current leader: P7 Felite.
 - Current last place: P1 SuperRabits.
-- P4 is materially behind the leader (<60% of leader observer score).
-- P2 is materially behind the leader (<60% of leader observer score).
-- P8 is materially behind the leader (<60% of leader observer score).
-- P3 is materially behind the leader (<60% of leader observer score).
-- P9 is materially behind the leader (<60% of leader observer score).
+- P10 is materially behind the leader (<60% of leader observer score).
 - P6 is materially behind the leader (<60% of leader observer score).
+- P8 is materially behind the leader (<60% of leader observer score).
+- P4 is materially behind the leader (<60% of leader observer score).
+- P9 is materially behind the leader (<60% of leader observer score).
+- P3 is materially behind the leader (<60% of leader observer score).
 - P5 is materially behind the leader (<60% of leader observer score).
 - P11 is materially behind the leader (<60% of leader observer score).
+- P2 is materially behind the leader (<60% of leader observer score).
 - P1 is materially behind the leader (<60% of leader observer score).
 
 INTERPRETATION

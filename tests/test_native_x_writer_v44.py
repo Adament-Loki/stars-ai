@@ -7,6 +7,7 @@ from stars_ai.native.x_writer import (
     _updated_x_header,
     _production_block,
     _native_planet_mutation_authority,
+    _current_colony_target_habitability,
     _pending_waypoint_delete_blocks,
     _pending_waypoint_delete_indices,
 )
@@ -78,6 +79,14 @@ def test_pending_waypoint_deletion_rejects_unencodable_native_count():
 
     with pytest.raises(ValueError, match="Type-3 index range"):
         _pending_waypoint_delete_indices(257)
+
+
+def test_writer_rechecks_current_colony_target_habitability():
+    target=Planet(17,"Red",Position(40,0),owner=None,observed=True,habitability=-7)
+    state=GameState("g",2432,1,RaceProfile(),Tech(),[target],[])
+
+    assert _current_colony_target_habitability(state,17)==-7
+    assert _current_colony_target_habitability(state,99) is None
 
 
 def test_current_m_ownership_allow_list_rejects_stale_planet_mutation():

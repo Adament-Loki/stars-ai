@@ -520,11 +520,75 @@
       "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4",
       "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x5"
     ],
-    "host_returncode": null,
+    "host_returncode": 0,
     "year_before": 2432,
+    "year_after": 2433,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 34,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x5"
+    ],
+    "host_returncode": 0,
+    "year_before": 2433,
+    "year_after": 2434,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 35,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x5"
+    ],
+    "host_returncode": 0,
+    "year_before": 2434,
+    "year_after": 2435,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 36,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x5"
+    ],
+    "host_returncode": 0,
+    "year_before": 2435,
+    "year_after": 2436,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 37,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x5"
+    ],
+    "host_returncode": null,
+    "year_before": 2436,
     "year_after": null,
     "checkpoint_written": false,
     "success": false,
-    "message": "RuntimeError: Stars! host timed out after 180s; slow hosting/launcher return: tracked files changed but the launch exceeded its deadline. See C:\\Dev\\repos\\stars-ai\\playtests\\runs\\latestdemo\\logs\\turn-033-HOST-TIMEOUT.json"
+    "message": "RuntimeError: Stars! host timed out after 360s; slow hosting/launcher return: tracked files changed but the launch exceeded its deadline. See C:\\Dev\\repos\\stars-ai\\playtests\\runs\\latestdemo\\logs\\turn-037-HOST-TIMEOUT.json"
   }
 ]

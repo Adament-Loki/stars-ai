@@ -138,6 +138,7 @@ def _eligibility(
     policy:ColonizationPolicy,
     *,
     evaluated_habitability:int | None=None,
+    current_habitability:int | None=None,
     nearest_owned:float,
     nearby_frontier:int,
 ) -> tuple[bool,str]:
@@ -146,12 +147,16 @@ def _eligibility(
     if evaluated_habitability is None:
         return False,"habitability_unknown"
 
+    # Future terraforming is a ranking input, never a license to settle a
+    # world that cannot support the initial colony population.  A colony must
+    # be currently viable before its projected tech/eventual value matters.
+    if current_habitability is None or int(current_habitability)<=0:
+        return False,"currently_uninhabitable"
+
     hab=int(evaluated_habitability)
-    # Racially uninhabitable worlds are not colony claims. Positive worlds,
-    # including a low-quality world that can serve an otherwise valuable
-    # expansion cluster, remain eligible and are ranked below better claims.
-    if hab<=0:
-        return False,"uninhabitable"
+    # Positive worlds, including a low-quality world that can serve an
+    # otherwise valuable expansion cluster, remain eligible and are ranked
+    # below better claims by the projected-habitability score.
     if hab>=int(policy.normal_habitability_floor):
         return True,"racial_habitability"
 
@@ -196,6 +201,7 @@ def colony_planet_is_eligible(state:GameState, planet, plan=None) -> bool:
     return _eligibility(
         state,planet,policy,
         evaluated_habitability=potential.planning_habitability,
+        current_habitability=potential.current_habitability,
         nearest_owned=nearest,nearby_frontier=nearby,
     )[0]
 
@@ -277,6 +283,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
         eligible,selection_basis=_eligibility(
             state,p,policy,
             evaluated_habitability=potential.planning_habitability,
+            current_habitability=potential.current_habitability,
             nearest_owned=nearest_owned,
             nearby_frontier=nearby_frontier,
         )

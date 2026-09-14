@@ -1,6 +1,7 @@
 
 from stars_ai.memory import AgentMemory
 from stars_ai.models import GameState,RaceProfile,Tech,Planet,Fleet,Position,OrderSet
+from stars_ai.population_invasion import population_capture_targets
 from stars_ai.strategy.exploration import add_exploration_orders
 from stars_ai.strategy.economy import add_economic_orders
 from stars_ai.strategic_watchdog import evaluate_strategic_watchdog
@@ -51,6 +52,33 @@ def test_ever_observed_planet_survives_sparse_next_m_file():
     assert p1.native["mineral_concentrations"]==[41,51,61]
     assert d1["ever_observed"]==2
     assert d1["restored_from_memory"]==1
+
+
+def test_foreign_population_estimate_survives_sparse_next_m_file_for_capture_planning():
+    mem=AgentMemory()
+    s0=_state(2417,observed_ids={0,2},owners={0:1,2:9})
+    baggy=next(p for p in s0.planets if p.id==2)
+    baggy.name="Baggy"
+    baggy.population=0
+    baggy.native["population_estimate"]=6
+    baggy.native["defenses_estimate"]=0
+    mem.reconcile_state(s0)
+
+    s1=_state(2435,observed_ids={0},owners={0:1})
+    sparse=next(p for p in s1.planets if p.id==2)
+    sparse.name="Baggy"
+    diag=mem.reconcile_state(s1)
+
+    assert diag["restored_from_memory"]>=1
+    assert sparse.observed is True
+    assert sparse.owner==9
+    assert sparse.population==0
+    assert sparse.native["population_estimate"]==6
+    targets=population_capture_targets(s1)
+    baggy_target=next(target for target in targets if target.planet_id==2)
+    assert baggy_target.estimated_population==2400
+    assert baggy_target.required_colonists==80_000
+    assert baggy_target.required_kt==800
 
 
 def test_current_m_unowned_record_revokes_stale_local_ownership():

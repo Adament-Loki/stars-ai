@@ -75,9 +75,30 @@ def test_standard_terraforming_values_current_tech_and_long_term_habitability():
 
     fleet = Fleet(0, "Colony", 1, Position(0, 0), role="colony")
     ranked = score_colony_candidates(state, fleet)
+    assert ranked == []
+
+
+def test_positive_current_habitability_remains_eligible_with_future_terraforming():
+    home = _world(0, "Home", 0, owner=1, hab=100, env=(50, 50, 50), pop=50_000)
+    viable = _world(1, "Viable", 40, hab=10, env=(31, 50, 50))
+    state = _state([home, viable], tech=Tech(propulsion=1, biotechnology=1))
+
+    potential = evaluate_terraforming(state, viable)
+    assert potential.current_habitability > 0
+    assert potential.planning_habitability > potential.current_habitability
+
+    fleet = Fleet(0, "Colony", 1, Position(0, 0), role="colony")
+    ranked = score_colony_candidates(state, fleet)
     assert [candidate.planet_id for candidate in ranked] == [1]
-    assert ranked[0].current_habitability == -1
-    assert ranked[0].eventual_terraform_habitability > 80
+
+
+def test_zero_current_habitability_is_not_a_colony_target():
+    home = _world(0, "Home", 0, owner=1, hab=100, env=(50, 50, 50), pop=50_000)
+    zero = _world(1, "Zero", 40, hab=0)
+    state = _state([home, zero], tech=Tech(propulsion=1, biotechnology=1))
+
+    fleet = Fleet(0, "Colony", 1, Position(0, 0), role="colony")
+    assert score_colony_candidates(state, fleet) == []
 
 
 def test_total_terraforming_uses_biotechnology_only():
