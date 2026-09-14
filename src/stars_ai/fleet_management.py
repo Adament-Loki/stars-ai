@@ -1,12 +1,15 @@
-"""Conservative battle-fleet concentration using the validated Type-37 merge.
+"""Conservative fleet organization and singleton-scout dispersion.
 
-Stars! resolves combat by fleet/design tokens.  A collection of independent
+Stars! resolves combat by fleet/design tokens. A collection of independent
 armed fleets at the same owned world therefore gives an enemy more targeting
-and interception choices than one coordinated defensive force.  This module
+and interception choices than one coordinated defensive force. This module
 concentrates only fleets that are already idle, co-located, armed, and free of
-all cargo or strategic tasks.  It deliberately does not create fleet splits:
-the native adapter has no validated split operation, and automatic split-based
-minimum-damage or dodge tactics are inappropriate without explicit host rules.
+all cargo or strategic tasks.
+
+Scout fleets are the opposite case: stacking multiple scout hulls in one fleet
+reduces parallel survey coverage. The planner therefore diagnoses excess scout
+hulls as wasted survey capacity and requests singleton splits only for safe,
+stationary, cargo-free, pure scout stacks.
 """
 
 from __future__ import annotations
@@ -26,6 +29,48 @@ def _number(value: Any) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _ship_counts(fleet: Any) -> list[int]:
+    """Return the native 16-slot ship-count vector, normalized to integers."""
+    raw = (getattr(fleet, "native", {}) or {}).get("ship_count") or []
+    try:
+        values = list(raw)[:16]
+    except TypeError:
+        values = []
+    counts: list[int] = []
+    for value in values:
+        try:
+            counts.append(max(0, int(value or 0)))
+        except (TypeError, ValueError):
+            counts.append(0)
+    counts.extend([0] * (16 - len(counts)))
+    return counts
+
+
+def _scout_slots(state: GameState) -> set[int]:
+    """Return design slots whose current normalized design role is scout."""
+    profiles = (state.native or {}).get("design_profiles") or {}
+    slots: set[int] = set()
+    if isinstance(profiles, dict):
+        items = profiles.items()
+    else:
+        items = enumerate(profiles) if isinstance(profiles, list) else []
+    for raw_slot, profile in items:
+        if not isinstance(profile, dict):
+            continue
+        if str(profile.get("role", "") or "").casefold() != "scout":
+            continue
+        try:
+            slot = int(raw_slot)
+        except (TypeError, ValueError):
+            try:
+                slot = int(profile.get("design_slot"))
+            except (TypeError, ValueError):
+                continue
+        if 0 <= slot < 16:
+            slots.add(slot)
+    return slots
 
 
 def _is_armed(fleet: Any) -> bool:
@@ -96,20 +141,125 @@ def _owned_anchor(state: GameState, fleet: Any):
     return None
 
 
+def _is_stationary_for_scout_split(fleet: Any) -> bool:
+    native = getattr(fleet, "native", {}) or {}
+    if getattr(fleet, "destination_planet_id", None) is not None:
+        return False
+    if native.get("native_destination_fleet_id") is not None:
+        return False
+    if getattr(fleet, "destination_task", None) is not None:
+        return False
+    waypoints = native.get("waypoints")
+    if isinstance(waypoints, (list, tuple)) and len(waypoints) > 1:
+        return False
+    try:
+        if int(native.get("native_waypoint_count", 1) or 1) > 1:
+            return False
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
+def _plan_scout_dispersion(state: GameState, orders: OrderSet) -> list[dict[str, Any]]:
+    """Diagnose stacked scouts and request safe singleton splits.
+
+    Wasted survey capacity is the number of extra scout hulls trapped in a
+    stacked fleet: max(0, ship_count[scout_slot] - 1). Diagnostics cover every
+    owned fleet; automatic native split requests are intentionally narrower.
+    """
+    scout_slots = _scout_slots(state)
+    stacked: list[dict[str, Any]] = []
+    decisions: list[dict[str, Any]] = []
+    wasted_total = 0
+
+    for fleet in state.fleets:
+        if int(getattr(fleet, "owner", -1)) != int(state.player_id):
+            continue
+        counts = _ship_counts(fleet)
+        scout_total = sum(counts[slot] for slot in scout_slots)
+        non_scout_total = sum(count for slot, count in enumerate(counts) if slot not in scout_slots)
+        for slot in sorted(scout_slots):
+            count = counts[slot]
+            if count <= 1:
+                continue
+            wasted = count - 1
+            wasted_total += wasted
+            diagnostic = {
+                "fleet_id": int(fleet.id),
+                "scout_slot": slot,
+                "ship_count": count,
+                "wasted_survey_capacity": wasted,
+                "pure_scout_stack": non_scout_total == 0 and scout_total == count,
+            }
+            stacked.append(diagnostic)
+
+            safe_to_split = (
+                diagnostic["pure_scout_stack"]
+                and not _has_cargo(fleet)
+                and not _has_existing_order(orders, int(fleet.id))
+                and _is_stationary_for_scout_split(fleet)
+                and 0 <= int(fleet.id) <= 0x1FF
+            )
+            if not safe_to_split:
+                continue
+
+            payload = {
+                "fleet_id": int(fleet.id),
+                "scout_slot": slot,
+                "ship_count": count,
+                "singleton_fleets_required": wasted,
+                "mission": "split_scouts_for_parallel_survey",
+                "scout_stack_diagnostic": diagnostic,
+                "native_experiment": {
+                    "enabled": True,
+                    "trust_level": "NEEDS_HOST_VALIDATION",
+                    "id": "type24-type23-singleton-scout-split",
+                    "risk": (
+                        "Synthesizes Type24 FleetSplit plus Type23 MoveShips for one scout at a time; "
+                        "restricted to stationary cargo-free pure scout stacks."
+                    ),
+                },
+            }
+            orders.add(
+                "split_scout_fleet",
+                payload,
+                (
+                    f"Split stacked scout fleet {fleet.id}: design slot {slot} has {count} scouts, "
+                    f"wasting {wasted} parallel survey slot(s). Create {wasted} singleton scout fleet(s)."
+                ),
+                priority=140,
+            )
+            decisions.append(payload)
+
+    state.native["scout_stack_diagnostics"] = {
+        "scout_slots": sorted(scout_slots),
+        "stacked_fleet_count": len({item["fleet_id"] for item in stacked}),
+        "wasted_survey_capacity": wasted_total,
+        "stacked_fleets": stacked,
+        "split_orders": len(decisions),
+    }
+    if stacked:
+        orders.notes.append(
+            f"SCOUT STACK DIAGNOSTIC: {wasted_total} wasted survey capacity across "
+            f"{len({item['fleet_id'] for item in stacked})} stacked scout fleet(s); "
+            f"queued {len(decisions)} safe singleton-split order(s)."
+        )
+
+    # TODO: add regression tests for 1/2/3+ scout stacks and validate the
+    # emitted Type-24 -> Type-23 singleton transfer sequence against a fresh
+    # Stars! client capture/host replay before promoting native scout splitting
+    # to VALIDATED.
+    return decisions
+
+
 def _is_idle_local_combat_fleet(state: GameState, orders: OrderSet, fleet: Any) -> bool:
     native = getattr(fleet, "native", {}) or {}
     if int(getattr(fleet, "owner", -1)) != int(state.player_id):
         return False
-    # Scouts can be weapon-bearing, but the exploration pass runs later in the
-    # turn and may legitimately give them a route.  Concentration is for
-    # explicit combat formations only; this avoids creating a merge/movement
-    # conflict that the native writer would have to discard.
     if str(getattr(fleet, "role", "") or "").casefold() not in _COMBAT_ROLES:
         return False
     if not _is_armed(fleet) or _has_cargo(fleet):
         return False
-    # A minelayer's local hold is an active strategic job rather than a fleet
-    # waiting to be organized for combat.
     if str(getattr(fleet, "role", "") or "").casefold() == "minelayer":
         return False
     if _has_existing_order(orders, int(fleet.id)):
@@ -131,7 +281,6 @@ def _battle_policy(state: GameState) -> dict[str, bool]:
     return {
         "allow_chaff": bool(supplied.get("allow_chaff", False)),
         "allow_split_dodge": bool(supplied.get("allow_split_dodge", False)),
-        # These are policy prohibitions, not merely unavailable features.
         "allow_minimum_damage_split": False,
         "allow_scrap_reclamation_exploit": False,
     }
@@ -142,13 +291,8 @@ def add_tactical_fleet_management(
     orders: OrderSet,
     plan: Any | None = None,
 ) -> list[dict[str, Any]]:
-    """Merge safe co-located armed fleets and record battle-rule safeguards.
-
-    The Type-37 encoding can merge multiple source fleets.  One retained fleet
-    per world is selected by offensive/combat value, then by ID for stable
-    replay.  The priority intentionally sits below immediate military movement
-    so a threat response can reserve the same fleet without a conflict.
-    """
+    """Split safe scout stacks, then merge safe co-located armed fleets."""
+    scout_splits = _plan_scout_dispersion(state, orders)
     policy = _battle_policy(state)
     groups: dict[int, list[Any]] = defaultdict(list)
     anchors: dict[int, Any] = {}
@@ -165,13 +309,7 @@ def add_tactical_fleet_management(
     for planet_id, fleets in sorted(groups.items()):
         if len(fleets) < 2:
             continue
-        # Retain the best-ready fleet.  Choosing an existing ID instead of
-        # synthesizing a new formation is necessary for the captured native
-        # operation and preserves deterministic playtests.
-        retained = max(
-            fleets,
-            key=lambda fleet: (_combat_value(fleet), -int(fleet.id)),
-        )
+        retained = max(fleets, key=lambda fleet: (_combat_value(fleet), -int(fleet.id)))
         sources = sorted(int(fleet.id) for fleet in fleets if int(fleet.id) != int(retained.id))
         if not sources:
             continue
@@ -202,8 +340,7 @@ def add_tactical_fleet_management(
             (
                 f"Concentrate {len(fleets)} idle armed fleets at {anchor.name} into "
                 f"fleet {retained.id}; combined estimated offensive value={total_value:.1f}. "
-                "This creates one coordinated defensive force instead of several "
-                "independent targets."
+                "This creates one coordinated defensive force instead of several independent targets."
             ),
             priority=118,
         )
@@ -219,11 +356,13 @@ def add_tactical_fleet_management(
     state.native["fleet_battle_management"] = {
         "mode": "concentrate_idle_armed_fleets",
         "type37_merge_capability": "PARTIAL",
+        "scout_singleton_splits": len(scout_splits),
         "merges": decisions,
         "battle_policy": policy,
         "safeguards": [
             "No automatic chaff program unless a game-specific host rule explicitly enables it.",
-            "No automatic split-fleet dodge: native fleet splitting is not validated.",
+            "Scout splitting is limited to stationary cargo-free pure scout stacks for survey parallelism.",
+            "No combat split-fleet dodge tactics are generated.",
             "Minimum-damage fleet splitting is prohibited.",
             "UR/CE allied scrap-reclamation exploitation is prohibited.",
         ],
@@ -231,6 +370,6 @@ def add_tactical_fleet_management(
     if decisions:
         orders.notes.append(
             f"BATTLE FLEET MANAGEMENT: ordered {len(decisions)} local concentration merge(s); "
-            "no split or exploit tactics were used."
+            "no combat split or exploit tactics were used."
         )
     return decisions

@@ -1341,6 +1341,54 @@ def _fleet_id_from_split_block(block: NativeBlock) -> int:
     return int.from_bytes(block.data, "little") & 0x1FF
 
 
+def _singleton_scout_split_block(state:Any, source_fleet_id:int) -> NativeBlock:
+    """Create the Type-24 FleetSplit record for one singleton-scout transfer."""
+    if not 0 <= int(source_fleet_id) <= 0x1FF:
+        raise ValueError(f"FleetSplit source must be a 9-bit local fleet id; got {source_fleet_id}")
+    data=_u16(_raw_fleet_number(state,int(source_fleet_id)))
+    return NativeBlock(24,len(data),data)
+
+
+def _singleton_scout_move_block(
+    state:Any,
+    *,
+    source_fleet_id:int,
+    destination_fleet_id:int,
+    scout_slot:int,
+) -> NativeBlock:
+    """Encode one decoded nine-byte Type-23 MoveShips singleton transfer.
+
+    The layout is destination u16, source u16, transfer flags 0x22, design-slot
+    mask u16, then one signed i16 transfer count. The count is positive from
+    the destination fleet's perspective, so +1 moves one scout into the newly
+    created split fleet.
+    """
+    slot=int(scout_slot)
+    if not 0 <= slot < 16:
+        raise ValueError(f"Scout design slot must be 0..15; got {scout_slot}")
+    data=(
+        _u16(_raw_fleet_number(state,int(destination_fleet_id)))
+        + _u16(_raw_fleet_number(state,int(source_fleet_id)))
+        + bytes([0x22])
+        + _u16(1 << slot)
+        + int(1).to_bytes(2,"little",signed=True)
+    )
+    return NativeBlock(23,len(data),data)
+
+
+def _next_available_split_fleet_id(occupied:set[int]) -> int:
+    """Reserve and return the first unused 9-bit local fleet ID."""
+    for fleet_id in range(0x200):
+        if fleet_id not in occupied:
+            occupied.add(fleet_id)
+            return fleet_id
+    raise ValueError("No free fleet id is available for singleton scout splitting")
+
+# TODO: add codec regression tests for Type24/Type23 singleton scout transfers
+# and validate repeated same-source splits against a fresh Stars! client capture
+# plus host replay before promoting split_scout_fleet beyond EXPERIMENTAL.
+
+
 def _copy_client_fleet_split_pairs(
     client_x_path: Path | None,
     *,
@@ -2028,6 +2076,7 @@ def write_ai_turn(
     generated=[]
     design_tail=[]
     touched_fleets=set()
+    allocated_split_fleet_ids=set()
     client_split_blocks, client_split_sources, client_split_diagnostics = (
         _copy_client_fleet_split_pairs(
             client_x_path,
@@ -2117,6 +2166,66 @@ def write_ai_turn(
                 ep["native_reference"]=(
                     "Captured Type-3 pending-waypoint removal; local scout retarget is deliberately "
                     "deferred until the next M-file read-back rather than synthesizing an unvalidated replacement."
+                )
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="split_scout_fleet":
+                source_fleet_id=int(o.payload.get("fleet_id",-1))
+                scout_slot=int(o.payload.get("scout_slot",-1))
+                requested=max(0,int(o.payload.get("singleton_fleets_required",0) or 0))
+                if source_fleet_id in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Scout fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                source_fleet=next((
+                    fleet for fleet in state.fleets
+                    if int(fleet.id)==source_fleet_id and int(fleet.owner)==int(state.player_id)
+                ),None)
+                if source_fleet is None:
+                    skipped.append({"kind":o.kind,"reason":"Scout split source is not a current owned fleet.","payload":o.payload})
+                    continue
+                ship_count=list((source_fleet.native or {}).get("ship_count") or [])
+                live_count=(
+                    int(ship_count[scout_slot] or 0)
+                    if 0 <= scout_slot < len(ship_count) else 0
+                )
+                split_count=min(requested,max(0,live_count-1))
+                if split_count <= 0:
+                    skipped.append({"kind":o.kind,"reason":"Scout stack no longer contains excess ships in the requested design slot.","payload":o.payload})
+                    continue
+
+                occupied={
+                    int(fleet.id) for fleet in state.fleets
+                    if int(fleet.owner)==int(state.player_id) and 0 <= int(fleet.id) <= 0x1FF
+                }
+                occupied.update(allocated_split_fleet_ids)
+                new_fleet_ids=[]
+                block_trace=[]
+                for _ in range(split_count):
+                    destination_fleet_id=_next_available_split_fleet_id(occupied)
+                    allocated_split_fleet_ids.add(destination_fleet_id)
+                    split_block=_singleton_scout_split_block(state,source_fleet_id)
+                    move_block=_singleton_scout_move_block(
+                        state,
+                        source_fleet_id=source_fleet_id,
+                        destination_fleet_id=destination_fleet_id,
+                        scout_slot=scout_slot,
+                    )
+                    generated.extend([split_block,move_block])
+                    new_fleet_ids.append(destination_fleet_id)
+                    block_trace.append({
+                        "new_fleet_id":destination_fleet_id,
+                        "type24_hex":split_block.data.hex(),
+                        "type23_hex":move_block.data.hex(),
+                    })
+
+                touched_fleets.add(source_fleet_id)
+                touched_fleets.update(new_fleet_ids)
+                ep=dict(o.payload)
+                ep["new_fleet_ids"]=new_fleet_ids
+                ep["native_blocks"]=block_trace
+                ep["native_capability_status"]=cap.status
+                ep["native_reference"]=(
+                    "Experimental singleton scout split: one Type24 FleetSplit followed by one "
+                    "nine-byte Type23 MoveShips transfer per excess scout."
                 )
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="merge_fleets":

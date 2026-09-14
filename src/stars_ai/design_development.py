@@ -25,7 +25,8 @@ from .starsapi_items import (
     prt_id as race_prt_id,
     stock_hulls as race_stock_hulls,
 )
-from .territorial_defense import assess_territorial_defense
+from .territorial_defense import assess_territorial_defense, hostile_colonies_inside_claimed_area
+from .population_invasion import population_capture_targets, is_recently_lost_world
 
 TECH_FIELDS=("energy","weapons","propulsion","construction","electronics","biotechnology")
 
@@ -404,6 +405,57 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                     ), priority=120,
                 ))
 
+    # Pre-emptive population-capture transport capability.
+    capture_targets=[
+        target for target in population_capture_targets(state)
+        if int(target.required_kt)>=800
+    ]
+    if capture_targets:
+        needed_capture_capacity=min(int(target.required_kt) for target in capture_targets)
+        best_existing_capture=max(
+            (int(d.get("cargo_capacity",0) or 0) for d in freighters),
+            default=0,
+        )
+        if best_existing_capture < needed_capture_capacity:
+            capture_hull=best_legal_ship_hull(
+                state,"freighter",minimum_cargo_kt=needed_capture_capacity,
+            )
+            if capture_hull is not None and int(capture_hull.cargo)>=needed_capture_capacity:
+                recapture=False
+                for target in capture_targets:
+                    planet=next(
+                        (p for p in state.planets if int(p.id)==int(target.planet_id)),
+                        None,
+                    )
+                    if planet is not None and is_recently_lost_world(planet):
+                        recapture=True
+                        break
+                proposals.append(DesignProposal(
+                    role="freighter", name="Capture Transport AI", is_starbase=False,
+                    desired_hull_id=capture_hull.hull_id,
+                    desired_hull_name=capture_hull.name,
+                    desired_engine=preferred_engine,
+                    objectives=[
+                        f"carry at least {needed_capture_capacity} kT population for a decisive capture packet",
+                        "support guarded population capture without several small transport departures",
+                        "retain fuel-safe range and remain useful as bulk transport outside capture operations",
+                        "prefer a single legal large transport; validated fleet-merge groups remain a fallback for existing assets",
+                    ],
+                    reason=(
+                        f"{len(capture_targets)} observed population-capture target(s) require 800+ kT; "
+                        f"minimum required capacity={needed_capture_capacity} kT, best existing freighter design="
+                        f"{best_existing_capture} kT. Seed capture capability before the assault planner needs it."
+                    ),
+                    priority=204 if recapture else 196,
+                ))
+        state.native["capture_transport_capability_demand"]={
+            "observed_targets":len(capture_targets),
+            "minimum_required_kt":needed_capture_capacity,
+            "best_existing_design_kt":best_existing_capture,
+            "large_transport_design_required":best_existing_capture < needed_capture_capacity,
+            "policy":"Seed an 800+ kT capture transport when needed; execution retains breeder/range/diplomacy/AR safeguards.",
+        }
+
     colonies=_designs(state,"colony")
     viable=sum(1 for p in state.planets if colony_planet_is_eligible(state,p,plan))
     colony_hull=best_legal_ship_hull(state,"colony")
@@ -566,9 +618,55 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                 priority=188,
             ))
 
+    # Bomber capability for hostile colonies inside claimed territory.
+    hostile_colonies=hostile_colonies_inside_claimed_area(state,plan)
+    bombers=_designs(state,"bomber")
+    if hostile_colonies and not bombers:
+        bomber_hull=best_legal_ship_hull(state,"bomber")
+        if bomber_hull is not None:
+            proposals.append(DesignProposal(
+                role="bomber", name="Territorial Strike Bomber", is_starbase=False,
+                desired_hull_id=bomber_hull.hull_id,
+                desired_hull_name=bomber_hull.name,
+                desired_engine=preferred_engine,
+                objectives=[
+                    "carry researched bombs for hostile colonies inside claimed territory",
+                    "support deliberate colony suppression/removal after military authorization",
+                    "retain enough protection and range to operate with an escort fleet",
+                ],
+                reason=(
+                    f"{len(hostile_colonies)} observed hostile/opposed colony world(s) lie inside the "
+                    f"{territorial.claim_radius_ly:.0f}-ly claimed area; no bomber design exists. "
+                    "Seed bombing capability before a territorial clearing campaign is ordered."
+                ),
+                priority=194,
+            ))
+
     combat=_designs(state,"combat")
     combat_hull=best_legal_ship_hull(state,"combat")
-    if (
+    border_pressure=bool(
+        territorial.needs_response
+        or territorial.needs_minefield
+        or territorial.desired_patrols>0
+    )
+    if not combat and border_pressure and combat_hull is not None:
+        proposals.append(DesignProposal(
+            role="combat", name="Border Combat Seed", is_starbase=False,
+            desired_hull_id=combat_hull.hull_id,
+            desired_hull_name=combat_hull.name,
+            desired_engine=preferred_engine,
+            objectives=[
+                "create the empire's first real combat/escort architecture before a border incident becomes an emergency",
+                "carry researched weapons plus legal protection rather than relying on armed scouts or utility hulls",
+                "serve patrol, escort, and territorial interception roles from one seed design",
+            ],
+            reason=(
+                f"{territorial.reason} Border pressure exists but the empire has no combat design. "
+                "Create an explicit seed combat design instead of waiting for an existing combat family to upgrade."
+            ),
+            priority=202,
+        ))
+    elif (
         combat and max(int(state.tech.weapons),int(state.tech.energy))>=6
         and combat_hull is not None
     ):
@@ -583,6 +681,15 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                 reason=f"Weapons={state.tech.weapons}, Energy={state.tech.energy}; existing combat architecture is at least five turns old.",
                 priority=190,
             ))
+
+    state.native["proactive_force_capability_demand"]={
+        "border_pressure":border_pressure,
+        "combat_seed_required":bool(border_pressure and not combat),
+        "hostile_colonies_in_claimed_area":[int(planet.id) for planet in hostile_colonies],
+        "bomber_design_required":bool(hostile_colonies and not bombers),
+        "desired_minelayers":int(territorial.desired_minelayers),
+        "minefield_anchor_ids":list(territorial.uncovered_minefield_anchor_ids),
+    }
 
     proposals.sort(key=lambda x:x.priority,reverse=True)
     return proposals[:4]

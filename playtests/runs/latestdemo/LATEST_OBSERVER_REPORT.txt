@@ -1,66 +1,65 @@
-Stars! AI Observer Report - Turn 35 / Year 2435
+Stars! AI Observer Report - Turn 25 / Year 2425
 ==================================================================
 
 EXECUTIVE SUMMARY
 -----------------
-P7 Felite has a clear lead. Observer score gap over second place: 81.7%.
+P7 Felite has a clear lead. Observer score gap over second place: 68.4%.
 Likely fighting has begun: major fleet losses are visible, although no enemy planet changed hands in this window.
 
 CURRENT STANDINGS
 -----------------
-1. P7 Felite [Hyper Expansion] - 64 planets, pop 9,445, 590 factories, 14 ships / 0 fleet mass, tech total 32, 1 starbases.
-2. P10 Tritizoid [Alternate Reality] - 26 planets, pop 7,551, 0 factories, 9 ships / 0 fleet mass, tech total 33, 26 starbases.
-3. P6 Nairnian [Super Stealth] - 12 planets, pop 7,450, 675 factories, 10 ships / 0 fleet mass, tech total 26, 1 starbases.
-4. P8 Picardi [Inner Strength] - 4 planets, pop 9,248, 1025 factories, 2 ships / 0 fleet mass, tech total 30, 1 starbases.
-5. P4 Kilingons [War Monger / Balanced] - 7 planets, pop 10,629, 621 factories, 33 ships / 0 fleet mass, tech total 28, 1 starbases.
-6. P9 Hawk [Packet Physics] - 18 planets, pop 8,981, 104 factories, 27 ships / 0 fleet mass, tech total 24, 2 starbases.
-7. P3 Romulans [Super Stealth / Balanced] - 6 planets, pop 10,030, 555 factories, 46 ships / 0 fleet mass, tech total 24, 1 starbases.
-8. P5 Humanoid [Jack of All Trades / Balanced] - 10 planets, pop 6,676, 405 factories, 38 ships / 0 fleet mass, tech total 22, 1 starbases.
-9. P11 Ubert [Super Stealth] - 6 planets, pop 7,110, 676 factories, 11 ships / 0 fleet mass, tech total 26, 1 starbases.
-10. P2 S2 [Inner Strength / Balanced] - 8 planets, pop 9,914, 504 factories, 33 ships / 0 fleet mass, tech total 20, 1 starbases.
-11. P1 SuperRabits [Interstellar Traveler / Balanced] - 13 planets, pop 5,264, 244 factories, 20 ships / 0 fleet mass, tech total 18, 2 starbases.
+1. P7 Felite [Hyper Expansion] - 45 planets, pop 3,120, 202 factories, 20 ships / 0 fleet mass, tech total 22, 1 starbases.
+2. P10 Tritizoid [Alternate Reality] - 19 planets, pop 4,896, 0 factories, 6 ships / 0 fleet mass, tech total 22, 19 starbases.
+3. P9 Hawk [Packet Physics] - 14 planets, pop 3,849, 60 factories, 8 ships / 0 fleet mass, tech total 17, 2 starbases.
+4. P2 S2 [Inner Strength / Balanced] - 8 planets, pop 6,096, 254 factories, 24 ships / 0 fleet mass, tech total 14, 1 starbases.
+5. P4 Kilingons [War Monger / Balanced] - 4 planets, pop 6,174, 340 factories, 30 ships / 0 fleet mass, tech total 18, 1 starbases.
+6. P1 SuperRabits [Interstellar Traveler / Balanced] - 11 planets, pop 2,413, 26 factories, 4 ships / 0 fleet mass, tech total 19, 2 starbases.
+7. P8 Picardi [Inner Strength] - 3 planets, pop 4,915, 492 factories, 2 ships / 0 fleet mass, tech total 20, 1 starbases.
+8. P5 Humanoid [Jack of All Trades / Balanced] - 6 planets, pop 2,985, 153 factories, 12 ships / 0 fleet mass, tech total 19, 1 starbases.
+9. P6 Nairnian [Super Stealth] - 6 planets, pop 4,661, 242 factories, 13 ships / 0 fleet mass, tech total 13, 1 starbases.
+10. P11 Ubert [Super Stealth] - 5 planets, pop 4,626, 240 factories, 10 ships / 0 fleet mass, tech total 13, 1 starbases.
+11. P3 Romulans [Super Stealth / Balanced] - 4 planets, pop 6,207, 254 factories, 19 ships / 0 fleet mass, tech total 11, 1 starbases.
 
-CHANGE SINCE TURN 30
+CHANGE SINCE TURN 20
 -----------------------------
-P7: planets +8, population +3,709, factories +244, ships -5, fleet mass +0, tech total +4.
-P10: planets +3, population +1,055, factories +0, ships +3, fleet mass +0, tech total +5.
-P6: planets +2, population +1,120, factories +219, ships -3, fleet mass +0, tech total +9.
-P8: planets +0, population +1,997, factories +203, ships +0, fleet mass +0, tech total +8.
-P4: planets +1, population +2,394, factories +156, ships -1, fleet mass +0, tech total +5.
-P9: planets +3, population +2,738, factories +34, ships +12, fleet mass +0, tech total +3.
-P3: planets +1, population +1,924, factories +176, ships +13, fleet mass +0, tech total +7.
-P5: planets +1, population +2,207, factories +125, ships +16, fleet mass +0, tech total +3.
-P11: planets +1, population +1,077, factories +112, ships -2, fleet mass +0, tech total +10.
-P2: planets +2, population +2,021, factories +125, ships +0, fleet mass +0, tech total +6.
-P1: planets +1, population +1,646, factories +147, ships +15, fleet mass +0, tech total +1.
+P7: planets +9, population +1,138, factories +49, ships +5, fleet mass +0, tech total +3.
+P10: planets +10, population +1,880, factories +0, ships -2, fleet mass +0, tech total +8.
+P9: planets +3, population +1,797, factories +13, ships +3, fleet mass +0, tech total +3.
+P2: planets +2, population +2,017, factories +124, ships +12, fleet mass +0, tech total +3.
+P4: planets +0, population +2,201, factories +125, ships +20, fleet mass +0, tech total +1.
+P1: planets +0, population +693, factories +1, ships +0, fleet mass +0, tech total +0.
+P8: planets +1, population +2,271, factories +242, ships +0, fleet mass +0, tech total +1.
+P5: planets +0, population +1,042, factories +78, ships +5, fleet mass +0, tech total +0.
+P6: planets +3, population +1,819, factories +79, ships +1, fleet mass +0, tech total +4.
+P11: planets +3, population +1,883, factories +119, ships -3, fleet mass +0, tech total +2.
+P3: planets +0, population +2,294, factories +122, ships +12, fleet mass +0, tech total +1.
 
 WAR & CONTACT
 -------------
-- P7 suffered a major net fleet loss during Turn 33 / Year 2433 (ships 19->16; fleets 19->16; net loss 3 ships). Observed fleet change: fleet ID 15 disappeared (1 ships; last seen at (1303, 2401)); fleet ID 16 disappeared (1 ships; last seen at (1339, 1974)); fleet ID 20 disappeared (1 ships; last seen at (1177, 2460)). Cause is not decoded.
+- P10 suffered a major net fleet loss during Turn 24 / Year 2424 (ships 10->6; fleets 10->6; net loss 4 ships). Observed fleet change: fleet ID 0 disappeared (1 ships; last seen at (1871, 1384)); fleet ID 2 disappeared (1 ships; last seen at (1834, 1331)); fleet ID 7 disappeared (1 ships; last seen at (1908, 1659)); fleet ID 8 disappeared (1 ships; last seen at (2138, 1548)). Cause is not decoded.
 
 WHO IS STRONGEST?
 -----------------
-- Territory: P7 with 64 planets.
-- Population: P4 with 10,629.
-- Industry: P8 with 1025 factories.
+- Territory: P7 with 45 planets.
+- Population: P3 with 6,207.
+- Industry: P8 with 492 factories.
 - Fleet by mass: P7 with 0.
-- Technology: P10 with tech total 33.
+- Technology: P7 with tech total 22.
 
 MOMENTUM / RISK
 ---------------
 - Current leader: P7 Felite.
-- Current last place: P1 SuperRabits.
+- Current last place: P3 Romulans.
 - P10 is materially behind the leader (<60% of leader observer score).
-- P6 is materially behind the leader (<60% of leader observer score).
-- P8 is materially behind the leader (<60% of leader observer score).
-- P4 is materially behind the leader (<60% of leader observer score).
 - P9 is materially behind the leader (<60% of leader observer score).
-- P3 is materially behind the leader (<60% of leader observer score).
-- P5 is materially behind the leader (<60% of leader observer score).
-- P11 is materially behind the leader (<60% of leader observer score).
 - P2 is materially behind the leader (<60% of leader observer score).
+- P4 is materially behind the leader (<60% of leader observer score).
 - P1 is materially behind the leader (<60% of leader observer score).
-
+- P8 is materially behind the leader (<60% of leader observer score).
+- P5 is materially behind the leader (<60% of leader observer score).
+- P6 is materially behind the leader (<60% of leader observer score).
+- P11 is materially behind the leader (<60% of leader observer score).
+- P3 is materially behind the leader (<60% of leader observer score).
 INTERPRETATION
 --------------
 Observer score is a transparent diagnostic composite, not the Stars! built-in score. Planet captures are strong evidence of war; abrupt fleet losses are treated as probable combat but can also reflect scrapping/merging until battle blocks are fully decoded.

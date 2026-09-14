@@ -1,0 +1,8 @@
+Repository: Adament-Loki/stars-ai
+Reviewed commit: 880fc7cfdf40621449fc837aeb1c9b8b98610cf5
+Commit message: Fixes for gamplay tweaking
+
+Files reviewed for this patch:
+- src/stars_ai/fleet_management.py (blob 3cead0338f357a9b8f08809eb1e4e5089b5bea8c)
+- src/stars_ai/native_capabilities.py (blob 428f0fbb4ce0795c996f4a33b86b8733466d331d)
+- src/stars_ai/native/x_writer.py (reviewed at the commit above; patched by anchored transform)

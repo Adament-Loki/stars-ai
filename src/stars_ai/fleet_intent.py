@@ -10,6 +10,7 @@ from .colony_planner import (
 from .warp_policy import mission_warp
 from .fuel_planner import mission_reachable
 from .population_units import COLONY_LOAD_COLONISTS
+from .expansion_network import evaluate_expansion_network
 
 RECON_ROLES = {"scout", "unknown"}
 
@@ -59,15 +60,61 @@ def _fleet_is_at_planet(fleet, planet) -> bool:
     )
 
 
+def _is_alternate_reality(state: GameState) -> bool:
+    race=getattr(state,"race",None)
+    native=getattr(race,"native",{}) or {}
+    try:
+        prt_id=int(native.get("prt_id",-1))
+    except (TypeError,ValueError):
+        prt_id=-1
+    prt=str(getattr(race,"primary_trait","") or "").casefold()
+    return prt_id==8 or "alternate reality" in prt
+
+
+def _ar_homeworld_ids(state: GameState) -> set[int]:
+    if not _is_alternate_reality(state):
+        return set()
+    try:
+        network=evaluate_expansion_network(state)
+        ids={
+            int(hub.planet_id)
+            for hub in network.hubs
+            if int(getattr(hub,"promotion_tier",3) or 3)==0
+        }
+        if ids:
+            return ids
+    except Exception:
+        pass
+    return {
+        int(p.id) for p in state.planets
+        if p.owner==state.player_id and bool((p.native or {}).get("is_homeworld"))
+    }
+
+
 def _mining_candidates(state: GameState, fleet):
     ranked=[]
+    ar_homeworlds=_ar_homeworld_ids(state)
+    policy=(state.native or {}).get("remote_mining_build_policy") or {}
+    ar_pressure_open=bool(
+        _is_alternate_reality(state)
+        and int(state.year)-2400>=30
+        and policy.get("real_mineral_pressure",True)
+    )
     for p in state.planets:
-        if p.owner is not None or not p.observed: continue
+        is_unowned=bool(p.owner is None)
+        is_ar_homeworld=bool(
+            ar_pressure_open
+            and p.owner==state.player_id
+            and int(p.id) in ar_homeworlds
+        )
+        if (not is_unowned and not is_ar_homeworld) or not p.observed:
+            continue
         conc=(p.native or {}).get("mineral_concentrations")
         if not conc or len(conc)<3 or any(v is None for v in conc[:3]): continue
         mineral_score=sum(max(0,int(v)) for v in conc[:3]); travel=distance(fleet.position,p.position)
         if not mission_reachable(fleet,p.position,'reposition_for_remote_mining'): continue
-        ranked.append((mineral_score-0.75*travel,p,mineral_score,travel))
+        homeworld_bonus=100 if is_ar_homeworld else 0
+        ranked.append((mineral_score+homeworld_bonus-0.75*travel,p,mineral_score,travel))
     ranked.sort(key=lambda x:x[0],reverse=True)
     return ranked
 
@@ -231,7 +278,7 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                 orders.add("move_fleet",{"fleet_id":fleet.id,"destination_planet_id":target.id,"warp":mission_warp(fleet,target.position,"reposition_for_remote_mining"),"mission":"reposition_for_remote_mining"},f"Move remote miner to observed mining target {target.name}; concentration sum={mineral_score}, distance={travel:.1f}, score={score:.1f}.",priority=66)
                 assigned_targets.add(target.id); intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"REPOSITION FOR REMOTE MINING","reason":f"Observed mineral target {target.name}; concentration sum={mineral_score}, distance={travel:.1f}.","destination_planet_id":target.id})
             else:
-                intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"HOLD FOR MINING TARGET","reason":"No observed unowned planet with usable mineral-concentration data is known. Do not send a miner to an unknown world.","destination_planet_id":None})
+                intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"HOLD FOR MINING TARGET","reason":"No eligible observed remote-mining target is known. Normal races require an unowned world; late-game AR may also use its homeworld after the mineral-pressure gate opens. Do not send a miner to an unknown world.","destination_planet_id":None})
             continue
 
         if fleet.role=="minelayer":

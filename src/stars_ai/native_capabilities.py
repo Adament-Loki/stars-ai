@@ -19,7 +19,8 @@ CAPABILITIES = {
     "colony_operation": NativeCapability("colony_operation","VALIDATED","Observed 25 kT (2,500-colonist) load + WaypointAdd + task 2 Colonize sequence."),
     "transport_minerals": NativeCapability("transport_minerals","VALIDATED","Small exact I/B/G load quantities are derived from two controlled Stars!-generated samples; destination Transport task unloads all cargo and loads optimal fuel."),
     "merge_fleets": NativeCapability("merge_fleets","PARTIAL","sandbox/GAME.x1 client capture validates Type37 target fleet 7 followed by source fleet 8, then a mixed Type-2 load and waypoint in the same X file. The writer emits that layout with exact-byte trace logging."),
-    "fleet_split": NativeCapability("fleet_split","PARTIAL","latestdemo turn-040 Player-1 client capture observes Type24 FleetSplit followed immediately by a nine-byte Type23 MoveShips block. The writer preserves only a same-turn, FileHash-checked, owned-source pair verbatim and reserves its source fleet; arbitrary split synthesis is intentionally disabled until Type23 selection/count bytes are independently decoded."),
+    "fleet_split": NativeCapability("fleet_split","PARTIAL","latestdemo turn-040 Player-1 client capture observes Type24 FleetSplit followed immediately by a nine-byte Type23 MoveShips block. The writer preserves only a same-turn, FileHash-checked, owned-source pair verbatim and reserves its source fleet."),
+    "split_scout_fleet": NativeCapability("split_scout_fleet","EXPERIMENTAL","Singleton scout dispersion synthesizes a Type24 FleetSplit followed by a nine-byte Type23 MoveShips transfer of one scout design slot into a newly allocated fleet ID. Restricted to stationary, cargo-free, pure scout stacks and requires fresh client/host validation before promotion."),
     "transport_unload_remainder": NativeCapability("transport_unload_remainder","PARTIAL","A cargo-bearing freighter already orbiting its owned destination receives the captured Type-5 current-waypoint Transport task with all I/B/G/population unload fields. The transaction is exact-traced pending a dedicated host replay."),
     "research_change": NativeCapability("research_change","VALIDATED","ResearchChange byte 0 is the actual 15/25 percent; byte 1 packs next field in the high nibble and current field in the low nibble."),
     "set_planet_research_mode": NativeCapability("set_planet_research_mode","VALIDATED","PlanetChange leftover-only ON is the empirically observed 6-byte planet-id, 1, 0 form. OFF remains intentionally unsupported."),
@@ -40,7 +41,4 @@ def capability(action: str) -> NativeCapability:
     return CAPABILITIES.get(action,NativeCapability(action,"BLOCKED","No validated native serialization exists."))
 
 def may_emit_native(action: str) -> bool:
-    # PARTIAL and EXPERIMENTAL capabilities are intentionally executable when
-    # their writer has an explicit codec. Their emitted payload must carry the
-    # trust level and exact bytes so a host/client failure is attributable.
     return capability(action).status in {"VALIDATED", "PARTIAL", "EXPERIMENTAL"}

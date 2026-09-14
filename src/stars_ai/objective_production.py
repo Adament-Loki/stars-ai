@@ -18,7 +18,8 @@ from .logistics_capacity import (
 )
 from .population_invasion import population_capture_targets
 from .scout_policy import enemy_contact_summary, custom_scout_missions
-from .territorial_defense import assess_territorial_defense
+from .territorial_defense import assess_territorial_defense, hostile_colonies_inside_claimed_area
+from .planet_economy import decode_race_economy, working_mineral_reserve
 
 
 # Stars! production queues are serial at a given yard.  Counting every ship
@@ -465,6 +466,121 @@ def _desired_freighter_forces(state,viable_claim_count:int=0)->tuple[int,int,str
     )
 
 
+
+REMOTE_MINING_MIN_TURN = 20
+REMOTE_MINING_LATE_TURN = 30
+REMOTE_MINING_REAL_PRESSURE_RATIO = 0.25
+REMOTE_MINING_SEVERE_PRESSURE_RATIO = 0.50
+
+
+def _is_alternate_reality(state) -> bool:
+    race=getattr(state,"race",None)
+    native=getattr(race,"native",{}) or {}
+    try:
+        prt_id=int(native.get("prt_id",-1))
+    except (TypeError,ValueError):
+        prt_id=-1
+    prt=str(getattr(race,"primary_trait","") or "").casefold()
+    return prt_id==8 or "alternate reality" in prt
+
+
+def _remote_mining_pressure_policy(state,plan,remote_targets) -> dict:
+    # Remote miners are a capital-intensive mid/late-game tool. Merely seeing
+    # a rich rock is not enough to build them. The empire must be mature and
+    # materially below the shared working-mineral reserve used by economics.
+    owned=[p for p in state.planets if p.owner==state.player_id]
+    turn=max(0,int(state.year)-2400)
+    phase=str(getattr(plan,"phase","") or "")
+    late_phase=phase in {
+        "industrial_buildout","fortification","opportunistic_war","tech_acceleration",
+    }
+    economy=decode_race_economy(state.race)
+
+    surface={"ironium":0,"boranium":0,"germanium":0}
+    reserve={"ironium":0,"boranium":0,"germanium":0}
+    stressed_worlds=0
+    per_world=[]
+    for planet in owned:
+        need=working_mineral_reserve(planet,economy,())
+        world_surface={
+            "ironium":max(0,int(getattr(planet,"ironium",0) or 0)),
+            "boranium":max(0,int(getattr(planet,"boranium",0) or 0)),
+            "germanium":max(0,int(getattr(planet,"germanium",0) or 0)),
+        }
+        short={k:max(0,int(need.get(k,0) or 0)-world_surface[k]) for k in surface}
+        if sum(short.values())>0:
+            stressed_worlds+=1
+        for k in surface:
+            surface[k]+=world_surface[k]
+            reserve[k]+=max(0,int(need.get(k,0) or 0))
+        per_world.append({
+            "planet_id":int(planet.id),
+            "surface":world_surface,
+            "working_reserve":{k:int(need.get(k,0) or 0) for k in surface},
+            "deficit":short,
+        })
+
+    deficits={k:max(0,reserve[k]-surface[k]) for k in surface}
+    reserve_total=max(1,sum(reserve.values()))
+    deficit_total=sum(deficits.values())
+    pressure_ratio=deficit_total/reserve_total
+    critical_deficit=max(deficits.values()) if deficits else 0
+
+    mature=bool(
+        turn>=REMOTE_MINING_MIN_TURN
+        and (late_phase or len(owned)>=6 or turn>=REMOTE_MINING_LATE_TURN)
+    )
+    real_pressure=bool(
+        mature
+        and (
+            pressure_ratio>=REMOTE_MINING_REAL_PRESSURE_RATIO
+            or (
+                stressed_worlds>=max(2,(len(owned)+2)//3)
+                and critical_deficit>=120
+            )
+        )
+    )
+    severe_pressure=bool(
+        real_pressure and pressure_ratio>=REMOTE_MINING_SEVERE_PRESSURE_RATIO
+    )
+    is_ar=_is_alternate_reality(state)
+
+    if not real_pressure:
+        desired=0
+    elif is_ar and turn>=REMOTE_MINING_LATE_TURN:
+        # AR late-game doctrine: once real pressure exists, build a fleet rather
+        # than one or two token miners for homeworld remote-mining leverage.
+        desired=min(16,max(6,6+int(round(pressure_ratio*10))))
+    else:
+        target_count=len(remote_targets)
+        base=min(5,max(1,(target_count+1)//2)) if target_count else 0
+        desired=min(6,base+(2 if severe_pressure else 0))
+
+    return {
+        "turn":turn,
+        "phase":phase,
+        "alternate_reality":is_ar,
+        "mature_empire":mature,
+        "real_mineral_pressure":real_pressure,
+        "severe_mineral_pressure":severe_pressure,
+        "pressure_ratio":round(float(pressure_ratio),3),
+        "surface_stock":surface,
+        "working_reserve":reserve,
+        "reserve_deficit":deficits,
+        "stressed_worlds":stressed_worlds,
+        "owned_worlds":len(owned),
+        "observed_remote_targets":len(remote_targets),
+        "desired_miners":int(desired),
+        "world_diagnostics":per_world,
+        "policy":(
+            "Do not build remote miners merely because rich targets are visible. "
+            "Require a mature empire plus real working-reserve mineral pressure. "
+            "Late-game AR may scale to a large homeworld mining fleet after that gate opens."
+        ),
+    }
+
+
+
 def plan_objective_ship_builds(state,plan=None):
     ds=_designs(state)
     if not ds: return []
@@ -589,8 +705,6 @@ def plan_objective_ship_builds(state,plan=None):
     )
     needed_capture_capacity=min((target.required_kt for target in capture_targets),default=0)
     if (
-        freighter_build_authorized
-        and
         needed_capture_capacity
         and live_capture_capacity<needed_capture_capacity
         and capture_capacity>=needed_capture_capacity
@@ -636,10 +750,31 @@ def plan_objective_ship_builds(state,plan=None):
         c=(p.native or {}).get('mineral_concentrations')
         if p.owner is None and p.observed and c and len(c)>=3 and all(v is not None for v in c[:3]) and sum(max(0,int(v)) for v in c[:3])>=150:
             mt.append(p)
-    desired_miners=min(3,max(1,math.ceil(len(mt)/2))) if mt else 0; miner_assets=_role_count(ds,counts,'miner'); miner_gap=max(0,desired_miners-miner_assets)
+    mining_policy=_remote_mining_pressure_policy(state,plan,mt)
+    state.native["remote_mining_build_policy"]=mining_policy
+    desired_miners=int(mining_policy["desired_miners"])
+    miner_assets=_role_count(ds,counts,'miner')
+    miner_gap=max(0,desired_miners-miner_assets)
     if miner_gap and (d:=_pick(state,'miner')):
-        req.append(BuildRequest('miner',int(d['design_number']),d['name'],min(2,miner_gap),124,
-            f"{len(mt)} strong observed remote-mining targets; desired miners={desired_miners}, available/queued={miner_assets}."))
+        build_cap=4 if bool(mining_policy["alternate_reality"]) else 2
+        req.append(BuildRequest(
+            'miner',int(d['design_number']),d['name'],min(build_cap,miner_gap),
+            138 if bool(mining_policy["severe_mineral_pressure"]) else 124,
+            (
+                f"Remote mining authorized by real mineral pressure: pressure ratio="
+                f"{float(mining_policy['pressure_ratio']):.1%}, reserve deficit "
+                f"I/B/G={mining_policy['reserve_deficit']['ironium']}/"
+                f"{mining_policy['reserve_deficit']['boranium']}/"
+                f"{mining_policy['reserve_deficit']['germanium']} kT; "
+                f"{len(mt)} strong observed unowned target(s); desired miners={desired_miners}, "
+                f"available/queued={miner_assets}."
+                + (
+                    " AR late-game doctrine permits a large homeworld mining fleet once "
+                    "the real-pressure gate is open."
+                    if bool(mining_policy["alternate_reality"]) else ""
+                )
+            ),
+        ))
 
     # Minefields are territorial claims, not a default peace-time sink. Build
     # minelayers only after a non-friendly armed or transport fleet enters a
@@ -654,6 +789,28 @@ def plan_objective_ship_builds(state,plan=None):
             'minelayer', int(d['design_number']), d['name'], min(2, minelayer_gap), 178,
             f"{territorial.reason} Minelayers available/queued={minelayer_assets}; "
             f"desired territorial minefield force={territorial.desired_minelayers}."
+        ))
+
+    # Build a limited territorial bomber element after the design exists.
+    hostile_colonies=hostile_colonies_inside_claimed_area(state,plan)
+    bomber_assets=_role_count(ds,counts,'bomber')
+    desired_bombers=min(6,max(2,2*len(hostile_colonies))) if hostile_colonies else 0
+    bomber_gap=max(0,desired_bombers-bomber_assets)
+    bomber_design=_pick(state,'bomber')
+    state.native["bomber_capability_demand"]={
+        "target_planet_ids":[int(planet.id) for planet in hostile_colonies],
+        "desired_bombers":desired_bombers,
+        "available_or_queued":bomber_assets,
+        "design_available":bool(bomber_design is not None),
+        "policy":"Prepare a small escorted bombing capability only for hostile/opposed colonies inside claimed territory.",
+    }
+    if bomber_gap and bomber_design is not None:
+        req.append(BuildRequest(
+            'bomber',int(bomber_design['design_number']),bomber_design['name'],
+            min(3,bomber_gap),184,
+            f"{len(hostile_colonies)} hostile/opposed colony world(s) are inside the claimed area; "
+            f"bombers available/queued={bomber_assets}, desired strike capability={desired_bombers}. "
+            "Build a limited escorted bomber element; design capability was seeded separately."
         ))
 
     # Escort is a mission assigned to the shared combat architecture, not a

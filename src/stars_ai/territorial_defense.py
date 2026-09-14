@@ -258,6 +258,36 @@ def _source_world_escalation(
     )
 
 
+def hostile_colonies_inside_claimed_area(state: Any, plan: Any = None) -> tuple[Any, ...]:
+    # Capability signal only; this does not authorize an attack.
+    owned=[planet for planet in state.planets if planet.owner == state.player_id]
+    if not owned:
+        return ()
+    radius=_claim_radius(plan)
+    out=[]
+    for planet in state.planets:
+        owner=getattr(planet,"owner",None)
+        if owner is None or int(owner)==int(state.player_id):
+            continue
+        if not bool(getattr(planet,"observed",False)):
+            continue
+        if _friendly_owner(state,plan,int(owner)):
+            continue
+        native=getattr(planet,"native",{}) or {}
+        recently_lost=bool(native.get("recently_lost_by_player"))
+        view=(getattr(plan,"diplomacy",{}) or {}).get(int(owner),{}) if plan else {}
+        attitude=str(view.get("attitude","neutral") or "neutral").casefold()
+        action=str((view.get("conflict",{}) or {}).get("recommended_action","coexist") or "coexist").casefold()
+        hostile=recently_lost or attitude=="hostile" or action=="oppose"
+        if not hostile:
+            continue
+        separation=min(distance(planet.position,anchor.position) for anchor in owned)
+        if separation <= radius:
+            out.append(planet)
+    return tuple(sorted(out,key=lambda planet:int(planet.id)))
+
+
+
 def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefenseAssessment:
     """Return patrol/minefield needs caused by meaningful border violations.
 
@@ -303,28 +333,58 @@ def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefen
             claim_radius_ly=round(radius, 2),
             severity=round(severity, 3),
             requires_patrol=severity >= 0.30,
-            requires_minefield=severity >= 0.42,
+            requires_minefield=severity >= (0.32 if classification in {"transport", "armed_transport"} else 0.42),
         ))
 
     violations.sort(key=lambda violation: (-violation.severity, violation.distance_ly, violation.fleet_id))
-    covered = {
-        int(violation.anchor_planet_id)
-        for violation in violations
+
+    # Pre-emptive edge deterrence. Significant hostile traffic just outside the
+    # formal claim radius is where minefields have the greatest deterrent value.
+    edge_anchor_ids=[]
+    warning_radius=radius*1.35
+    for fleet in state.fleets:
+        owner=int(getattr(fleet,"owner",-1) or -1)
+        if owner <= 0 or owner == int(state.player_id) or _friendly_owner(state,plan,owner):
+            continue
+        if _fleet_classification(fleet) is None:
+            continue
+        anchor=min(owned,key=lambda planet:distance(fleet.position,planet.position))
+        separation=float(distance(fleet.position,anchor.position))
+        if radius < separation <= warning_radius:
+            edge_anchor_ids.append(int(anchor.id))
+    for colony in hostile_colonies_inside_claimed_area(state,plan):
+        anchor=min(owned,key=lambda planet:distance(colony.position,planet.position))
+        edge_anchor_ids.append(int(anchor.id))
+
+    candidate_anchor_ids=list(dict.fromkeys(
+        [
+            int(violation.anchor_planet_id)
+            for violation in violations
+            if violation.requires_minefield
+        ] + edge_anchor_ids
+    ))
+    covered={
+        planet_id
+        for planet_id in candidate_anchor_ids
         if _anchor_has_our_minefield(
             state,
-            next(planet for planet in owned if int(planet.id) == int(violation.anchor_planet_id)),
+            next(planet for planet in owned if int(planet.id)==int(planet_id)),
         )
     }
-    uncovered = tuple(dict.fromkeys(
-        int(violation.anchor_planet_id)
-        for violation in violations
-        if violation.requires_minefield and int(violation.anchor_planet_id) not in covered
-    ))
-    patrols = sum(1 for violation in violations if violation.requires_patrol)
-    desired_minelayers = min(2, max(1, math.ceil(len(uncovered) / 2))) if uncovered else 0
-    reason = (
+    uncovered=tuple(
+        planet_id for planet_id in candidate_anchor_ids
+        if planet_id not in covered
+    )
+    patrols=sum(1 for violation in violations if violation.requires_patrol)
+    desired_minelayers=(
+        min(4,max(1,math.ceil(len(uncovered)*0.75)))
+        if uncovered else 0
+    )
+    reason=(
         f"{len(violations)} non-friendly armed/transport territorial violation(s) inside the "
-        f"{radius:.0f}-ly claim zone; patrol objectives={patrols}, uncovered minefield anchors={len(uncovered)}."
+        f"{radius:.0f}-ly claim zone; patrol objectives={patrols}, "
+        f"proactive edge-pressure anchors={len(set(edge_anchor_ids))}, "
+        f"uncovered minefield anchors={len(uncovered)}."
     )
     escalation=_source_world_escalation(state, plan, violations)
     return TerritorialDefenseAssessment(
