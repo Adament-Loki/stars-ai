@@ -205,6 +205,67 @@ def _seed_failure(errors: list[str]) -> SeedValidationError:
     return SeedValidationError(f"Seed validation failed:\n{detail}")
 
 
+def _complete_game_family_errors(
+    headers: dict[Path, Any],
+    hst_header: Any,
+) -> list[str]:
+    """Validate every native file sharing one game basename.
+
+    A Stars! directory is an atomic family, not merely the M/H/X files for
+    seats controlled by this process.  Restoring a partial backup over another
+    game can leave a foreign ``GAME.h#`` or ``GAME.x#`` behind.  Stars! may
+    silently recreate some of those files, but it must never be asked to host
+    such a mixed family.
+    """
+    errors=[]
+    game_id=int(hst_header.game_id)
+    game_turn=int(hst_header.turn)
+    expected_types={"h":4,"m":3,"x":1}
+
+    for path,header in headers.items():
+        suffix=path.suffix.casefold()
+        if int(header.game_id)!=game_id:
+            errors.append(
+                f"{path.name} game id {header.game_id} != HST game id {game_id}"
+            )
+
+        if suffix==".hst":
+            expected_type=2
+            seat=None
+            kind="hst"
+        elif suffix==".xy":
+            expected_type=0
+            seat=None
+            kind="xy"
+        else:
+            match=re.fullmatch(r"\.([hmx])([1-9]|1[0-6])",suffix,re.IGNORECASE)
+            if match is None:
+                # _native_game_basename already excludes other extensions.
+                continue
+            kind=match.group(1).lower()
+            seat=int(match.group(2))
+            expected_type=expected_types[kind]
+
+        if int(header.file_type)!=expected_type:
+            errors.append(
+                f"{path.name} file type {header.file_type} != expected {expected_type}"
+            )
+        if seat is not None and int(header.player_index)!=seat-1:
+            errors.append(
+                f"{path.name} declares player {header.player_index+1}, expected seat {seat} from filename"
+            )
+        # Histories normally describe the prior visible turn and intentionally
+        # do not share the current M/HST turn.  M and submitted X files do.
+        if kind in {"m","x"} and int(header.turn)!=game_turn:
+            errors.append(
+                f"{path.name} turn {header.turn} != HST turn {game_turn}"
+            )
+        if kind=="x" and not bool(header.turn_submitted):
+            errors.append(f"{path.name} is not marked turnSubmitted")
+
+    return errors
+
+
 def _validate_seed_game(cfg: WindowsAutoHostConfig) -> ValidatedSeedGame:
     """Parse and validate the complete seed without changing any directory."""
     from .adapters.stars_native import read_blocks
@@ -266,6 +327,18 @@ def _validate_seed_game(cfg: WindowsAutoHostConfig) -> ValidatedSeedGame:
     if errors:
         raise _seed_failure(errors)
 
+    family_headers={}
+    for path in game_files:
+        try:
+            header,_,_=read_blocks(path)
+            family_headers[path]=header
+        except Exception as exc:
+            errors.append(
+                f"{path.name} is not structurally parseable: {type(exc).__name__}: {exc}"
+            )
+    if errors:
+        raise _seed_failure(errors)
+
     parsed_headers={}
     parsed_blocks={}
     for label,path in [("HST",hst),("XY",xy)]+[
@@ -285,6 +358,9 @@ def _validate_seed_game(cfg: WindowsAutoHostConfig) -> ValidatedSeedGame:
         raise _seed_failure(errors)
 
     game_id=int(parsed_headers["HST"].game_id)
+    errors.extend(_complete_game_family_errors(
+        family_headers,parsed_headers["HST"]
+    ))
     for label,header in parsed_headers.items():
         if int(header.game_id) != game_id:
             errors.append(f"{label} game id {header.game_id} != HST game id {game_id}")
@@ -428,6 +504,18 @@ def _validate_live_game(
     if errors:
         raise _live_failure(errors)
 
+    family_headers={}
+    for path in game_files:
+        try:
+            header,_,_=read_blocks(path)
+            family_headers[path]=header
+        except Exception as exc:
+            errors.append(
+                f"{path.name} is not structurally parseable: {type(exc).__name__}: {exc}"
+            )
+    if errors:
+        raise _live_failure(errors)
+
     parsed={}
     for label,path in [("HST",hst),("XY",xy)]+[
         (f"M{pid}",m_files[pid]) for pid in player_ids
@@ -457,6 +545,7 @@ def _validate_live_game(
         errors.append(
             f"{xy.name} file type {parsed['XY'].file_type} is not XY type 0"
         )
+    errors.extend(_complete_game_family_errors(family_headers,parsed["HST"]))
     for label,header in parsed.items():
         if int(header.game_id)!=game_id:
             errors.append(f"{label} game id {header.game_id} != live HST game id {game_id}")

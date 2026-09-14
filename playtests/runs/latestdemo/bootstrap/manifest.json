@@ -1,14 +1,17 @@
 {
   "game_basename": "GAME",
-  "game_id": 775786734,
+  "game_id": 316687093,
   "starting_turn": 0,
   "mode": "seed_reset",
   "play_on": false,
   "configured_players": [
     1,
-    2
+    2,
+    3,
+    4,
+    5
   ],
-  "seed_directory": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5small",
+  "seed_directory": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5Comps11Total",
   "execution_directory": "C:\\Dev\\repos\\stars-ai\\sandbox",
   "snapshot_files": [
     "GAME.h1",
@@ -16,16 +19,23 @@
     "GAME.h3",
     "GAME.h4",
     "GAME.h5",
-    "GAME.h6",
     "GAME.hst",
     "GAME.m1",
+    "GAME.m10",
+    "GAME.m11",
     "GAME.m2",
     "GAME.m3",
     "GAME.m4",
     "GAME.m5",
     "GAME.m6",
+    "GAME.m7",
+    "GAME.m8",
+    "GAME.m9",
     "GAME.x1",
     "GAME.x2",
+    "GAME.x3",
+    "GAME.x4",
+    "GAME.x5",
     "GAME.xy"
   ],
   "staged_files": [
@@ -34,20 +44,30 @@
     "GAME.h3",
     "GAME.h4",
     "GAME.h5",
-    "GAME.h6",
     "GAME.hst",
     "GAME.m1",
+    "GAME.m10",
+    "GAME.m11",
     "GAME.m2",
     "GAME.m3",
     "GAME.m4",
     "GAME.m5",
     "GAME.m6",
+    "GAME.m7",
+    "GAME.m8",
+    "GAME.m9",
     "GAME.x1",
     "GAME.x2",
+    "GAME.x3",
+    "GAME.x4",
+    "GAME.x5",
     "GAME.xy"
   ],
   "initial_x_sha256": {
-    "1": "5c051b14d1c287f9b7f3c4abd036f6036e281124f254f95610176733e362af63",
-    "2": "8469889e5cdf6f4d3a34192f43c177ab74fa354e6eb89dc9f2bad880e0a3d90d"
+    "1": "e78136a32b27055ceeea3a12c536eb21d7bb64d24fa427e04d0687b99a2278ba",
+    "2": "1d9b406c0ccc98ac87bfcfa0ade7698d7e9613836e1ebff4a5abcf96c501fd58",
+    "3": "c031375ae7f96e15b21e2f6c374059f932c8eb559094f7a8096249626585b9f1",
+    "4": "fa5476eb88a18c6507cebd6a860d4b9809a5f3382e7fd24fca773a01b2a5c35f",
+    "5": "47ab7626e64369728b95d76bfc62d08a2c1b2bbbd7affa981e80b00bfabd7848"
   }
 }

@@ -69,12 +69,17 @@ def test_normal_race_proposes_and_compiles_a_custom_space_station():
     assert any(slot.count for slot in plan.encoded.slots)
     assert validate_design(plan.encoded.hull_id, plan.encoded.slots).ok
 
-    staging, final = create_starbase_design_blocks(plan.encoded, player_id=1)
+    staging, delete, populated, final = create_starbase_design_blocks(plan.encoded, player_id=1)
     parsed_staging = parse_design_change_payload(staging.data)
+    parsed_delete = parse_design_change_payload(delete.data)
+    parsed_populated = parse_design_change_payload(populated.data)
     parsed_final = parse_design_change_payload(final.data)
-    assert staging.data[:2] == bytes.fromhex("01 A1")
-    assert final.data[:2] == bytes.fromhex("01 A1")
-    assert parsed_staging.is_starbase and parsed_final.is_starbase
+    assert staging.data[:2] == bytes.fromhex("01 B1")
+    assert delete.data == bytes.fromhex("00 71")
+    assert populated.data[:2] == bytes.fromhex("01 B1")
+    assert final.data[:2] == bytes.fromhex("01 71")
+    assert parsed_staging.is_starbase and parsed_delete.is_starbase
+    assert parsed_populated.is_starbase and parsed_final.is_starbase
     assert parsed_final.design_slot == 1
     assert parsed_final.hull_id == 34
     assert all(slot.count == 0 for slot in parsed_staging.slots)

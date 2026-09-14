@@ -1,0 +1,65 @@
+Stars! AI Observer Report - Turn 30 / Year 2430
+==================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+P7 Felite has a clear lead. Observer score gap over second place: 34.8%.
+No clear evidence of player-vs-player fighting yet; expansion and buildup still dominate.
+
+CURRENT STANDINGS
+-----------------
+1. P7 Felite [Hyper Expansion] - 41 planets, pop 5,215, 339 factories, 20 ships / 0 fleet mass, tech total 22, 1 starbases.
+2. P10 Tritizoid [Alternate Reality] - 23 planets, pop 6,457, 0 factories, 8 ships / 0 fleet mass, tech total 28, 23 starbases.
+3. P4 Kilingons [War Monger / Balanced] - 13 planets, pop 8,405, 411 factories, 33 ships / 0 fleet mass, tech total 24, 1 starbases.
+4. P2 S2 [Inner Strength / Balanced] - 17 planets, pop 7,625, 258 factories, 33 ships / 0 fleet mass, tech total 20, 1 starbases.
+5. P8 Picardi [Inner Strength] - 4 planets, pop 7,251, 822 factories, 2 ships / 0 fleet mass, tech total 23, 1 starbases.
+6. P3 Romulans [Super Stealth / Balanced] - 11 planets, pop 8,302, 366 factories, 36 ships / 0 fleet mass, tech total 16, 1 starbases.
+7. P9 Hawk [Packet Physics] - 15 planets, pop 6,180, 71 factories, 15 ships / 0 fleet mass, tech total 22, 2 starbases.
+8. P6 Nairnian [Super Stealth] - 10 planets, pop 6,243, 399 factories, 13 ships / 0 fleet mass, tech total 17, 1 starbases.
+9. P5 Humanoid [Jack of All Trades / Balanced] - 12 planets, pop 4,444, 134 factories, 22 ships / 0 fleet mass, tech total 22, 1 starbases.
+10. P11 Ubert [Super Stealth] - 5 planets, pop 6,033, 564 factories, 13 ships / 0 fleet mass, tech total 18, 1 starbases.
+11. P1 SuperRabits [Interstellar Traveler / Balanced] - 11 planets, pop 3,214, 29 factories, 3 ships / 0 fleet mass, tech total 18, 2 starbases.
+
+CHANGE SINCE TURN 25
+-----------------------------
+P7: planets +5, population +1,663, factories +182, ships +6, fleet mass +0, tech total +5.
+P10: planets +4, population +1,561, factories +0, ships +2, fleet mass +0, tech total +7.
+P4: planets +3, population +2,489, factories +125, ships +1, fleet mass +0, tech total +4.
+P2: planets +4, population +1,500, factories +125, ships +10, fleet mass +0, tech total +5.
+P8: planets +1, population +2,336, factories +262, ships +0, fleet mass +0, tech total +3.
+P3: planets +2, population +1,961, factories +125, ships +17, fleet mass +0, tech total +4.
+P9: planets +2, population +2,352, factories +11, ships +6, fleet mass +0, tech total +5.
+P6: planets +4, population +1,582, factories +208, ships +0, fleet mass +0, tech total +4.
+P5: planets +1, population +1,683, factories +122, ships +11, fleet mass +0, tech total +1.
+P11: planets +0, population +1,431, factories +227, ships +3, fleet mass +0, tech total +5.
+P1: planets +0, population +951, factories +4, ships +0, fleet mass +0, tech total +0.
+
+WAR & CONTACT
+-------------
+- No captures or major net fleet-loss events detected in this reporting window.
+
+WHO IS STRONGEST?
+-----------------
+- Territory: P7 with 41 planets.
+- Population: P4 with 8,405.
+- Industry: P8 with 822 factories.
+- Fleet by mass: P7 with 0.
+- Technology: P10 with tech total 28.
+
+MOMENTUM / RISK
+---------------
+- Current leader: P7 Felite.
+- Current last place: P1 SuperRabits.
+- P4 is materially behind the leader (<60% of leader observer score).
+- P2 is materially behind the leader (<60% of leader observer score).
+- P8 is materially behind the leader (<60% of leader observer score).
+- P3 is materially behind the leader (<60% of leader observer score).
+- P9 is materially behind the leader (<60% of leader observer score).
+- P6 is materially behind the leader (<60% of leader observer score).
+- P5 is materially behind the leader (<60% of leader observer score).
+- P11 is materially behind the leader (<60% of leader observer score).
+- P1 is materially behind the leader (<60% of leader observer score).
+
+INTERPRETATION
+--------------
+Observer score is a transparent diagnostic composite, not the Stars! built-in score. Planet captures are strong evidence of war; abrupt fleet losses are treated as probable combat but can also reflect scrapping/merging until battle blocks are fully decoded.

@@ -47,14 +47,13 @@ ORDER_BLOCK_TYPES = {
     1,2,3,4,5,10,19,23,24,25,27,29,34,35,36,37,38,40,42,44,46
 }
 
-# The isolated Type27 client capture remains our reference form, but autoplay
-# is intentionally permissive: design mutations travel with every other
-# encodable order the AI selected.  Each mixed transaction is trace-marked so
-# a host/client rejection is attributable during playtests.
+# Type-27 is the wire record which creates or deletes a ship/starbase design.
+# Starbase creation uses a separately captured four-record lifecycle; it was
+# host-replayed with ordinary AI orders for all five autoplay players.
 TYPE27_AUTOPLAY_ENABLED = True
 TYPE27_ISOLATE_TRANSACTION = False
 TYPE27_AUTOPLAY_BLOCK_REASON = (
-    "Native Type27 ship-design mutation is disabled by configuration."
+    "Native Type27 design mutation is unavailable in this autoplay configuration."
 )
 
 @dataclass
@@ -75,6 +74,7 @@ class UnsafeWaypointMutationError(RuntimeError):
         """Retain the structured safety diagnostic alongside the exception message."""
         self.diagnostic=dict(diagnostic)
         super().__init__(str(self.diagnostic.get("reason","unsafe native waypoint mutation blocked")))
+
 
 def _u16(v:int)->bytes:
     return int(v).to_bytes(2,"little",signed=False)
@@ -468,6 +468,43 @@ def _waypoint_delete_block(state: Any, *, fleet_id: int, waypoint_index: int) ->
     return NativeBlock(3, 4, _u16(_raw_fleet_number(state, fleet_id)) + bytes([index, 0]))
 
 
+def _pending_waypoint_delete_indices(waypoint_count: int) -> list[int]:
+    """Return valid Type-3 indices for removing every pending waypoint.
+
+    Waypoint zero is the fleet's current waypoint and is not a route leg.
+    Type-3 removals renumber subsequent waypoints, so pending entries must be
+    removed from highest index to lowest.  The one-byte wire index limits a
+    valid count to 256 (indices 0 through 255).
+    """
+    count = int(waypoint_count)
+    if not 0 <= count <= 0x100:
+        raise ValueError(
+            f"Native waypoint count must be in the Type-3 index range 0..256; got {count}"
+        )
+    return list(range(count - 1, 0, -1))
+
+
+def _pending_waypoint_delete_blocks(
+    state: Any,
+    *,
+    fleet_id: int,
+    waypoint_count: int,
+) -> tuple[list[int], list[NativeBlock]]:
+    """Encode only the valid pending-waypoint removals for a route cancel."""
+    indices=_pending_waypoint_delete_indices(waypoint_count)
+    # Keep this cancellation-specific invariant beside the block generation.
+    # Other captured Type-3 operations may use a different index contract.
+    if not all(1 <= index < int(waypoint_count) for index in indices):
+        raise RuntimeError(
+            "Internal waypoint-cancellation invariant failed: "
+            f"indices={indices}, count={waypoint_count}"
+        )
+    return indices, [
+        _waypoint_delete_block(state,fleet_id=fleet_id,waypoint_index=index)
+        for index in indices
+    ]
+
+
 def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
     """Encode the client-captured stationary Remote Mining task transition.
 
@@ -660,6 +697,7 @@ def _native_waypoint_details(state:Any, fleet_id:int)->dict:
         "native_waypoint_warp":None,
         "native_waypoint_task":None,
         "native_waypoint_object_type":None,
+        "native_waypoint_count":0,
         "has_waypoint_slot":False,
     }
     if fleet is None:
@@ -667,9 +705,15 @@ def _native_waypoint_details(state:Any, fleet_id:int)->dict:
     out["normalized_destination"]=getattr(fleet,"destination_planet_id",None)
     native=fleet.native or {}
     wps=native.get("waypoints") or []
-    out["has_waypoint_slot"]=(
-        int(native.get("waypoint_count") or 0)>=2 or len(wps)>=2
+    # The count decoded from the current M-file is authoritative for the
+    # Type-3 wire index.  Older parser fixtures may omit it, in which case the
+    # decoded list remains a conservative fallback.
+    raw_waypoint_count=native.get("waypoint_count")
+    out["native_waypoint_count"]=(
+        max(0, int(raw_waypoint_count))
+        if raw_waypoint_count is not None else len(wps)
     )
+    out["has_waypoint_slot"]=out["native_waypoint_count"]>=2
     out["native_waypoint_destination"]=native.get("native_destination_planet_id")
     out["native_waypoint_warp"]=native.get("native_destination_warp")
     out["native_waypoint_task"]=native.get("native_destination_task")
@@ -1210,6 +1254,29 @@ def _frame_order_stream(generated:list[NativeBlock], xblocks:list[NativeBlock], 
     order_stream.extend([
         submit,NativeBlock(46,submit.size,submit.data),NativeBlock(46,submit.size,submit.data)
     ])
+    return order_stream
+
+
+def _frame_starbase_design_transaction(
+    ordinary_blocks: list[NativeBlock],
+    design_blocks: list[NativeBlock],
+    xblocks: list[NativeBlock],
+) -> list[NativeBlock]:
+    """Frame the captured starbase-design lifecycle without inventing records.
+
+    The Player-1 client capture brackets its four DesignChange records with
+    one copied SaveAndSubmit record on each side.  Other players' known-good
+    templates contain no such record, and the same no-save form has been host
+    replayed successfully.  Therefore this helper copies a template submit
+    only when the player actually has one.
+    """
+    order_stream=list(ordinary_blocks)
+    template_submit=next((block for block in xblocks if block.type_id==46),None)
+    if template_submit is None:
+        order_stream.extend(design_blocks)
+        return order_stream
+    submit=NativeBlock(46,template_submit.size,template_submit.data)
+    order_stream.extend([submit,*design_blocks,NativeBlock(46,submit.size,submit.data)])
     return order_stream
 
 
@@ -1917,9 +1984,7 @@ def write_ai_turn(
             )
     orders.orders.sort(key=lambda o:o.priority, reverse=True)
 
-    # Keep whether a design was requested for diagnostics. The client capture
-    # was isolated, but permissive autoplay intentionally combines each legal
-    # Type27 mutation with the ordinary orders selected for this same turn.
+    # Retain the native Type-27 lifecycle selected for diagnostics and framing.
     type27_client_framing=False
     type27_kind=None
     type27_slot=None
@@ -1993,23 +2058,46 @@ def write_ai_turn(
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
                 details=_native_waypoint_details(state,fid)
-                if not details["has_waypoint_slot"]:
+                native_waypoint_count=int(details["native_waypoint_count"])
+                try:
+                    cancellation_indices,cancellation_blocks=_pending_waypoint_delete_blocks(
+                        state,
+                        fleet_id=fid,
+                        waypoint_count=native_waypoint_count,
+                    )
+                except ValueError as exc:
                     skipped.append({
                         "kind":o.kind,
-                        "reason":"No pending native waypoint exists to cancel.",
-                        "payload":o.payload,
+                        "reason":(
+                            "Native waypoint cancellation deferred because the current M-file "
+                            f"count is outside the Type-3 wire range: {exc}"
+                        ),
+                        "payload":{
+                            **o.payload,
+                            "native_waypoint_count":native_waypoint_count,
+                        },
                     })
                     continue
-                waypoint_count=max(1,min(32,int(o.payload.get("waypoint_count",1) or 1)))
+                if not cancellation_indices:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            "No pending native waypoint exists to cancel; current M-file "
+                            "contains only waypoint #0."
+                        ),
+                        "payload":{
+                            **o.payload,
+                            "native_waypoint_count":native_waypoint_count,
+                        },
+                    })
+                    continue
                 # Delete from the end so every pending route leg is removed;
                 # a Type-3 removal renumbers later waypoint indices.
-                cancellation_blocks=[
-                    _waypoint_delete_block(state,fleet_id=fid,waypoint_index=index)
-                    for index in range(waypoint_count,0,-1)
-                ]
                 generated.extend(cancellation_blocks)
                 touched_fleets.add(fid)
                 ep=dict(o.payload)
+                ep["native_waypoint_count"]=native_waypoint_count
+                ep["native_waypoint_cancellation_indices"]=cancellation_indices
                 ep["native_waypoint_cancellation_hex"]=[block.data.hex(" ") for block in cancellation_blocks]
                 ep["native_waypoint_action"]="CANCEL ROUTE"
                 ep["native_reference"]=(
@@ -2289,9 +2377,10 @@ def write_ai_turn(
                 )
                 design_tail.extend(design_blocks)
                 touched_design=True
-                type27_client_framing=TYPE27_ISOLATE_TRANSACTION
+                type27_client_framing=bool(is_starbase)
                 type27_kind="create_starbase_design" if is_starbase else o.kind
                 type27_slot=int(design.slot)
+                type27_exact_client_transaction=bool(is_starbase)
                 ep=dict(o.payload)
                 ep["native_conversion"]=generic_plan.to_payload()
                 ep["native_design_type"]="starbase" if is_starbase else "ship"
@@ -2300,10 +2389,14 @@ def write_ai_turn(
                 ep["design_body_codec"]="StarsAPI DesignBlock.encode/decode port"
                 if is_starbase:
                     ep["native_reference"]=(
-                        "StarsAPI DesignBlock isStarbase body flag; owner-aware Type27 "
-                        "staging/final wrapper is enabled as a traced experimental extension"
+                        "Player-1 native Space Station capture: four-record Type27 "
+                        "starbase lifecycle, replayed with ordinary autoplay orders"
                     )
-                ep["type27_transaction_mode"]="isolated" if TYPE27_ISOLATE_TRANSACTION else "mixed_with_ordinary_orders"
+                ep["type27_transaction_mode"]=(
+                    "client_captured_starbase_lifecycle"
+                    if is_starbase else
+                    ("isolated" if TYPE27_ISOLATE_TRANSACTION else "mixed_with_ordinary_orders")
+                )
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="create_ship_design":
                 if not TYPE27_AUTOPLAY_ENABLED:
@@ -2469,19 +2562,22 @@ def write_ai_turn(
                 "payload":o.payload
             })
 
-    # Type27 blocks follow the ordinary encoded order blocks. In permissive
-    # autoplay this intentionally creates a mixed transaction for host/client
-    # validation rather than dropping the AI's other actions.
+    # Starbase creation has an independent, host-accepted four-record
+    # lifecycle.  Preserve ordinary orders while applying its exact
+    # client-derived Save+Submit framing; ship lifecycle behavior is unchanged.
     ordinary_order_block_count=len(generated)
-    generated.extend(design_tail)
-
-    # Build a fresh current-turn X transaction.
-    # Valid controlled Stars! X files exist both with and without Type 46.
-    # Save+Submit lifecycle: permissive mixed Type27 turns use the ordinary
-    # three-submit form and record that untrusted choice in the trace.
-    order_stream=_frame_order_stream(
-        generated,xblocks,type27_client_framing=type27_client_framing
-    )
+    if type27_exact_client_transaction:
+        order_stream=_frame_starbase_design_transaction(
+            generated,design_tail,xblocks
+        )
+    else:
+        generated.extend(design_tail)
+        # Build a fresh current-turn X transaction.  Valid controlled Stars!
+        # X files exist both with and without Type 46.  Ordinary turns use the
+        # known-good three-submit template form.
+        order_stream=_frame_order_stream(
+            generated,xblocks,type27_client_framing=type27_client_framing
+        )
 
     filehash=_fresh_filehash_block(order_stream)
     final_blocks=[filehash]+order_stream+[NativeBlock(0,0,b"")]
@@ -2560,7 +2656,7 @@ def write_ai_turn(
                 "type27_exact_client_transaction":type27_exact_client_transaction,
                 "type27_client_framing":type27_client_framing,
                 "type27_mixed_with_ordinary_orders":bool(
-                    design_tail and not type27_client_framing and ordinary_order_block_count
+                    design_tail and ordinary_order_block_count
                 ),
                 "type27_kind":type27_kind,
                 "type27_slot":type27_slot,

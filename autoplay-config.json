@@ -1,11 +1,14 @@
 {
   "stars_exe": "C:\\Dev\\repos\\stars-ai\\sandbox\\starsjrc4.exe",
-  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5small",
+  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5Comps11Total",
   "output_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\runs\\latestdemo",
   "game_name": "GAME",
   "player_ids": [
     1,
-    2
+    2,
+    3,
+    4,
+    5
   ],
   "turns": 100,
   "play_on": false,
@@ -40,7 +43,10 @@
   "host_timeout_seconds": 180,
   "personas": {
     "1": "Balanced",
-    "2": "Balanced"
+    "2": "Balanced",
+    "3": "Balanced",
+    "4": "Balanced",
+    "5": "Balanced"
   },
   "host_poll_seconds": 0.5,
   "host_settle_seconds": 1.5,

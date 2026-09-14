@@ -4,8 +4,10 @@ v8.7 moves the embedded ship body onto an explicit Python port of StarsAPI's
 ``DesignBlock.encode()/decode()``.  This module now owns only the Type-27
 lifecycle wrapper and mutation safety rules:
 
-* CREATE in a genuinely free slot: empirical two-record Type27 wrapper around
-  a StarsAPI-authored DesignBlock body.
+* CREATE ship designs in a genuinely free slot: empirical two-record Type27
+  wrapper around a StarsAPI-authored DesignBlock body.
+* CREATE starbase designs in a genuinely free slot: the separate four-record
+  lifecycle captured from a native client submission.
 * DELETE of an existing design: the separately observed existing-design form.
 * REPLACE is not atomic: delete a provably dead design, read back the next M,
   then create into the now-free slot on a later turn.
@@ -24,7 +26,7 @@ from stars_ai.adapters.stars_native import NativeBlock
 from stars_ai.design_legality import ComponentRef
 from stars_ai.native.starsapi_design_codec import (
     StarsApiDesign, decode_design_block, encode_stars_string,
-    encode_type27_embedded_design, starsapi_body_roundtrip,
+    encode_design_block, encode_type27_embedded_design, starsapi_body_roundtrip,
 )
 
 
@@ -63,7 +65,11 @@ class EncodedShipDesign:
 
 
 def encode_type27_design_body(
-    design: EncodedShipDesign, *, empty_slots: bool = False, name_override: str | None = None
+    design: EncodedShipDesign,
+    *,
+    empty_slots: bool = False,
+    name_override: str | None = None,
+    clear_type27_bit0: bool = True,
 ) -> bytes:
     """Encode the embedded full DesignBlock using the StarsAPI body codec.
 
@@ -94,10 +100,15 @@ def encode_type27_design_body(
         is_transferred=False,
         is_starbase=bool(design.is_starbase),
     )
-    body = encode_type27_embedded_design(starsapi)
+    body = (
+        encode_type27_embedded_design(starsapi)
+        if clear_type27_bit0 else encode_design_block(starsapi)
+    )
     # An additional byte-for-byte self-check at this API boundary makes native
-    # corruption fail before the block enters the X order stream.
-    if starsapi_body_roundtrip(body, type27_embedded=True) != body:
+    # corruption fail before the block enters the X order stream.  The captured
+    # starbase lifecycle uses a bit-0-clear initial record followed by ordinary
+    # (bit-0-set) DesignBlock bodies for its populated records.
+    if starsapi_body_roundtrip(body, type27_embedded=clear_type27_bit0) != body:
         raise RuntimeError("StarsAPI DesignBlock body failed exact Type27 round-trip")
     return body
 
@@ -163,16 +174,47 @@ def create_ship_design_blocks(
 def create_starbase_design_blocks(
     design: EncodedShipDesign, *, player_id: int = 2, final_control: int | None = None
 ) -> list[NativeBlock]:
-    """Create a new starbase design in its independent 0..9 slot namespace.
+    """Create a new starbase design using the client-captured lifecycle.
 
-    The body is encoded with StarsAPI's ``isStarbase`` bit.  The two-record
-    Type-27 wrapper follows the owner-aware staging/final transaction already
-    used by ships; this broader application is deliberately traced as an
-    experimental native capability until a dedicated client replay is archived.
+    A native Player-1 Space Station submission establishes this four-record
+    sequence for starbase slot ``n`` (the first byte is player-owned):
+
+    ``01 Bn`` empty body, ``00 7n`` starbase delete marker,
+    ``01 Bn`` populated body, ``01 7n`` populated commit body.
+
+    Unlike ship creation, the populated starbase records retain embedded
+    DesignBlock bit 0.  This exact form has been replayed through the native
+    host both by itself and with ordinary AI orders.
     """
     if not design.is_starbase:
         raise ValueError("Starbase design writer received a ship design")
-    return _create_design_blocks(design, player_id=player_id, final_control=final_control)
+    if design.replace_existing:
+        raise ValueError("Atomic replacement is forbidden; delete the dead slot, read back, then create")
+    if final_control is not None:
+        raise ValueError("Starbase Type27 controls are fixed by the captured client lifecycle")
+    slot = int(design.slot)
+    if not 0 <= slot < 10:
+        raise ValueError("Starbase design slot must be 0..9")
+
+    owner_byte = _design_change_owner_byte(player_id)
+    create_control = bytes([owner_byte, 0xB0 | slot])
+    commit_control = bytes([owner_byte, 0x70 | slot])
+    delete_control = bytes([owner_byte & 0xF0, 0x70 | slot])
+
+    initial_body = encode_type27_design_body(
+        design, empty_slots=True, name_override=design.staging_name,
+        clear_type27_bit0=True,
+    )
+    populated_body = encode_type27_design_body(
+        design, empty_slots=False, clear_type27_bit0=False,
+    )
+    payloads = [
+        create_control + initial_body,
+        delete_control,
+        create_control + populated_body,
+        commit_control + populated_body,
+    ]
+    return [NativeBlock(27, len(payload), payload) for payload in payloads]
 
 
 def delete_existing_ship_design_block(slot: int, *, player_id: int = 2) -> NativeBlock:
@@ -384,7 +426,10 @@ def parse_design_change_payload(data: bytes) -> ParsedDesignChange:
         raise ValueError("Type27 DesignChange payload is missing control bytes")
     control = bytes(data[:2])
     if data[0] % 16 == 0:
-        return ParsedDesignChange(True, int(data[1] & 0x0F), control)
+        return ParsedDesignChange(
+            True, int(data[1] & 0x0F), control,
+            is_starbase=bool((data[1] >> 4) & 0x01),
+        )
     body = bytes(data[2:])
     parsed = decode_design_block(body, allow_type27_bit0_clear=True)
     if not parsed.is_full_design:

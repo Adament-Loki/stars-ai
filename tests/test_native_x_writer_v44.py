@@ -7,6 +7,8 @@ from stars_ai.native.x_writer import (
     _updated_x_header,
     _production_block,
     _native_planet_mutation_authority,
+    _pending_waypoint_delete_blocks,
+    _pending_waypoint_delete_indices,
 )
 
 def header(file_type=1, turn=0, player=0, salt=8):
@@ -40,6 +42,42 @@ def test_update_x_header_uses_current_m_turn_and_game():
     assert ph.game_id==999
     assert ph.player_index==1
     assert out[14]==1
+
+
+def test_pending_waypoint_deletion_uses_only_valid_pending_indices():
+    # Index zero is the current waypoint, not a removable route leg.  Deleting
+    # in descending order prevents Type-3 renumbering from changing the next
+    # requested index.
+    assert _pending_waypoint_delete_indices(0)==[]
+    assert _pending_waypoint_delete_indices(1)==[]
+    assert _pending_waypoint_delete_indices(2)==[1]
+    assert _pending_waypoint_delete_indices(3)==[2,1]
+
+
+def test_pending_waypoint_deletion_encodes_only_pending_slots():
+    state=GameState("g",2401,1,RaceProfile(),Tech(),[],[])
+
+    indices,blocks=_pending_waypoint_delete_blocks(
+        state,fleet_id=4,waypoint_count=2
+    )
+    assert indices==[1]
+    assert [block.data for block in blocks]==[bytes.fromhex("04 00 01 00")]
+
+    indices,blocks=_pending_waypoint_delete_blocks(
+        state,fleet_id=4,waypoint_count=3
+    )
+    assert indices==[2,1]
+    assert [block.data for block in blocks]==[
+        bytes.fromhex("04 00 02 00"),
+        bytes.fromhex("04 00 01 00"),
+    ]
+
+
+def test_pending_waypoint_deletion_rejects_unencodable_native_count():
+    import pytest
+
+    with pytest.raises(ValueError, match="Type-3 index range"):
+        _pending_waypoint_delete_indices(257)
 
 
 def test_current_m_ownership_allow_list_rejects_stale_planet_mutation():

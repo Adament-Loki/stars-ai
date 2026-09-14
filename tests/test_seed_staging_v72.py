@@ -163,6 +163,40 @@ def test_mismatched_x_game_or_player_fails_closed(
         _validate_seed_game(cfg)
 
 
+def test_foreign_unmanaged_history_file_fails_complete_seed_validation(tmp_path):
+    seed=_make_seed(tmp_path/"seed")
+    _write_native(
+        seed/"GAME.h3",
+        _header(game_id=0x99999999,player=3,file_type=4),
+        [NativeBlock(32,4,b"\0\0\0\0")],
+    )
+    cfg=_cfg(tmp_path,seed)
+
+    with pytest.raises(SeedValidationError,match=r"GAME\.h3 game id"):
+        _validate_seed_game(cfg)
+
+
+def test_foreign_unmanaged_live_order_file_fails_before_mutation(tmp_path):
+    seed=_make_seed(tmp_path/"seed")
+    cfg=_cfg(tmp_path,seed)
+    cfg.play_on=True
+    validated=_validate_seed_game(cfg)
+    game=_stars_execution_dir(cfg)
+    _stage_seed_game(validated,game)
+    foreign=game/"GAME.x3"
+    _write_native(
+        foreign,
+        _header(game_id=0x99999999,player=3,file_type=1,submitted=True),
+        [NativeBlock(9,17,b"\0\0"+FILEHASH_CANONICAL_TAIL)],
+    )
+    before=_sha256(foreign)
+
+    with pytest.raises(LiveGameValidationError,match=r"GAME\.x3 game id"):
+        _validate_live_game(cfg,validated)
+
+    assert _sha256(foreign)==before
+
+
 def test_multiple_game_basenames_fail_closed(tmp_path):
     seed=_make_seed(tmp_path/"seed")
     _write_native(seed/"OTHER.hst",_header(file_type=2))
