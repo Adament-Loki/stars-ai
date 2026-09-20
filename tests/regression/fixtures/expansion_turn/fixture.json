@@ -1,0 +1,17 @@
+{
+  "id": "expansion_turn",
+  "state_source": "../../../../examples/player2-turn2405.json",
+  "persona": "Balanced",
+  "coverage": [
+    "exploration",
+    "colonization",
+    "economy/production",
+    "research",
+    "transport",
+    "military/defense",
+    "ship design",
+    "persistent memory",
+    "waypoint continuation"
+  ],
+  "notes": "The source state is deliberately versioned with the repository. The companion semantic_contract.json is the frozen behavioral output."
+}

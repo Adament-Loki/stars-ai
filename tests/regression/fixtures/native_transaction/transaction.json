@@ -1,0 +1,12 @@
+{
+  "id": "native_transaction_fingerprint",
+  "blocks": [
+    {"type_id": 8, "data_hex": "000102030405060708090a0b0c0d0e0f"},
+    {"type_id": 4, "data_hex": "020034127856"},
+    {"type_id": 29, "data_hex": "010002000300"},
+    {"type_id": 46, "data_hex": "01010519"},
+    {"type_id": 9, "data_hex": "0000000000000000000000000000000000"},
+    {"type_id": 0, "data_hex": ""}
+  ],
+  "expected_fingerprint": "7c8bcd3f4bac93bdad8697614843763d51b7a404e409c73cf6e56c55719efce4"
+}
