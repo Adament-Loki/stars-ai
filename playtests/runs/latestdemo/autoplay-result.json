@@ -864,9 +864,2139 @@
     ],
     "host_returncode": 0,
     "year_before": 2457,
-    "year_after": 2457,
+    "year_after": 2458,
     "checkpoint_written": false,
-    "success": false,
-    "message": "Host/order registration failure: rc=0, settled=False, year 2457->2457, all_x_consumed=False, history_ready=True"
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 59,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2458,
+    "year_after": 2459,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 60,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2459,
+    "year_after": 2460,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 61,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2460,
+    "year_after": 2461,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 62,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2461,
+    "year_after": 2462,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 63,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2462,
+    "year_after": 2463,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 64,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2463,
+    "year_after": 2464,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 65,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2464,
+    "year_after": 2465,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 66,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2465,
+    "year_after": 2466,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 67,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2466,
+    "year_after": 2467,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 68,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2467,
+    "year_after": 2468,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 69,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2468,
+    "year_after": 2469,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 70,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2469,
+    "year_after": 2470,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 71,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2470,
+    "year_after": 2471,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 72,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2471,
+    "year_after": 2472,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 73,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2472,
+    "year_after": 2473,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 74,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2473,
+    "year_after": 2474,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 75,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2474,
+    "year_after": 2475,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 76,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2475,
+    "year_after": 2476,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 77,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2476,
+    "year_after": 2477,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 78,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2477,
+    "year_after": 2478,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 79,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2478,
+    "year_after": 2479,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 80,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2479,
+    "year_after": 2480,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 81,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2480,
+    "year_after": 2481,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 82,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2481,
+    "year_after": 2482,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 83,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2482,
+    "year_after": 2483,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 84,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2483,
+    "year_after": 2484,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 85,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2484,
+    "year_after": 2485,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 86,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2485,
+    "year_after": 2486,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 87,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2486,
+    "year_after": 2487,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 88,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2487,
+    "year_after": 2488,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 89,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2488,
+    "year_after": 2489,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 90,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2489,
+    "year_after": 2490,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 91,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2490,
+    "year_after": 2491,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 92,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2491,
+    "year_after": 2492,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 93,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2492,
+    "year_after": 2493,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 94,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2493,
+    "year_after": 2494,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 95,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2494,
+    "year_after": 2495,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 96,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2495,
+    "year_after": 2496,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 97,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2496,
+    "year_after": 2497,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 98,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2497,
+    "year_after": 2498,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 99,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2498,
+    "year_after": 2499,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 100,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2499,
+    "year_after": 2500,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 101,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2500,
+    "year_after": 2501,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 102,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2501,
+    "year_after": 2502,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 103,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2502,
+    "year_after": 2503,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 104,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2503,
+    "year_after": 2504,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 105,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2504,
+    "year_after": 2505,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 106,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2505,
+    "year_after": 2506,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 107,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2506,
+    "year_after": 2507,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 108,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2507,
+    "year_after": 2508,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 109,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2508,
+    "year_after": 2509,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 110,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2509,
+    "year_after": 2510,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 111,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2510,
+    "year_after": 2511,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 112,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2511,
+    "year_after": 2512,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 113,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2512,
+    "year_after": 2513,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 114,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2513,
+    "year_after": 2514,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 115,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2514,
+    "year_after": 2515,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 116,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2515,
+    "year_after": 2516,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 117,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2516,
+    "year_after": 2517,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 118,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2517,
+    "year_after": 2518,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 119,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2518,
+    "year_after": 2519,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 120,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2519,
+    "year_after": 2520,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 121,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2520,
+    "year_after": 2521,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 122,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2521,
+    "year_after": 2522,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 123,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2522,
+    "year_after": 2523,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 124,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2523,
+    "year_after": 2524,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 125,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2524,
+    "year_after": 2525,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 126,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2525,
+    "year_after": 2526,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 127,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2526,
+    "year_after": 2527,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 128,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2527,
+    "year_after": 2528,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 129,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2528,
+    "year_after": 2529,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 130,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2529,
+    "year_after": 2530,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 131,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2530,
+    "year_after": 2531,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 132,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2531,
+    "year_after": 2532,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 133,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2532,
+    "year_after": 2533,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 134,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2533,
+    "year_after": 2534,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 135,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2534,
+    "year_after": 2535,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 136,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2535,
+    "year_after": 2536,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 137,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2536,
+    "year_after": 2537,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 138,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2537,
+    "year_after": 2538,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 139,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2538,
+    "year_after": 2539,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 140,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2539,
+    "year_after": 2540,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 141,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2540,
+    "year_after": 2541,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 142,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2541,
+    "year_after": 2542,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 143,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2542,
+    "year_after": 2543,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 144,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2543,
+    "year_after": 2544,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 145,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2544,
+    "year_after": 2545,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 146,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2545,
+    "year_after": 2546,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 147,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2546,
+    "year_after": 2547,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 148,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2547,
+    "year_after": 2548,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 149,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2548,
+    "year_after": 2549,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 150,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2549,
+    "year_after": 2550,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 151,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2550,
+    "year_after": 2551,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 152,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2551,
+    "year_after": 2552,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 153,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2552,
+    "year_after": 2553,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 154,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2553,
+    "year_after": 2554,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 155,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2554,
+    "year_after": 2555,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 156,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2555,
+    "year_after": 2556,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 157,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2556,
+    "year_after": 2557,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 158,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2557,
+    "year_after": 2558,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 159,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2558,
+    "year_after": 2559,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 160,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2559,
+    "year_after": 2560,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 161,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2560,
+    "year_after": 2561,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 162,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2561,
+    "year_after": 2562,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 163,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2562,
+    "year_after": 2563,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 164,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2563,
+    "year_after": 2564,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 165,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2564,
+    "year_after": 2565,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 166,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2565,
+    "year_after": 2566,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 167,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2566,
+    "year_after": 2567,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 168,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2567,
+    "year_after": 2568,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 169,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2568,
+    "year_after": 2569,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 170,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2569,
+    "year_after": 2570,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 171,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2570,
+    "year_after": 2571,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 172,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2571,
+    "year_after": 2572,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 173,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2572,
+    "year_after": 2573,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 174,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2573,
+    "year_after": 2574,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 175,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2574,
+    "year_after": 2575,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 176,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2575,
+    "year_after": 2576,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 177,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2576,
+    "year_after": 2577,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 178,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2577,
+    "year_after": 2578,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 179,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2578,
+    "year_after": 2579,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 180,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2579,
+    "year_after": 2580,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 181,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2580,
+    "year_after": 2581,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 182,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2581,
+    "year_after": 2582,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 183,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2582,
+    "year_after": 2583,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 184,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2583,
+    "year_after": 2584,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 185,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2584,
+    "year_after": 2585,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 186,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2585,
+    "year_after": 2586,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 187,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2586,
+    "year_after": 2587,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 188,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2587,
+    "year_after": 2588,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 189,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2588,
+    "year_after": 2589,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 190,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2589,
+    "year_after": 2590,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 191,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2590,
+    "year_after": 2591,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 192,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2591,
+    "year_after": 2592,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 193,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2592,
+    "year_after": 2593,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 194,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2593,
+    "year_after": 2594,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 195,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2594,
+    "year_after": 2595,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 196,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2595,
+    "year_after": 2596,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 197,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2596,
+    "year_after": 2597,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 198,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2597,
+    "year_after": 2598,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 199,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2598,
+    "year_after": 2599,
+    "checkpoint_written": false,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
+  },
+  {
+    "turn": 200,
+    "player_order_files": [
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x1",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x2",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x3",
+      "C:\\Dev\\repos\\stars-ai\\sandbox\\GAME.x4"
+    ],
+    "host_returncode": 0,
+    "year_before": 2599,
+    "year_after": 2600,
+    "checkpoint_written": true,
+    "success": true,
+    "message": "Host generated next turn, consumed all generated X order files, and cumulative player histories were merged and validated."
   }
 ]

@@ -1,53 +1,53 @@
-Stars! AI Observer Report - Turn 55 / Year 2455
+Stars! AI Observer Report - Turn 200 / Year 2600
 ==================================================================
 
 EXECUTIVE SUMMARY
 -----------------
-P6 Berserker has a clear lead. Observer score gap over second place: 96.8%.
+The game remains competitive; P5 Loraxoid currently has a narrow lead. Observer score gap over second place: 11.4%.
 Yes - fighting/conquest has begun. 1 enemy planet capture(s) occurred in the reporting window.
 
 CURRENT STANDINGS
 -----------------
-1. P6 Berserker [Alternate Reality] - 102 planets, pop 60,603, 0 factories, 148 ships / 0 fleet mass, tech total 61, 102 starbases.
-2. P5 Loraxoid [Super Stealth] - 19 planets, pop 19,620, 2566 factories, 121 ships / 0 fleet mass, tech total 51, 1 starbases.
-3. P3 Romulans [Super Stealth / Balanced] - 22 planets, pop 18,625, 1560 factories, 53 ships / 0 fleet mass, tech total 46, 2 starbases.
-4. P2 Kilingons [War Monger / Balanced] - 29 planets, pop 22,879, 1431 factories, 38 ships / 0 fleet mass, tech total 32, 3 starbases.
-5. P7 Rush'n [Inner Strength] - 9 planets, pop 25,161, 1827 factories, 18 ships / 0 fleet mass, tech total 51, 5 starbases.
-6. P1 Humanoid [Jack of All Trades / Balanced] - 20 planets, pop 18,523, 1177 factories, 57 ships / 0 fleet mass, tech total 30, 2 starbases.
-7. P4 SuperRabits [Interstellar Traveler / Balanced] - 13 planets, pop 10,571, 876 factories, 68 ships / 0 fleet mass, tech total 29, 1 starbases.
+1. P5 Loraxoid [Super Stealth] - 21 planets, pop 107,523, 31521 factories, 484 ships / 0 fleet mass, tech total 156, 21 starbases.
+2. P6 Berserker [Alternate Reality] - 177 planets, pop 4,814,698, 56 factories, 3400 ships / 0 fleet mass, tech total 156, 177 starbases.
+3. P1 Humanoid [Jack of All Trades / Balanced] - 14 planets, pop 78,469, 15027 factories, 51 ships / 0 fleet mass, tech total 79, 6 starbases.
+4. P3 Romulans [Super Stealth / Balanced] - 3 planets, pop 20,501, 3191 factories, 50 ships / 0 fleet mass, tech total 120, 3 starbases.
+5. P2 Kilingons [War Monger / Balanced] - 1 planets, pop 8,720, 798 factories, 1 ships / 0 fleet mass, tech total 73, 1 starbases.
+6. P7 Rush'n [Inner Strength] - 1 planets, pop 16, 0 factories, 5 ships / 0 fleet mass, tech total 113, 0 starbases.
+7. P4 SuperRabits [Interstellar Traveler / Balanced] - 0 planets, pop 0, 0 factories, 0 ships / 0 fleet mass, tech total 48, 0 starbases.
 
-CHANGE SINCE TURN 50
+CHANGE SINCE TURN 195
 -----------------------------
-P6: planets +6, population +16,532, factories +0, ships +64, fleet mass +0, tech total +6.
-P5: planets +2, population +5,502, factories +187, ships +18, fleet mass +0, tech total +3.
-P3: planets +1, population +2,682, factories +356, ships +8, fleet mass +0, tech total +3.
-P2: planets +2, population +5,369, factories +225, ships +2, fleet mass +0, tech total +1.
-P7: planets +1, population +5,043, factories +439, ships +8, fleet mass +0, tech total +3.
-P1: planets +3, population +3,915, factories +323, ships +1, fleet mass +0, tech total +2.
-P4: planets +2, population +1,114, factories +196, ships +16, fleet mass +0, tech total +1.
+P5: planets -6, population +571, factories -3058, ships -19, fleet mass +0, tech total +1.
+P6: planets +0, population +50,377, factories +0, ships +416, fleet mass +0, tech total +0.
+P1: planets +1, population +3,398, factories +1589, ships -2, fleet mass +0, tech total +0.
+P3: planets -3, population -3,313, factories -5097, ships +1, fleet mass +0, tech total +0.
+P2: planets +0, population +113, factories +0, ships -1, fleet mass +0, tech total +0.
+P7: planets -1, population -6,201, factories -856, ships -4, fleet mass +0, tech total +0.
+P4: planets +0, population +0, factories +0, ships +0, fleet mass +0, tech total +0.
 
 WAR & CONTACT
 -------------
-- P7 captured planet #114 from P2.
+- P1 captured planet #89 from P3.
 
 WHO IS STRONGEST?
 -----------------
-- Territory: P6 with 102 planets.
-- Population: P6 with 60,603.
-- Industry: P5 with 2566 factories.
-- Fleet by mass: P6 with 0.
-- Technology: P6 with tech total 61.
+- Territory: P6 with 177 planets.
+- Population: P6 with 4,814,698.
+- Industry: P5 with 31521 factories.
+- Fleet by mass: P5 with 0.
+- Technology: P5 with tech total 156.
 
 MOMENTUM / RISK
 ---------------
-- Current leader: P6 Berserker.
+- Current leader: P5 Loraxoid.
 - Current last place: P4 SuperRabits.
-- P5 is materially behind the leader (<60% of leader observer score).
+- P1 is materially behind the leader (<60% of leader observer score).
 - P3 is materially behind the leader (<60% of leader observer score).
 - P2 is materially behind the leader (<60% of leader observer score).
 - P7 is materially behind the leader (<60% of leader observer score).
-- P1 is materially behind the leader (<60% of leader observer score).
 - P4 is materially behind the leader (<60% of leader observer score).
+- P4 has no planets and is effectively eliminated.
 
 INTERPRETATION
 --------------
