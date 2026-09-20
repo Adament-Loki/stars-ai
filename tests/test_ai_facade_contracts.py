@@ -9,6 +9,7 @@ import stars_ai.ai.engine as engine_module
 from stars_ai.agent import StarsAgent
 from stars_ai.adapters.json_adapter import JsonTurnAdapter
 from stars_ai.ai import StarsAI, TurnInput, TurnPlanner
+from stars_ai.ai.planners import DEFAULT_PLANNERS, DEFAULT_POST_PLANNING_POLICIES
 from stars_ai.memory import AgentMemory
 
 
@@ -85,52 +86,18 @@ def test_legacy_agent_delegates_to_stars_ai_and_retains_legacy_attributes(monkey
 
 def test_stars_ai_preserves_the_established_planner_and_safety_order(monkeypatch):
     calls = []
-    call_names = (
-        "evaluate_strategic_watchdog",
-        "plan_research",
-        "prepare_scout_split_precedence",
-        "add_diplomacy_orders",
-        "add_military_orders",
-        "add_tactical_fleet_management",
-        "add_economic_orders",
-        "add_exploration_orders",
-        "add_research_orders",
-        "add_design_development_orders",
-        "augment_orders_v4",
-        "deconflict_recon_orders",
-        "optimize_active_route_warps",
-        "apply_fuel_safety",
-        "ensure_fleet_activity",
-        "enforce_scout_split_precedence",
-    )
-    for name in call_names:
-        original = getattr(engine_module, name)
+    original = engine_module.run_pipeline
 
-        def record(*args, _name=name, _original=original, **kwargs):
-            calls.append(_name)
-            return _original(*args, **kwargs)
+    def record(context, stages):
+        calls.append(tuple(stage.name for stage in stages))
+        return original(context, stages)
 
-        monkeypatch.setattr(engine_module, name, record)
+    monkeypatch.setattr(engine_module, "run_pipeline", record)
 
     state = _fixture_state()
     StarsAI().run_turn(TurnInput(state=state, player_id=state.player_id, memory=AgentMemory()))
 
     assert calls == [
-        "evaluate_strategic_watchdog",
-        "plan_research",
-        "prepare_scout_split_precedence",
-        "add_diplomacy_orders",
-        "add_military_orders",
-        "add_tactical_fleet_management",
-        "add_economic_orders",
-        "add_exploration_orders",
-        "add_research_orders",
-        "add_design_development_orders",
-        "augment_orders_v4",
-        "deconflict_recon_orders",
-        "optimize_active_route_warps",
-        "apply_fuel_safety",
-        "ensure_fleet_activity",
-        "enforce_scout_split_precedence",
-        "evaluate_strategic_watchdog",
+        tuple(planner.name for planner in DEFAULT_PLANNERS),
+        tuple(policy.name for policy in DEFAULT_POST_PLANNING_POLICIES),
     ]

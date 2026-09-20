@@ -10,28 +10,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..design_development import add_design_development_orders
-from ..fleet_intent import ensure_fleet_activity
-from ..fleet_management import (
-    add_tactical_fleet_management,
-    enforce_scout_split_precedence,
-    prepare_scout_split_precedence,
-)
-from ..fuel_planner import apply_fuel_safety
 from ..memory import AgentMemory
 from ..models import OrderSet
 from ..persona import BalancedPersona, StrategicPlan
 from ..research_planner import ResearchDecision, plan_research
 from ..strategic_watchdog import evaluate_strategic_watchdog
-from ..strategy.diplomacy import add_diplomacy_orders
-from ..strategy.economy import add_economic_orders
-from ..strategy.exploration import add_exploration_orders, deconflict_recon_orders
-from ..strategy.military import add_military_orders
-from ..strategy.research import add_research_orders
-from ..v4_coordinator import augment_orders_v4
-from ..warp_policy import optimize_active_route_warps
 from .ai_state import AIState, PersistentAIState, TurnAIState, TurnInput
 from .context import TurnContext
+from .planners import (
+    DEFAULT_PLANNERS,
+    DEFAULT_POST_PLANNING_POLICIES,
+    run_pipeline,
+)
 from .result import TurnDecision
 
 
@@ -90,8 +80,7 @@ class StarsAI:
         self._evaluate_strategy(work)
         self._choose_research(work)
         self._run_strategic_planners(work)
-        self._resolve_navigation_and_safety(work)
-        self._ensure_fleet_intents(work)
+        self._apply_post_planning_policies(work)
         self._append_turn_diagnostics(work)
         self._finalize_turn(work)
         return TurnDecision(
@@ -174,6 +163,7 @@ class StarsAI:
         if work.plan is None:
             raise RuntimeError("Research selection requires a strategic plan")
         work.research_decision = plan_research(work.state, work.plan, work.memory)
+        work.context.research_decision = work.research_decision
         work.state.native["research_strategy"] = work.research_decision.to_payload()
         work.orders.notes.append(f"RESEARCH PLAN: {work.research_decision.reason}")
         for unlocked in work.research_decision.recently_unlocked:
@@ -187,37 +177,13 @@ class StarsAI:
         if work.plan is None or work.research_decision is None:
             raise RuntimeError("Strategic planners require plan and research decision")
 
-        # Native-safe singleton splits intentionally precede ordinary movement.
-        prepare_scout_split_precedence(work.state, work.orders)
-        add_diplomacy_orders(work.state, work.orders, work.plan)
-        add_military_orders(work.state, work.orders, work.plan)
-        add_tactical_fleet_management(work.state, work.orders, work.plan)
-        add_economic_orders(
-            work.state,
-            work.orders,
-            work.plan,
-            research_decision=work.research_decision,
-        )
-        add_exploration_orders(work.state, work.orders, work.plan, memory=work.memory)
-        add_research_orders(work.state, work.orders, work.plan, decision=work.research_decision)
-        add_design_development_orders(work.state, work.orders, work.plan)
-        augment_orders_v4(work.state, work.orders, work.plan)
+        run_pipeline(work.context, DEFAULT_PLANNERS)
 
-    def _resolve_navigation_and_safety(self, work: _TurnWork) -> None:
-        """Resolve legacy conflicts, route warps, and fuel safety in that order."""
+    def _apply_post_planning_policies(self, work: _TurnWork) -> None:
+        """Apply ordered order-arbitration and fleet-safety policies."""
 
-        deconflict_recon_orders(work.state, work.orders)
-        optimize_active_route_warps(work.state, work.orders)
-        apply_fuel_safety(work.state, work.orders)
-
-    def _ensure_fleet_intents(self, work: _TurnWork) -> None:
-        """Apply fleet activity and final split precedence after ordinary planning."""
-
-        if work.plan is None:
-            raise RuntimeError("Fleet intent evaluation requires a strategic plan")
-        work.legacy_fleet_intents = ensure_fleet_activity(work.state, work.orders, work.plan)
-        work.context.legacy_fleet_intents = work.legacy_fleet_intents
-        enforce_scout_split_precedence(work.state, work.orders)
+        run_pipeline(work.context, DEFAULT_POST_PLANNING_POLICIES)
+        work.legacy_fleet_intents = work.context.legacy_fleet_intents
 
     def _append_turn_diagnostics(self, work: _TurnWork) -> None:
         """Append the existing diagnostics before final order sorting and persistence."""

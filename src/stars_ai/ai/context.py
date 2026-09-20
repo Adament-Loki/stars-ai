@@ -8,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 from ..memory import AgentMemory
 from ..models import GameState, OrderSet
 from ..persona import StrategicPersona, StrategicPlan
+from ..research_planner import ResearchDecision
 from .ai_state import AIState, TurnInput
 
 if TYPE_CHECKING:
@@ -32,4 +33,5 @@ class TurnContext:
     legacy_agent: "StarsAgent | None" = None
     ai_state: AIState | None = None
     strategic_plan: StrategicPlan | None = None
+    research_decision: ResearchDecision | None = None
     legacy_fleet_intents: list[dict[str, Any]] = field(default_factory=list)
