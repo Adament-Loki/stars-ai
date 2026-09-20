@@ -41,6 +41,12 @@ def test_stars_ai_facade_matches_legacy_semantic_orders_and_memory():
     assert decision.context.state is facade_state
     assert decision.context.orders is decision.orders
     assert decision.context.legacy_agent is not None
+    assert decision.ai_state is decision.context.ai_state
+    assert decision.ai_state.game is facade_state
+    assert asdict(decision.ai_state.persistent.to_agent_memory()) == asdict(facade_memory)
+    assert decision.ai_state.turn.strategic_phase is not None
+    assert decision.ai_state.turn.strategic_watchdog is not None
+    assert decision.ai_state.turn.research_decision is not None
 
 
 def test_turn_planner_is_a_structural_protocol_only():

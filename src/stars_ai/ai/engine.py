@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..agent import StarsAgent
-from .ai_state import TurnInput
+from .ai_state import AIState, PersistentAIState, TurnAIState, TurnInput
 from .context import TurnContext
 from .result import TurnDecision
 
@@ -25,15 +25,25 @@ class StarsAI:
             memory=turn_input.memory,
             persona=turn_input.persona,
         )
+        ai_state = AIState.from_agent_memory(legacy_agent.state, legacy_agent.memory)
         context = TurnContext(
             turn_input=turn_input,
             state=legacy_agent.state,
             memory=legacy_agent.memory,
             persona=legacy_agent.persona,
             legacy_agent=legacy_agent,
+            ai_state=ai_state,
         )
         orders = legacy_agent.play_turn()
         context.orders = orders
+        # Capture the post-turn memory and the legacy runtime scratch as
+        # detached typed views.  This does not change the legacy agent's
+        # planner order, mutation behavior, or native/report consumers.
+        ai_state.persistent = PersistentAIState.from_agent_memory(legacy_agent.memory)
+        ai_state.turn = TurnAIState.from_legacy_native(
+            legacy_agent.state.native,
+            fleet_intents=legacy_agent.fleet_intents,
+        )
         return TurnDecision(
             orders=orders,
             context=context,

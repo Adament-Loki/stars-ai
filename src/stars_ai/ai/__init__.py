@@ -1,6 +1,6 @@
 """Public AI-turn facade and conservative contracts for future refactors."""
 
-from .ai_state import TurnInput
+from .ai_state import AIState, PersistentAIState, TurnAIState, TurnInput
 from .context import TurnContext
 from .engine import StarsAI
 from .pipeline import TurnPlanner
@@ -8,6 +8,9 @@ from .result import TurnDecision
 
 __all__ = [
     "StarsAI",
+    "AIState",
+    "PersistentAIState",
+    "TurnAIState",
     "TurnContext",
     "TurnDecision",
     "TurnInput",
