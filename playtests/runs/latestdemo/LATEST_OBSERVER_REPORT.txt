@@ -1,65 +1,54 @@
-Stars! AI Observer Report - Turn 25 / Year 2425
+Stars! AI Observer Report - Turn 55 / Year 2455
 ==================================================================
 
 EXECUTIVE SUMMARY
 -----------------
-P7 Felite has a clear lead. Observer score gap over second place: 68.4%.
-Likely fighting has begun: major fleet losses are visible, although no enemy planet changed hands in this window.
+P6 Berserker has a clear lead. Observer score gap over second place: 96.8%.
+Yes - fighting/conquest has begun. 1 enemy planet capture(s) occurred in the reporting window.
 
 CURRENT STANDINGS
 -----------------
-1. P7 Felite [Hyper Expansion] - 45 planets, pop 3,120, 202 factories, 20 ships / 0 fleet mass, tech total 22, 1 starbases.
-2. P10 Tritizoid [Alternate Reality] - 19 planets, pop 4,896, 0 factories, 6 ships / 0 fleet mass, tech total 22, 19 starbases.
-3. P9 Hawk [Packet Physics] - 14 planets, pop 3,849, 60 factories, 8 ships / 0 fleet mass, tech total 17, 2 starbases.
-4. P2 S2 [Inner Strength / Balanced] - 8 planets, pop 6,096, 254 factories, 24 ships / 0 fleet mass, tech total 14, 1 starbases.
-5. P4 Kilingons [War Monger / Balanced] - 4 planets, pop 6,174, 340 factories, 30 ships / 0 fleet mass, tech total 18, 1 starbases.
-6. P1 SuperRabits [Interstellar Traveler / Balanced] - 11 planets, pop 2,413, 26 factories, 4 ships / 0 fleet mass, tech total 19, 2 starbases.
-7. P8 Picardi [Inner Strength] - 3 planets, pop 4,915, 492 factories, 2 ships / 0 fleet mass, tech total 20, 1 starbases.
-8. P5 Humanoid [Jack of All Trades / Balanced] - 6 planets, pop 2,985, 153 factories, 12 ships / 0 fleet mass, tech total 19, 1 starbases.
-9. P6 Nairnian [Super Stealth] - 6 planets, pop 4,661, 242 factories, 13 ships / 0 fleet mass, tech total 13, 1 starbases.
-10. P11 Ubert [Super Stealth] - 5 planets, pop 4,626, 240 factories, 10 ships / 0 fleet mass, tech total 13, 1 starbases.
-11. P3 Romulans [Super Stealth / Balanced] - 4 planets, pop 6,207, 254 factories, 19 ships / 0 fleet mass, tech total 11, 1 starbases.
+1. P6 Berserker [Alternate Reality] - 102 planets, pop 60,603, 0 factories, 148 ships / 0 fleet mass, tech total 61, 102 starbases.
+2. P5 Loraxoid [Super Stealth] - 19 planets, pop 19,620, 2566 factories, 121 ships / 0 fleet mass, tech total 51, 1 starbases.
+3. P3 Romulans [Super Stealth / Balanced] - 22 planets, pop 18,625, 1560 factories, 53 ships / 0 fleet mass, tech total 46, 2 starbases.
+4. P2 Kilingons [War Monger / Balanced] - 29 planets, pop 22,879, 1431 factories, 38 ships / 0 fleet mass, tech total 32, 3 starbases.
+5. P7 Rush'n [Inner Strength] - 9 planets, pop 25,161, 1827 factories, 18 ships / 0 fleet mass, tech total 51, 5 starbases.
+6. P1 Humanoid [Jack of All Trades / Balanced] - 20 planets, pop 18,523, 1177 factories, 57 ships / 0 fleet mass, tech total 30, 2 starbases.
+7. P4 SuperRabits [Interstellar Traveler / Balanced] - 13 planets, pop 10,571, 876 factories, 68 ships / 0 fleet mass, tech total 29, 1 starbases.
 
-CHANGE SINCE TURN 20
+CHANGE SINCE TURN 50
 -----------------------------
-P7: planets +9, population +1,138, factories +49, ships +5, fleet mass +0, tech total +3.
-P10: planets +10, population +1,880, factories +0, ships -2, fleet mass +0, tech total +8.
-P9: planets +3, population +1,797, factories +13, ships +3, fleet mass +0, tech total +3.
-P2: planets +2, population +2,017, factories +124, ships +12, fleet mass +0, tech total +3.
-P4: planets +0, population +2,201, factories +125, ships +20, fleet mass +0, tech total +1.
-P1: planets +0, population +693, factories +1, ships +0, fleet mass +0, tech total +0.
-P8: planets +1, population +2,271, factories +242, ships +0, fleet mass +0, tech total +1.
-P5: planets +0, population +1,042, factories +78, ships +5, fleet mass +0, tech total +0.
-P6: planets +3, population +1,819, factories +79, ships +1, fleet mass +0, tech total +4.
-P11: planets +3, population +1,883, factories +119, ships -3, fleet mass +0, tech total +2.
-P3: planets +0, population +2,294, factories +122, ships +12, fleet mass +0, tech total +1.
+P6: planets +6, population +16,532, factories +0, ships +64, fleet mass +0, tech total +6.
+P5: planets +2, population +5,502, factories +187, ships +18, fleet mass +0, tech total +3.
+P3: planets +1, population +2,682, factories +356, ships +8, fleet mass +0, tech total +3.
+P2: planets +2, population +5,369, factories +225, ships +2, fleet mass +0, tech total +1.
+P7: planets +1, population +5,043, factories +439, ships +8, fleet mass +0, tech total +3.
+P1: planets +3, population +3,915, factories +323, ships +1, fleet mass +0, tech total +2.
+P4: planets +2, population +1,114, factories +196, ships +16, fleet mass +0, tech total +1.
 
 WAR & CONTACT
 -------------
-- P10 suffered a major net fleet loss during Turn 24 / Year 2424 (ships 10->6; fleets 10->6; net loss 4 ships). Observed fleet change: fleet ID 0 disappeared (1 ships; last seen at (1871, 1384)); fleet ID 2 disappeared (1 ships; last seen at (1834, 1331)); fleet ID 7 disappeared (1 ships; last seen at (1908, 1659)); fleet ID 8 disappeared (1 ships; last seen at (2138, 1548)). Cause is not decoded.
+- P7 captured planet #114 from P2.
 
 WHO IS STRONGEST?
 -----------------
-- Territory: P7 with 45 planets.
-- Population: P3 with 6,207.
-- Industry: P8 with 492 factories.
-- Fleet by mass: P7 with 0.
-- Technology: P7 with tech total 22.
+- Territory: P6 with 102 planets.
+- Population: P6 with 60,603.
+- Industry: P5 with 2566 factories.
+- Fleet by mass: P6 with 0.
+- Technology: P6 with tech total 61.
 
 MOMENTUM / RISK
 ---------------
-- Current leader: P7 Felite.
-- Current last place: P3 Romulans.
-- P10 is materially behind the leader (<60% of leader observer score).
-- P9 is materially behind the leader (<60% of leader observer score).
-- P2 is materially behind the leader (<60% of leader observer score).
-- P4 is materially behind the leader (<60% of leader observer score).
-- P1 is materially behind the leader (<60% of leader observer score).
-- P8 is materially behind the leader (<60% of leader observer score).
+- Current leader: P6 Berserker.
+- Current last place: P4 SuperRabits.
 - P5 is materially behind the leader (<60% of leader observer score).
-- P6 is materially behind the leader (<60% of leader observer score).
-- P11 is materially behind the leader (<60% of leader observer score).
 - P3 is materially behind the leader (<60% of leader observer score).
+- P2 is materially behind the leader (<60% of leader observer score).
+- P7 is materially behind the leader (<60% of leader observer score).
+- P1 is materially behind the leader (<60% of leader observer score).
+- P4 is materially behind the leader (<60% of leader observer score).
+
 INTERPRETATION
 --------------
 Observer score is a transparent diagnostic composite, not the Stars! built-in score. Planet captures are strong evidence of war; abrupt fleet losses are treated as probable combat but can also reflect scrapping/merging until battle blocks are fully decoded.

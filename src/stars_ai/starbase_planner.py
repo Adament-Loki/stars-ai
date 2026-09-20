@@ -19,6 +19,7 @@ from .combat_doctrine import calculate_offensive_rating
 from .starsapi_items import stock_component_database
 from .territorial_defense import assess_territorial_defense
 from .util import distance
+from .capability_execution import design_is_blocked, profile_is_blocked
 
 STARBASE_QUEUE_SLOT_OFFSET = 16
 STARBASE_DESIGN_LIMIT = 10
@@ -104,6 +105,7 @@ def _support_designs(state) -> dict[int, dict]:
     return {
         int(profile["design_number"]): profile
         for profile in (state.native or {}).get("starbase_profiles", []) or []
+        if not profile_is_blocked(state,profile,is_starbase=True)
         if bool((profile.get("capabilities") or {}).get("can_refuel"))
         and bool((profile.get("capabilities") or {}).get("can_build_ships"))
     }
@@ -399,11 +401,25 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
     this planner treats it exactly like any player-authored starbase design.
     """
     support_designs = _support_designs(state)
+    if not support_designs and design_is_blocked(
+        state,"starbase",is_starbase=True,purpose="support",
+    ):
+        state.native["starbase_capability_demand"]={
+            "capability_id":"design:starbase:support",
+            "status":"BLOCKED_NATIVE",
+            "design_available":False,
+            "policy":"Do not queue a support base until a legal native design is emitted and appears in an M-file read-back.",
+        }
     territorial = assess_territorial_defense(state, plan)
+    exposure = territorial.exposure
+    exposed_world_ids = set(exposure.border_world_ids)
     # Network expansion still selects the economical support design. Defensive
     # replacement work below evaluates each threatened world's production rate
     # and installed base rather than blindly selecting the largest hull.
-    preferred = _preferred_support_design(state)
+    preferred = _preferred_support_design(
+        state,
+        prefer_defensive=bool(exposure.defensive_base_priority >= 180),
+    )
     if preferred is None:
         return []
 
@@ -475,8 +491,12 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             # Worlds which are economic hubs or nearer observed hostiles are
             # represented by territorial defense; the readiness gain provides
             # the local cost/time comparison.
+            local_exposure_bonus=(
+                1.25 + 0.10 * float(exposure.sustained_pressure)
+                if int(planet.id) in exposed_world_ids else 0.0
+            )
             upgrades.append((
-                float(assessment["readiness_gain"]),
+                float(assessment["readiness_gain"]) + local_exposure_bonus,
                 int(planet.population or 0),
                 planet,
                 defensive_design,
@@ -485,13 +505,16 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
         if upgrades:
             _gain, _population, planet, defensive_design, assessment = max(upgrades)
             slot = int(defensive_design["design_number"])
-            emergency = bool(territorial.needs_response)
+            emergency = bool(territorial.needs_response or exposure.defensive_base_priority)
             out.append(SupportBaseBuild(
                 planet_id=int(planet.id),
                 design_slot=slot,
                 design_name=str(defensive_design.get("name") or defensive_design.get("hull_name") or f"Starbase #{slot + 1}"),
                 hull_name=str(defensive_design.get("hull_name") or "Defensive starbase"),
-                priority=190 if emergency else 160,
+                priority=max(
+                    190 if territorial.needs_response else 160,
+                    int(exposure.defensive_base_priority or 0),
+                ) if emergency else 160,
                 reason=(
                     f"{'defensive' if emergency else 'current-tech'} starbase refit at {planet.name}: retain the installed base as orbital cover "
                     f"while building this armed replacement. Protection score "
@@ -515,6 +538,16 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             ))
 
     deficit = max(0, int(target) - len(operational) - len(queued_planets))
+    # A dense border crisis may need a new defensive hub even after the normal
+    # economy-wide relay quota is met. Cap it at two starts so a response does
+    # not turn into an uncontrolled starbase spending program.
+    exposed_without_support=sum(
+        1 for planet in owned
+        if int(planet.id) in exposed_world_ids
+        and not bool(((planet.native or {}).get("starbase_capabilities") or {}).get("can_refuel"))
+    )
+    if exposure.defensive_base_priority and exposed_without_support:
+        deficit=max(deficit, min(MAX_NEW_SUPPORT_BASES_PER_TURN, exposed_without_support))
     # A distant Orbital Fort is not a shipyard/refuel hub.  Permit one upgrade
     # project even when the numerical support-base milestone is met, while the
     # material gate still prevents it from starving local development.
@@ -556,6 +589,11 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
         if int(planet.population or 0) < minimum_population:
             continue
         score, detail = _candidate_score(state, planet, operational, plan, network)
+        if int(planet.id) in exposed_world_ids:
+            score += 1.10 + 0.10 * float(exposure.sustained_pressure)
+            detail["territorial_exposure"] = True
+        else:
+            detail["territorial_exposure"] = False
         # Below target we may build an inner economic hub too, but outer/frontier
         # worlds get the score needed to win naturally.
         if score < 1.20:
@@ -580,10 +618,14 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             design_name=design_name,
             hull_name=hull_name,
             priority=(
-                152 if detail["layer1_pending"]
+                max(
+                    152 if detail["layer1_pending"]
                 else 147 if detail["next_layer_child"]
                 else 145 if detail["outer"] or detail["network_gap"]
-                else 138
+                else 138,
+                    int(exposure.defensive_base_priority or 0)
+                    if detail["territorial_exposure"] else 0,
+                )
             ),
             reason=(
                 f"promote high-value ring hub {planet.name} to {design_name} ({hull_name}): "
@@ -594,7 +636,8 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
                 f"estimated resources={detail['resources']}; hub score={score:.2f}; "
                 f"promotion=P{detail['promotion_tier']} rank={detail['promotion_rank']} "
                 f"value={detail['promotion_value']:.2f}; layer1_pending={detail['layer1_pending']}; "
-                f"next_layer_child={detail['next_layer_child']}. "
+                f"next_layer_child={detail['next_layer_child']}; territorial_exposure="
+                f"{detail['territorial_exposure']}. "
                 f"Support-base milestone={len(operational)} operational + {len(queued_planets)} queued / target {target}."
             ),
         ))

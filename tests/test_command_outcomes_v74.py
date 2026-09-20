@@ -256,7 +256,7 @@ def test_action_ledger_round_trips_in_memory_file(tmp_path):
 
     restored=AgentMemory.load(path)
 
-    assert restored.schema_version==6
+    assert restored.schema_version==8
     assert restored.action_expectations==memory.action_expectations
 
 
@@ -269,7 +269,7 @@ def test_loading_old_memory_migrates_command_ledger_defaults(tmp_path):
 
     restored=AgentMemory.load(path)
 
-    assert restored.schema_version==6
+    assert restored.schema_version==8
     assert restored.strategic_notes==["keep me"]
     assert restored.action_expectations=={}
     assert restored.action_outcome_history==[]

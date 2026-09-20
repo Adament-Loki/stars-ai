@@ -6,8 +6,8 @@ lifecycle wrapper and mutation safety rules:
 
 * CREATE ship designs in a genuinely free slot: empirical two-record Type27
   wrapper around a StarsAPI-authored DesignBlock body.
-* CREATE starbase designs in a genuinely free slot: the separate four-record
-  lifecycle captured from a native client submission.
+* CREATE starbase designs in a genuinely free slot: the two-record lifecycle
+  captured from a Player-4 native client submission.
 * DELETE of an existing design: the separately observed existing-design form.
 * REPLACE is not atomic: delete a provably dead design, read back the next M,
   then create into the now-free slot on a later turn.
@@ -28,6 +28,38 @@ from stars_ai.native.starsapi_design_codec import (
     StarsApiDesign, decode_design_block, encode_stars_string,
     encode_design_block, encode_type27_embedded_design, starsapi_body_roundtrip,
 )
+
+
+def _normalized_design_name(value: object, *, fallback: str) -> str:
+    """Return a visible Stars! design name, never an empty/control-only one."""
+    text = "".join(ch if ch.isprintable() else " " for ch in str(value or ""))
+    text = " ".join(text.split())
+    return text or fallback
+
+
+def _starbase_client_wire_name(slot: int) -> str:
+    """Return the fixed-width visible name accepted by the client Bn/7n form.
+
+    The only host-replayed native starbase-create sample uses a five-byte
+    encoded Stars! name in both full DesignBlock records.  A semantically
+    equivalent transaction with a descriptive 21-byte encoded name reproduces
+    the host limit-check crash, so the create lifecycle must retain that exact
+    body width.  ``Base NN`` is visible, unique in the ten-slot namespace, and
+    encodes to exactly five Stars! name bytes (plus the length byte).
+
+    The plan's descriptive ``design.name`` remains available to callers and
+    logs; it is deliberately not placed in this fragile first-create wire
+    transaction.  A later rename needs its own independently validated native
+    lifecycle.
+    """
+    if not 0 <= int(slot) < 10:
+        raise ValueError("Starbase design slot must be 0..9")
+    name = f"Base {int(slot) + 1:02d}"
+    # Keep the empirical fixed-size safety rule executable rather than merely
+    # documented.  The leading byte is Stars!' encoded-string length.
+    if len(encode_stars_string(name)) != 6:
+        raise RuntimeError("Starbase client wire name no longer has five encoded bytes")
+    return name
 
 
 class UnsafeShipDesignMutationError(RuntimeError):
@@ -55,6 +87,15 @@ class EncodedShipDesign:
     # starbase flag selects the independent ten-slot design namespace and
     # suppresses ship-only mass/fuel semantics in the game client.
     is_starbase: bool = False
+
+    def __post_init__(self) -> None:
+        """Ensure every newly encoded ship or starbase has visible wire names."""
+        kind = "Starbase" if self.is_starbase else "Ship"
+        fallback = f"{kind} Design {int(self.slot) + 1}"
+        name = _normalized_design_name(self.name, fallback=fallback)
+        staging_name = _normalized_design_name(self.staging_name, fallback=name)
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "staging_name", staging_name)
 
     def signature(self) -> str:
         parts = [f"H{self.hull_id}"]
@@ -95,7 +136,10 @@ def encode_type27_design_body(
         total_built=0,
         total_remaining=0,
         slots=slots,
-        name=str(design.name if name_override is None else name_override),
+        name=_normalized_design_name(
+            design.name if name_override is None else name_override,
+            fallback=design.name,
+        ),
         is_full_design=True,
         is_transferred=False,
         is_starbase=bool(design.is_starbase),
@@ -105,9 +149,9 @@ def encode_type27_design_body(
         if clear_type27_bit0 else encode_design_block(starsapi)
     )
     # An additional byte-for-byte self-check at this API boundary makes native
-    # corruption fail before the block enters the X order stream.  The captured
-    # starbase lifecycle uses a bit-0-clear initial record followed by ordinary
-    # (bit-0-set) DesignBlock bodies for its populated records.
+    # corruption fail before the block enters the X order stream.  Callers
+    # select the observed wrapper form: ship staging uses bit 0 clear, while
+    # the captured starbase seed and commit bodies retain the normal bit.
     if starsapi_body_roundtrip(body, type27_embedded=clear_type27_bit0) != body:
         raise RuntimeError("StarsAPI DesignBlock body failed exact Type27 round-trip")
     return body
@@ -172,19 +216,19 @@ def create_ship_design_blocks(
 
 
 def create_starbase_design_blocks(
-    design: EncodedShipDesign, *, player_id: int = 2, final_control: int | None = None
+    design: EncodedShipDesign,
+    *,
+    player_id: int = 2,
+    baseline_design: EncodedShipDesign | None = None,
+    final_control: int | None = None,
 ) -> list[NativeBlock]:
-    """Create a new starbase design using the client-captured lifecycle.
+    """Create a starbase design using the captured Player-4 transaction.
 
-    A native Player-1 Space Station submission establishes this four-record
-    sequence for starbase slot ``n`` (the first byte is player-owned):
-
-    ``01 Bn`` empty body, ``00 7n`` starbase delete marker,
-    ``01 Bn`` populated body, ``01 7n`` populated commit body.
-
-    Unlike ship creation, the populated starbase records retain embedded
-    DesignBlock bit 0.  This exact form has been replayed through the native
-    host both by itself and with ordinary AI orders.
+    A native P4 refit of slot ``n`` first sends ``<owner> Bn`` containing a
+    *populated*, same-hull baseline design, then applies the requested fitted
+    body through ``<owner> 7n``.  Both bodies retain normal DesignBlock bit 0.
+    An empty staging body or a second ``Bn`` record is not client-equivalent
+    and corrupts host processing.
     """
     if not design.is_starbase:
         raise ValueError("Starbase design writer received a ship design")
@@ -195,24 +239,59 @@ def create_starbase_design_blocks(
     slot = int(design.slot)
     if not 0 <= slot < 10:
         raise ValueError("Starbase design slot must be 0..9")
+    if baseline_design is None:
+        raise ValueError("Starbase creation requires a populated same-hull client baseline")
+    if not baseline_design.is_starbase:
+        raise ValueError("Starbase creation baseline must be a starbase design")
+    if int(baseline_design.hull_id) != int(design.hull_id):
+        raise ValueError("Starbase creation baseline must use the requested hull")
+    if len(baseline_design.slots) != len(design.slots):
+        raise ValueError("Starbase creation baseline must use the requested hull slot geometry")
+    if not any(int(component.count) > 0 for component in baseline_design.slots):
+        raise ValueError("Starbase creation baseline must be populated")
 
     owner_byte = _design_change_owner_byte(player_id)
     create_control = bytes([owner_byte, 0xB0 | slot])
     commit_control = bytes([owner_byte, 0x70 | slot])
-    delete_control = bytes([owner_byte & 0xF0, 0x70 | slot])
-
-    initial_body = encode_type27_design_body(
-        design, empty_slots=True, name_override=design.staging_name,
-        clear_type27_bit0=True,
+    wire_name = _starbase_client_wire_name(slot)
+    # The client seeds the target slot from an existing valid fitting, but the
+    # target slot/current turn/name belong to the new design from the outset.
+    # The Bn/7n client form only survives host processing with its captured
+    # five-byte encoded name field; use a short nonblank per-slot wire label
+    # for both full records (see _starbase_client_wire_name).
+    baseline = EncodedShipDesign(
+        slot=slot,
+        hull_id=int(design.hull_id),
+        pic=int(design.pic),
+        armor=int(design.armor),
+        turn_designed=int(design.turn_designed),
+        slots=tuple(baseline_design.slots),
+        name=wire_name,
+        staging_name=wire_name,
+        is_starbase=True,
     )
-    populated_body = encode_type27_design_body(
-        design, empty_slots=False, clear_type27_bit0=False,
+    final = EncodedShipDesign(
+        slot=slot,
+        hull_id=int(design.hull_id),
+        pic=int(design.pic),
+        armor=int(design.armor),
+        turn_designed=int(design.turn_designed),
+        slots=tuple(design.slots),
+        name=wire_name,
+        staging_name=wire_name,
+        is_starbase=True,
+    )
+
+    baseline_body = encode_type27_design_body(
+        baseline, empty_slots=False,
+        clear_type27_bit0=False,
+    )
+    final_body = encode_type27_design_body(
+        final, empty_slots=False, clear_type27_bit0=False,
     )
     payloads = [
-        create_control + initial_body,
-        delete_control,
-        create_control + populated_body,
-        commit_control + populated_body,
+        create_control + baseline_body,
+        commit_control + final_body,
     ]
     return [NativeBlock(27, len(payload), payload) for payload in payloads]
 
@@ -453,8 +532,8 @@ def encoded_ship_design_from_payload(payload: dict) -> EncodedShipDesign:
         slots=tuple(ComponentRef(
             int(x.get("category", 0)), int(x.get("item_id", 0)), int(x.get("count", 0))
         ) for x in (payload.get("slots") or [])),
-        name=str(payload["name"]),
-        staging_name=str(payload.get("staging_name") or payload.get("hull_name") or payload["name"]),
+        name=str(payload.get("name") or ""),
+        staging_name=str(payload.get("staging_name") or payload.get("hull_name") or payload.get("name") or ""),
         is_starbase=bool(payload.get("is_starbase", False)),
         replace_existing=bool(payload.get("replace_existing", False)),
     )

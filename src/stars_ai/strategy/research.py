@@ -37,14 +37,52 @@ def add_research_orders(
         " Fuel Mizer is already available, so this is a named capability choice rather than blind Propulsion catch-up."
         if early_mizer_doctrine else ""
     )
+    execution=dict((state.native or {}).get("research_sprint_execution") or {})
+    # Production is the final authority on whether a named sprint has a real
+    # cleared contributor.  This protects against a late emergency build that
+    # legitimately retained every selected world after strategic planning ran.
+    # Never serialize or report a 25% SPRINT with an empty execution plan.
+    commitment=str(getattr(decision,"commitment","") or "").upper()
+    if not commitment:
+        commitment=(
+            "RECOVERY_HIGH" if decision.posture=="MILITARY_EMERGENCY"
+            else "SPRINT" if decision.posture=="SPRINT"
+            else "ROUTINE"
+        )
+    high_commitment=commitment in {"SPRINT","RECOVERY_HIGH"}
+    execution_failed=bool(
+        high_commitment
+        and not bool(execution.get("executable",decision.sprint_executable))
+    )
+    payload=decision.to_payload()
+    reason=decision.reason
+    priority=145 if high_commitment else 80
+    if execution_failed:
+        blocked=str(execution.get("blocked_reason") or decision.sprint_blocked_reason or "no executable contributor")
+        payload.update({
+            "posture":"RECOVERY",
+            "allocation_percent":15,
+            "contributor_planet_ids":[],
+            "sprint_executable":False,
+            "sprint_blocked_reason":blocked,
+            "commitment":"DEFERRED",
+            "execution_status":"DEFERRED",
+            "expected_resources":0,
+        })
+        reason=(
+            f"{reason} EXECUTION DOWNGRADE: the selected sprint has no cleared contributor; "
+            f"emit normal 15% recovery research instead. {blocked}"
+        )
+        priority=80
+        state.native["research_strategy"]={**payload,"execution_downgrade":True}
     orders.add(
         "set_research",
         {
-            **decision.to_payload(),
+            **payload,
             "fuel_mizer_available": fuel_mizer,
             "early_mizer_doctrine": early_mizer_doctrine,
         },
-        f"{plan.persona_name + ': ' if plan else ''}{decision.reason}{doctrine_note}",
-        priority=145 if decision.posture in ("SPRINT", "MILITARY_EMERGENCY") else 80,
+        f"{plan.persona_name + ': ' if plan else ''}{reason}{doctrine_note}",
+        priority=priority,
     )
     return decision

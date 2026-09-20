@@ -150,6 +150,13 @@ def test_only_key_research_sprints_may_displace_shared_economic_growth():
     add_economic_orders(state,sprint,research_decision=_decision("SPRINT"))
     sprint_queue=next(order.payload["queue"] for order in sprint.orders if order.kind=="set_planet_queue")
     assert sprint_queue == []
+    execution=state.native["research_sprint_execution"]
+    assert execution["requested_research_allocation"] == 25
+    assert execution["expected_available_resource_total"] > 0
+    assert execution["contributors"] == [{
+        "planet_id":0,"status":"contributing","reason":"queue cleared for named sprint",
+    }]
+    assert execution["factories_or_mines_deferred"]
 
 
 def test_freight_cannot_drain_a_core_below_its_working_reserve():

@@ -7,6 +7,16 @@ from dataclasses import dataclass, field, asdict, fields
 from pathlib import Path
 from typing import Any
 
+from .capability_execution import (
+    BLOCKED_NATIVE,
+    EMITTED,
+    HOST_CONFIRMED,
+    NATIVE_READY,
+    PLANNED,
+    DESIGN_CREATION_KINDS,
+    design_descriptor,
+)
+
 
 def _safe_list(value):
     return list(value) if isinstance(value, (list, tuple)) else None
@@ -31,7 +41,7 @@ class AgentMemory:
       complete memory. Once a planet has been learned, sparse future M files may
       age that intelligence but must never make the planet "virgin unknown" again.
     """
-    schema_version: int = 6
+    schema_version: int = 8
     game_id: int | None = None
     player_id: int | None = None
     start_year: int | None = None
@@ -65,6 +75,17 @@ class AgentMemory:
     research_state: dict[str, Any] = field(default_factory=dict)
     research_history: list[dict[str, Any]] = field(default_factory=list)
 
+    # Empire-defense pressure is intentionally persistent. A border collapse
+    # cannot be treated as a one-turn observation when production queues and
+    # minefields take several turns to complete.
+    territorial_exposure_history: dict[str, Any] = field(default_factory=dict)
+
+    # v8.0 strategic/native feedback loop.  A design request is not an
+    # available capability until the host has read it back.  In particular,
+    # writer rejection must persist into the next planning cycle instead of
+    # being silently retried while production assumes the hull exists.
+    capability_execution: dict[str, dict[str, Any]] = field(default_factory=dict)
+
     @classmethod
     def load(cls, path: str | Path | None) -> "AgentMemory":
         if not path:
@@ -75,8 +96,8 @@ class AgentMemory:
         raw = json.loads(p.read_text(encoding="utf-8"))
         allowed = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in raw.items() if k in allowed}
-        # Loading an older file is the schema migration: missing v7.4 fields
-        # take their dataclass defaults and the next save advertises v6.
+        # Loading an older file is the schema migration: missing fields take
+        # their dataclass defaults and the next save advertises the current schema.
         filtered["schema_version"]=cls().schema_version
         return cls(**filtered)
 
@@ -139,6 +160,54 @@ class AgentMemory:
                 int(p.id) for p in state.planets if p.owner == state.player_id
             )
         return False
+
+    def prepare_territorial_exposure(self, state, lost_planet_ids=()) -> dict[str, Any]:
+        """Expose durable loss/pressure history to this turn's planners."""
+        year=int(state.year)
+        history=dict(self.territorial_exposure_history or {})
+        events={
+            int(event.get("planet_id")):int(event.get("lost_year", year) or year)
+            for event in (history.get("loss_events",[]) or [])
+            if isinstance(event,dict) and event.get("planet_id") is not None
+        }
+        for planet_id in lost_planet_ids or ():
+            try:
+                events[int(planet_id)]=year
+            except (TypeError,ValueError):
+                continue
+        events={
+            planet_id:lost_year for planet_id,lost_year in events.items()
+            if 0 <= year-int(lost_year) < 5
+        }
+        prepared={
+            "pressure_reserve":max(0.0,float(history.get("pressure_reserve",0.0) or 0.0)),
+            "year":int(history.get("year",year) or year),
+            "loss_events":[
+                {"planet_id":planet_id,"lost_year":lost_year}
+                for planet_id,lost_year in sorted(events.items())
+            ],
+        }
+        state.native["territorial_exposure_history"]=prepared
+        return prepared
+
+    def commit_territorial_exposure(self, state) -> None:
+        """Persist the assessed peak so pressure decays instead of vanishing."""
+        year=int(state.year)
+        current=(state.native or {}).get("empire_exposure",{}) or {}
+        prepared=(state.native or {}).get("territorial_exposure_history",{}) or {}
+        events=[
+            {"planet_id":int(event["planet_id"]),"lost_year":int(event["lost_year"])}
+            for event in (prepared.get("loss_events",[]) or [])
+            if isinstance(event,dict)
+            and event.get("planet_id") is not None
+            and event.get("lost_year") is not None
+            and 0 <= year-int(event["lost_year"]) < 5
+        ]
+        self.territorial_exposure_history={
+            "pressure_reserve":max(0.0,float(current.get("sustained_pressure",0.0) or 0.0)),
+            "year":year,
+            "loss_events":events,
+        }
 
     def _capture_planet(self, planet, year: int, player_id: int) -> None:
         key = str(int(planet.id))
@@ -641,6 +710,144 @@ class AgentMemory:
             if mission not in ("scan", "recon"):
                 continue
             self._record_scan_payload(payload,year)
+
+    def _transition_capability(
+        self,
+        descriptor: dict[str, Any],
+        status: str,
+        year: int,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        """Persist one monotonic, attributable design-capability transition."""
+        capability_id=str(descriptor["capability_id"])
+        prior=dict(self.capability_execution.get(capability_id,{}) or {})
+        history=[
+            dict(item) for item in (prior.get("status_history",[]) or [])
+            if isinstance(item,dict)
+        ]
+        event={"status":str(status),"year":int(year)}
+        if reason:
+            event["reason"]=str(reason)
+        if not history or history[-1].get("status") != str(status):
+            history.append(event)
+        elif reason:
+            history[-1]["reason"]=str(reason)
+
+        entry={
+            **prior,
+            **descriptor,
+            "status":str(status),
+            "last_updated_year":int(year),
+            "status_history":history[-24:],
+        }
+        entry.setdefault("requested_year",int(year))
+        if reason:
+            entry["blocking_reason"]=str(reason)
+        elif status != BLOCKED_NATIVE:
+            entry.pop("blocking_reason",None)
+        self.capability_execution[capability_id]=entry
+
+    def capability_execution_payload(self) -> dict[str, dict[str, Any]]:
+        """Return a JSON-safe snapshot for the current turn's planners."""
+        return {
+            str(key):dict(value)
+            for key,value in self.capability_execution.items()
+            if isinstance(value,dict)
+        }
+
+    def record_capability_plans(self, orders, state) -> None:
+        """Record semantic design requests before native validation begins.
+
+        A known ``BLOCKED_NATIVE`` request deliberately remains blocked.  The
+        next strategy pass must choose a different legal capability rather
+        than allowing the writer to erase the evidence by re-labeling it
+        ``PLANNED`` every turn.
+        """
+        year=int(state.year)
+        for order in orders.orders:
+            if str(order.kind) not in DESIGN_CREATION_KINDS:
+                continue
+            descriptor=design_descriptor(order.payload)
+            if descriptor is None:
+                continue
+            existing=self.capability_execution.get(descriptor["capability_id"],{}) or {}
+            if existing.get("status") == BLOCKED_NATIVE:
+                continue
+            self._transition_capability(descriptor,PLANNED,year)
+
+    def record_native_capability_execution(self, emitted, skipped, state) -> None:
+        """Close this writer pass over planned design capability requests."""
+        year=int(state.year)
+        for item in skipped:
+            if str(item.get("kind","")) not in DESIGN_CREATION_KINDS:
+                continue
+            descriptor=design_descriptor(item.get("payload") or {})
+            if descriptor is None:
+                continue
+            self._transition_capability(
+                descriptor,BLOCKED_NATIVE,year,
+                reason=str(item.get("reason") or "Native writer could not emit this design."),
+            )
+        for item in emitted:
+            if str(item.get("kind","")) not in DESIGN_CREATION_KINDS:
+                continue
+            descriptor=design_descriptor(item.get("payload") or {})
+            if descriptor is None:
+                continue
+            # The compiler has produced an exact legal native body before it
+            # reaches the emitted ledger, which is the NATIVE_READY boundary.
+            self._transition_capability(descriptor,NATIVE_READY,year)
+            self._transition_capability(descriptor,EMITTED,year)
+
+    def reconcile_capability_execution(self, state) -> dict[str, Any]:
+        """Promote emitted designs only when the next M-file shows the slot.
+
+        ``BLOCKED_NATIVE`` is intentionally never inferred away.  It can be
+        cleared only by a later successful native emission/read-back, keeping
+        a failed Type-27 request visible to strategic and production planning.
+        """
+        native=state.native or {}
+        confirmed=[]
+        for capability_id,raw in list(self.capability_execution.items()):
+            entry=dict(raw or {})
+            if entry.get("status") not in {PLANNED,NATIVE_READY,EMITTED}:
+                continue
+            is_starbase=bool(entry.get("is_starbase",False))
+            profiles=native.get(
+                "starbase_profiles" if is_starbase else "design_profiles",[]
+            ) or []
+            target_slot=entry.get("target_slot")
+            expected_name=str(entry.get("design_name") or "").casefold()
+            expected_role=str(entry.get("role") or "").casefold()
+            matched=False
+            for profile in profiles:
+                if not isinstance(profile,dict):
+                    continue
+                if target_slot is not None:
+                    try:
+                        if int(profile.get("design_number")) == int(target_slot):
+                            matched=True
+                            break
+                    except (TypeError,ValueError):
+                        pass
+                elif expected_name and str(profile.get("name") or "").casefold()==expected_name:
+                    matched=True
+                    break
+                elif not is_starbase and expected_role and str(profile.get("role") or "").casefold()==expected_role:
+                    matched=True
+                    break
+            if matched:
+                self._transition_capability(entry,HOST_CONFIRMED,int(state.year))
+                confirmed.append(str(capability_id))
+        state.native["capability_execution"]=self.capability_execution_payload()
+        return {
+            "host_confirmed_capability_ids":confirmed,
+            "blocked_capability_ids":sorted(
+                str(key) for key,value in self.capability_execution.items()
+                if isinstance(value,dict) and value.get("status")==BLOCKED_NATIVE
+            ),
+        }
 
     @staticmethod
     def _travel_years(origin: tuple[float, float], target, warp: int) -> int:

@@ -16,7 +16,11 @@ from .fuel_planner import apply_fuel_safety
 from .warp_policy import optimize_active_route_warps
 from .design_development import add_design_development_orders
 from .strategic_watchdog import evaluate_strategic_watchdog
-from .fleet_management import add_tactical_fleet_management
+from .fleet_management import (
+    add_tactical_fleet_management,
+    enforce_scout_split_precedence,
+    prepare_scout_split_precedence,
+)
 
 
 class StarsAgent:
@@ -52,6 +56,12 @@ class StarsAgent:
         # then restore older learned planet intelligence before any strategy runs.
         intel_diag = self.memory.reconcile_state(self.state)
         self.state.native["persistent_intel"] = dict(intel_diag)
+        capability_diag=self.memory.reconcile_capability_execution(self.state)
+        self.state.native["capability_execution_diagnostics"]=capability_diag
+        self.memory.prepare_territorial_exposure(
+            self.state,
+            intel_diag.get("lost_owned_planet_ids", []),
+        )
         self.memory.sync_scout_routes_from_native(self.state)
         command_outcomes=self.memory.evaluate_action_outcomes(self.state)
         self.state.native["command_outcomes"]=command_outcomes
@@ -96,6 +106,11 @@ class StarsAgent:
                 f"RESEARCH UNLOCK: {unlocked} completed; execute its post-unlock action and select the next capability."
             )
 
+        # Queue native-safe singleton splits before any ordinary planner can
+        # assign movement.  Child fleet IDs do not exist until host read-back,
+        # so exploration uses this preflight state to defer their routing.
+        prepare_scout_split_precedence(self.state, orders)
+
         add_diplomacy_orders(self.state, orders, plan)
         add_military_orders(self.state, orders, plan)
         add_tactical_fleet_management(self.state, orders, plan)
@@ -112,6 +127,12 @@ class StarsAgent:
         # objective, continuation, conscious hold, or surfaced BLOCKED reason.
         fleet_intents = ensure_fleet_activity(self.state, orders, plan)
         self.fleet_intents = fleet_intents
+
+        # A Type-24/23 singleton split must be the source fleet's only
+        # routine native operation.  Do this after every planner has had a
+        # chance to propose a route, then wait for the next M file before
+        # assigning the newborn fleets independently.
+        enforce_scout_split_precedence(self.state, orders)
 
         # Native-state diagnostics for playtest triage.
         for f in self.state.fleets:
@@ -146,6 +167,7 @@ class StarsAgent:
         # Non-native adapters commit semantic intent directly. The native writer
         # snapshots this state, rolls it back, and reapplies emitted routes only.
         self.memory.record_scan_orders(orders, self.state.year)
+        self.memory.commit_territorial_exposure(self.state)
         watchdog = evaluate_strategic_watchdog(self.state, self.memory)
         self.state.native["strategic_watchdog"] = dict(watchdog)
         self.memory.append_kpi(watchdog)

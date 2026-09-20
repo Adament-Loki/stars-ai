@@ -17,6 +17,9 @@ def test_population_backlog_sizes_compact_roundtrip_fleet_not_large_freighter():
     snap=evaluate_logistics_capacity(state)
     assert snap.population_lane_count>=1
     assert 1 <= snap.desired_population_freighters <= 4
+    assert snap.downstream_population_backlog > 0
+    assert snap.exportable_population > 0
+    assert snap.desired_population_transport_capacity_kt > 0
     assert snap.large_freighter_valuable is False
     assert snap.desired_bulk_freighters==0
 

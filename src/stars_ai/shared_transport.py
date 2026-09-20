@@ -19,7 +19,12 @@ from typing import Any
 from .cargo_planner import derive_cargo_plan
 from .expansion_network import evaluate_expansion_network
 from .fuel_planner import mission_reachable_with_planned_cargo
-from .logistics_capacity import export_source_statuses, population_export_floor
+from .logistics_capacity import (
+    evaluate_logistics_capacity,
+    export_source_statuses,
+    population_export_floor,
+    population_transport_throughput,
+)
 from .native.population_transport import MAX_SMALL_POPULATION_LOAD_KT
 from .planet_economy import decode_race_economy
 from .population_invasion import is_recently_lost_world, population_capture_targets
@@ -184,6 +189,7 @@ def _population_capture_options(
     network: Any,
     hubs: dict[int, Any],
     dispatched_sources: set[int],
+    reserved_target_ids: set[int],
 ) -> list[dict[str, Any]]:
     """Return one-turn, large-transport population captures from this source.
 
@@ -201,6 +207,12 @@ def _population_capture_options(
     protected_floor = int(population_export_floor(state, source_hub, network))
     out: list[dict[str, Any]] = []
     for target_info in population_capture_targets(state):
+        # Capture uses the same one-fleet/one-world reservation rule as
+        # colony and scout work.  Excluding this candidate here (rather than
+        # holding after its score wins) lets the next scheduler iteration
+        # recompute and select the best remaining executable foreign world.
+        if int(target_info.planet_id) in reserved_target_ids:
+            continue
         if int(target_info.required_kt) > capacity:
             continue
         target = next((p for p in state.planets if int(p.id) == int(target_info.planet_id)), None)
@@ -585,6 +597,12 @@ def schedule_shared_transport_orders(
     network = evaluate_expansion_network(state)
     hubs = {int(h.planet_id): h for h in network.hubs}
     statuses = {int(s.planet_id): s for s in export_source_statuses(state, network)}
+    throughput = population_transport_throughput(state)
+    reserve_population_capacity = bool(
+        int(throughput["backlog_colonists"]) > 0
+        and int(throughput["exportable_population"]) > 0
+        and int(throughput["transport_shortfall"]) > 0
+    )
     economy = decode_race_economy(state.race)
     modifier = float(plan.objective("logistics") * plan.mission("transport")) if plan else 1.0
 
@@ -593,6 +611,26 @@ def schedule_shared_transport_orders(
     population_inbound: dict[int, int] = {}
     population_source_outbound: dict[int, int] = {}
     dispatched_sources: set[int] = set()
+    reserved_capture_target_ids={
+        int(fleet.destination_planet_id)
+        for fleet in state.fleets
+        if fleet.owner == state.player_id
+        and fleet.role == "freighter"
+        and fleet.destination_planet_id is not None
+        and any(
+            int(planet.id) == int(fleet.destination_planet_id)
+            and planet.owner is not None
+            and int(planet.owner) != int(state.player_id)
+            for planet in state.planets
+        )
+    }
+    reserved_capture_target_ids.update(
+        int(order.payload["destination_planet_id"])
+        for order in orders.orders
+        if order.kind == "transport_population"
+        and bool((order.payload or {}).get("population_capture"))
+        and (order.payload or {}).get("destination_planet_id") is not None
+    )
     available: list[tuple[Any, Any]] = []
     schedule: list[dict[str, Any]] = []
     blocked_delivery_fleet_ids: list[int] = []
@@ -649,6 +687,7 @@ def schedule_shared_transport_orders(
             for option in _population_capture_options(
                 state, fleet, source, plan=plan, network=network, hubs=hubs,
                 dispatched_sources=dispatched_sources,
+                reserved_target_ids=reserved_capture_target_ids,
             ):
                 candidates.append((float(option["score"]), 2, _fleet_capacity(fleet), -int(fleet.id), option, fleet))
             for option in _population_options(
@@ -656,6 +695,13 @@ def schedule_shared_transport_orders(
                 base_demands=base_demands, population_inbound=population_inbound,
                 population_source_outbound=population_source_outbound,
             ):
+                if reserve_population_capacity:
+                    # A throughput deficit is an empire-level commitment.
+                    # Reserve suitable empty holds from ordinary mineral work
+                    # until the active shuttle lane has been filled.
+                    option = dict(option)
+                    option["score"] = float(option["score"]) + 2_500.0
+                    option["population_transport_reservation"] = True
                 candidates.append((float(option["score"]), 1, _fleet_capacity(fleet), -int(fleet.id), option, fleet))
             for option in _mineral_options(
                 state, fleet, source, owned=owned, hubs=hubs, economy=economy,
@@ -676,6 +722,7 @@ def schedule_shared_transport_orders(
         score = float(selected["score"])
 
         if selected["kind"] == "population_capture":
+            reserved_capture_target_ids.add(int(target.id))
             payload = _population_capture_payload(state, fleet, selected)
             orders.add(
                 "transport_population",
@@ -836,6 +883,51 @@ def schedule_shared_transport_orders(
         )
 
     _consolidate_bulk_lanes(state, orders, schedule)
+    scheduled_by_fleet={int(row["fleet_id"]):row for row in schedule}
+    population_transport=[]
+    for fleet in state.fleets:
+        if fleet.owner != state.player_id or fleet.role != "freighter":
+            continue
+        row=scheduled_by_fleet.get(int(fleet.id))
+        native=fleet.native or {}
+        cargo=native.get("cargo",{}) or {}
+        population_kt=int(cargo.get("population",0) or 0)
+        capacity=_fleet_capacity(fleet)
+        if row is not None:
+            kind=str(row.get("kind", ""))
+            status=(
+                "loading" if kind in {"population","population_capture"}
+                else "returning" if kind=="return_for_population_export"
+                else "unloading" if kind=="unload_remainder"
+                else "blocked"
+            )
+            blocked_reason=None if status!="blocked" else "assigned to non-population material duty"
+        elif population_kt>0:
+            status="unloading" if _planet_under_fleet(fleet,owned) is not None else "outbound"
+            blocked_reason=None
+        elif fleet.destination_planet_id is not None:
+            status="returning"
+            blocked_reason=None
+        else:
+            status="blocked"
+            blocked_reason="no ready exporter or recipient after shared scheduling"
+        population_transport.append({
+            "fleet_id":int(fleet.id),
+            "state":status,
+            "exporter_id":(
+                None if row is None else
+                row.get("destination_planet_id")
+                if str(row.get("kind", ""))=="return_for_population_export"
+                else row.get("source_planet_id")
+            ),
+            "recipient_id":(
+                None if row is None or str(row.get("kind", ""))=="return_for_population_export"
+                else row.get("destination_planet_id")
+            ),
+            "capacity":capacity,
+            "last_delivery":native.get("last_population_delivery_year"),
+            "blocked_reason":blocked_reason,
+        })
     state.native["shared_transport_schedule"] = {
         "policy": "rank destination need globally; recompute source surplus and destination need after each fleet; dispatch every useful available transport while preserving each source floor",
         "assignments": schedule,
@@ -843,5 +935,22 @@ def schedule_shared_transport_orders(
         "unassigned_freighter_ids": sorted(int(f.id) for f, _ in available),
         "population_inbound_colonists": {str(k): int(v) for k, v in population_inbound.items()},
         "mineral_inbound_kt": {str(k): dict(v) for k, v in target_inbound.items()},
+        "reserved_capture_target_ids": sorted(reserved_capture_target_ids),
+    }
+    state.native["population_transport"]=population_transport
+    population_fleet_ids={
+        int(row["fleet_id"])
+        for row in schedule
+        if str(row.get("kind", "")) in {
+            "population", "population_capture", "return_for_population_export",
+        }
+    }
+    state.native["population_transport_throughput"] = population_transport_throughput(
+        state,
+        evaluate_logistics_capacity(state),
+        assigned_population_fleet_ids=population_fleet_ids,
+    ) | {
+        "reserved_from_mineral_work": bool(reserve_population_capacity),
+        "scheduled_population_fleet_ids": sorted(population_fleet_ids),
     }
     return schedule

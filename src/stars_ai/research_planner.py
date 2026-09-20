@@ -79,6 +79,16 @@ class ResearchDecision:
     production_readiness: float = 1.0
     production_follow_through: str = ""
     expected_completion_year: int | None = None
+    sprint_executable: bool = True
+    sprint_blocked_reason: str | None = None
+    expected_contributor_resources: dict[int, int] | None = None
+    # Commitment is the planner/production contract.  Empty supports older
+    # persisted decisions; consumers derive it from posture for one release.
+    commitment: str = ""
+    execution_status: str = "ACTIVE"
+    expected_resources: int = 0
+    sprint_execution_failure: bool = False
+    execution_failure_reason: str | None = None
 
     @property
     def field(self) -> str:
@@ -90,6 +100,38 @@ class ResearchDecision:
 
 def _watchdog(state: GameState) -> dict[str, Any]:
     return dict((state.native or {}).get("strategic_watchdog") or {})
+
+
+def _competitive_tech_pressure(state: GameState) -> dict[str, Any]:
+    """Return a modest public-score research signal, never hidden intel."""
+    native=state.native or {}
+    public=str(native.get("score_visibility","private") or "private").lower()=="public"
+    records=[
+        dict(record) for record in (native.get("player_scores") or [])
+        if int(record.get("player_id",0) or 0)>0
+    ]
+    own_total=sum(int(getattr(state.tech,field,0) or 0) for field in FIELDS)
+    if not public or not records:
+        return {
+            "public":public,"our_tech_total":own_total,"best_competitor_tech_total":None,
+            "tech_gap":0,"research_pressure":1.0,"score_bonus":0.0,
+        }
+    rivals=[
+        int(record.get("tech_total",0) or 0)
+        for record in records
+        if int(record.get("player_id",0) or 0)!=int(state.player_id)
+    ]
+    best=max(rivals,default=own_total)
+    gap=max(0,best-own_total)
+    # A gap of four levels starts a gentle push.  It is intentionally small:
+    # public total-tech information cannot tell us which field wins a battle.
+    pressure=1.0 if gap<4 else min(1.30,1.0+0.04*gap)
+    return {
+        "public":True,"our_tech_total":own_total,
+        "best_competitor_tech_total":best,"tech_gap":gap,
+        "research_pressure":round(pressure,3),
+        "score_bonus":round(min(14.0,max(0.0,(gap-3)*1.5)),3),
+    }
 
 
 def _nearby_threats(state: GameState, plan: StrategicPlan | None) -> list:
@@ -842,12 +884,9 @@ def _contributors(
     existing = (state.native or {}).get("production_by_planet", {}) or {}
     economy = decode_race_economy(state.race)
     network = evaluate_expansion_network(state)
-    # A designated P1/P2 is an investment on its way to becoming a relay and
-    # breeder.  It is not a "mature lab" merely because its temporary resource
-    # estimate exceeds a young local colony.  Until it graduates, protect its
-    # installation queue and its population-import program from research
-    # sprints.  Graduation is capacity/support based, so this naturally scales
-    # by race and world quality instead of using a population magic number.
+    # An ungraduated P1/P2 is actively receiving the population and base
+    # support that makes the next colony/relay layer executable.  That is a
+    # critical colonization action, not a routine mine/factory queue.
     growth_hub_ids={
         int(hub.planet_id)
         for hub in network.hubs
@@ -869,7 +908,10 @@ def _contributors(
             custom
             or fragile
             or int(planet.id) in growth_hub_ids
-            or (shipyard and (expansion_debt or military_emergency))
+            # A real military emergency can reserve a shipyard.  Expansion
+            # debt alone must not make every mature home/core world ineligible:
+            # that was the systemic zero-contributor sprint failure.
+            or (shipyard and military_emergency)
         ):
             protected.add(int(planet.id))
             continue
@@ -980,6 +1022,8 @@ def plan_research(
         or expansion_pressure(state) > 1.15
     )
     opening_network_debt = bool(network.turn <= 30 and network.expansion_network_debt)
+    competitive_pressure=_competitive_tech_pressure(state)
+    state.native["competitive_tech_pressure"]=competitive_pressure
     turn = max(0, int(state.year) - 2400)
     # The opening must establish its mineral economy and colony pipeline
     # before it sacrifices one quarter of empire resources to a technology
@@ -998,6 +1042,10 @@ def plan_research(
                     plan,
                     expansion_debt,
                     opening_network_debt,
+                ) + (
+                    float(competitive_pressure["score_bonus"])
+                    if demand.capability.category in {"expansion","logistics","military"}
+                    else 0.0
                 ),
             )
             for demand in demands
@@ -1027,6 +1075,8 @@ def plan_research(
         )
 
     sprint_stalled = False
+    sprint_execution_failure = False
+    execution_failure_reason = None
     if (
         previous.get("capability_id") == chosen.capability.capability_id
         and previous.get("posture") == ResearchPosture.SPRINT.value
@@ -1034,7 +1084,19 @@ def plan_research(
         start_year = int(previous.get("selected_year", state.year))
         expected = int(previous.get("estimated_turns", estimated_turns))
         start_remaining = int(previous.get("remaining_total", sum(remaining.values())))
-        if int(state.year) - start_year > expected + 2 and sum(remaining.values()) >= start_remaining:
+        no_progress=(sum(remaining.values()) >= start_remaining)
+        elapsed=int(state.year) - start_year
+        if expected==1 and elapsed>=1 and no_progress:
+            # A one-turn prediction is a concrete promise: the next M file
+            # must show the level or capability completed.  Waiting several
+            # extra turns hid unfunded sprints in the old diagnostics.
+            sprint_execution_failure = True
+            execution_failure_reason=(
+                "Predicted one-turn sprint showed no measurable technology progress in the next turn; "
+                "downgraded until an executable contributor plan is re-established."
+            )
+            sprint_stalled = True
+        elif elapsed > expected + 2 and no_progress:
             sprint_stalled = True
 
     emergency = bool(chosen.military_emergency) and not opening_growth_lock
@@ -1064,7 +1126,34 @@ def plan_research(
 
     current_field, next_field = _field_sequence(chosen.capability, state, plan)
     contributors, protected = _contributors(state, sprint, expansion_debt, emergency)
+    contributor_resources={
+        int(planet.id):int(estimated_operating_resources(planet,decode_race_economy(state.race))["estimated_resources"])
+        for planet in state.planets
+        if int(planet.id) in contributors
+    }
+    sprint_blocked_reason=None
+    if sprint and not contributor_resources:
+        # A 25% research declaration without a real contributor is advisory
+        # fiction. Downgrade it at the source so execution/reporting cannot
+        # advertise a sprint that no planet will fund.
+        sprint=False
+        posture=(
+            ResearchPosture.RECOVERY if emergency else
+            (ResearchPosture.EXPANSION_FIRST if expansion_debt else ResearchPosture.TARGETED)
+        )
+        sprint_blocked_reason=(
+            "No mature non-emergency contributor has positive expected resources; "
+            "deferred the high-commitment sprint instead of reporting an unfunded 25% allocation."
+        )
     allocation = 25 if sprint else 15
+    commitment=(
+        "DEFERRED" if sprint_blocked_reason or sprint_execution_failure
+        else "RECOVERY_HIGH" if emergency and sprint
+        else "SPRINT" if sprint
+        else "ROUTINE"
+    )
+    execution_status="DEFERRED" if commitment=="DEFERRED" else "ACTIVE"
+    expected_resources=sum(contributor_resources.values()) if sprint else 0
     reason = (
         f"{posture.value}: pursue {chosen.capability.name}; score={chosen_score:.1f}, "
         f"remaining={remaining}, horizon~{estimated_turns} turn(s), utilization={chosen.utilization:.2f}. "
@@ -1091,6 +1180,10 @@ def plan_research(
         )
     if sprint_stalled:
         reason += " WARNING - prior sprint exceeded its horizon without measurable tech progress; 15% recovery posture selected."
+    if execution_failure_reason:
+        reason += f" EXECUTION FAILURE: {execution_failure_reason}"
+    if sprint_blocked_reason:
+        reason += f" SPRINT DEFERRED: {sprint_blocked_reason}"
 
     decision = ResearchDecision(
         capability_id=chosen.capability.capability_id,
@@ -1124,6 +1217,17 @@ def plan_research(
         production_readiness=chosen.production_readiness,
         production_follow_through=chosen.production_follow_through,
         expected_completion_year=int(state.year) + estimated_turns,
+        # A missed one-turn prediction is an execution failure just as surely
+        # as an empty contributor set.  It must not remain marked executable
+        # merely because the original selection did have a contributor.
+        sprint_executable=not bool(sprint_blocked_reason or sprint_execution_failure),
+        sprint_blocked_reason=sprint_blocked_reason,
+        expected_contributor_resources=contributor_resources,
+        commitment=commitment,
+        execution_status=execution_status,
+        expected_resources=expected_resources,
+        sprint_execution_failure=sprint_execution_failure,
+        execution_failure_reason=execution_failure_reason,
     )
     if memory is not None:
         selected_year = (

@@ -156,8 +156,13 @@ def test_sprints_are_available_from_turn_10():
     state=_state(year=2410)
     decision=plan_research(state,_plan(state))
     assert decision.capability_id=="hull:2"
-    assert decision.posture=="SPRINT"
-    assert decision.allocation_percent==25
+    # The only potential contributors are a protected custom-build homeworld
+    # and an ungraduated P1 import hub.  A named sprint without a contributor
+    # is now explicitly deferred instead of falsely reported as active.
+    assert decision.posture=="EXPANSION_FIRST"
+    assert decision.commitment=="DEFERRED"
+    assert decision.execution_status=="DEFERRED"
+    assert decision.allocation_percent==15
 
 
 def test_ungraduated_promoted_hub_is_not_used_as_a_research_sprint_lab():

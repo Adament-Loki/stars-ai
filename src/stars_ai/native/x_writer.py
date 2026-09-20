@@ -28,11 +28,12 @@ from stars_ai.persona import (
 )
 from stars_ai.native_capabilities import capability
 from stars_ai.native.design_change import (
-    UnsafeShipDesignMutationError, assert_deletable_ship_design_slot,
+    EncodedShipDesign, UnsafeShipDesignMutationError, assert_deletable_ship_design_slot,
     assert_free_ship_design_slot, assert_free_starbase_design_slot,
     create_ship_design_blocks, create_starbase_design_blocks,
     delete_existing_ship_design_block, encoded_ship_design_from_payload,
 )  # V8_6_NATIVE_DESIGN_LIFECYCLE_PATCH
+from stars_ai.design_legality import ComponentRef
 from stars_ai.native.population_transport import (
     MAX_SMALL_POPULATION_LOAD_KT,
     MIN_MEDIUM_POPULATION_LOAD_KT,
@@ -49,8 +50,8 @@ ORDER_BLOCK_TYPES = {
 }
 
 # Type-27 is the wire record which creates or deletes a ship/starbase design.
-# Starbase creation uses a separately captured four-record lifecycle; it was
-# host-replayed with ordinary AI orders for all five autoplay players.
+# Starbase creation uses the captured Player-4 ``Bn`` populated-seed then
+# ``7n`` populated-commit lifecycle, followed by one Save+Submit record.
 TYPE27_AUTOPLAY_ENABLED = True
 TYPE27_ISOLATE_TRANSACTION = False
 TYPE27_AUTOPLAY_BLOCK_REASON = (
@@ -365,9 +366,25 @@ def _fleet_merge_block(state:Any, payload:dict) -> NativeBlock:
     data=b"".join(_u16(_raw_fleet_number(state,value)) for value in (target,*sources))
     return NativeBlock(37,len(data),data)
 
-def _manual_load_population_25kt_block(state:Any, fleet_id:int)->NativeBlock:
-    """Load 25 kT of population cargo: 2,500 colonists."""
-    return NativeBlock(1,7,_u16(_raw_fleet_number(state,fleet_id))+bytes.fromhex("25 00 12 08 19"))
+def _manual_load_population_25kt_block(
+    state: Any,
+    fleet_id: int,
+    *,
+    source_planet_id: int,
+) -> NativeBlock:
+    """Load 25 kT of population cargo from an explicit source planet.
+
+    The two bytes after the owner-aware fleet number are a source-planet u16,
+    not a fixed Type-1 marker.  Colonization must use the client-observed
+    source-aware form; a hard-coded source can make a multi-colony X file hang
+    the native host.
+    """
+    return small_population_load_block(
+        state,
+        fleet_id,
+        25,
+        source_planet_id=int(source_planet_id),
+    )
 
 def _manual_load_minerals_block(
     state:Any, fleet_id:int, load:dict, *, preloaded_kt:int=0,
@@ -951,11 +968,22 @@ def _colonize_blocks(state:Any,payload:dict)->list[NativeBlock]:
         raise UnsafeWaypointMutationError(diagnostic)
     out=[]
     if payload.get("load_25kt_population"):
-        out.append(_manual_load_population_25kt_block(state,fid))
-    route_type=0x51
+        source_planet_id=payload.get("source_planet_id")
+        if source_planet_id is None:
+            raise ValueError(
+                "Colony population load requires source_planet_id for the native Type-1 record"
+            )
+        out.append(_manual_load_population_25kt_block(
+            state,
+            fid,
+            source_planet_id=int(source_planet_id),
+        ))
+    # The live turn-058 Player-2 control uses 0x11 for both legs of a
+    # load-and-colonize route.  0x51 is the distinct general Transport form.
+    route_type=0x11
     out.append(_movement_to_planet_block(
         state,{"fleet_id":fid,"destination_planet_id":pid,"warp":warp,"mission":"colonize"},
-        initial_object_type=0x51,
+        initial_object_type=route_type,
     ))
     out.append(_waypoint_change_task_block(
         state,fleet_id=fid,destination_planet_id=pid,warp=warp,task=2,object_type=route_type
@@ -1276,22 +1304,68 @@ def _frame_starbase_design_transaction(
     design_blocks: list[NativeBlock],
     xblocks: list[NativeBlock],
 ) -> list[NativeBlock]:
-    """Frame the captured starbase-design lifecycle without inventing records.
+    """Frame the Player-4 client-captured starbase transaction.
 
-    The Player-1 client capture brackets its four DesignChange records with
-    one copied SaveAndSubmit record on each side.  Other players' known-good
-    templates contain no such record, and the same no-save form has been host
-    replayed successfully.  Therefore this helper copies a template submit
-    only when the player actually has one.
+    The captured submission places the two Type-27 creation records before
+    queue or movement edits, then finishes with one SaveAndSubmit record.
+    P4's bootstrap template does not carry that block, so use the exact
+    client-captured canonical payload when no template copy is available.
     """
-    order_stream=list(ordinary_blocks)
+    order_stream=[*design_blocks,*ordinary_blocks]
     template_submit=next((block for block in xblocks if block.type_id==46),None)
     if template_submit is None:
-        order_stream.extend(design_blocks)
-        return order_stream
-    submit=NativeBlock(46,template_submit.size,template_submit.data)
-    order_stream.extend([submit,*design_blocks,NativeBlock(46,submit.size,submit.data)])
+        submit=NativeBlock(46,4,bytes.fromhex("01 01 05 19"))
+    else:
+        submit=NativeBlock(46,template_submit.size,template_submit.data)
+    order_stream.append(submit)
     return order_stream
+
+
+def _starbase_client_seed(
+    state: Any, design: EncodedShipDesign,
+) -> tuple[EncodedShipDesign, int] | None:
+    """Choose the populated same-hull baseline required by the client form.
+
+    The captured P4 creation cloned its current Yakimora-fitted Space Station
+    into the new slot, then committed the Blackjack upgrade.  A blank shell is
+    not equivalent.  Prefer the existing same-hull design whose slot fitting
+    already most closely matches the requested design, then use recency and
+    slot number for a deterministic tie-break.
+    """
+    candidates: list[tuple[tuple[int, int, int], EncodedShipDesign, int]] = []
+    native=getattr(state,"native",{}) or {}
+    for raw in native.get("designs",[]) or []:
+        if not bool(raw.get("is_starbase")):
+            continue
+        if int(raw.get("hull_id",-1) or -1)!=int(design.hull_id):
+            continue
+        raw_slots=tuple(ComponentRef(
+            int(item.get("category",0) or 0),
+            int(item.get("item_id",0) or 0),
+            int(item.get("count",0) or 0),
+        ) for item in (raw.get("slots",[]) or []))
+        if len(raw_slots)!=len(design.slots) or not any(int(item.count)>0 for item in raw_slots):
+            continue
+        source_slot=int(raw.get("design_number",-1) or -1)
+        if not 0 <= source_slot < 10:
+            continue
+        seed=EncodedShipDesign(
+            slot=int(design.slot), hull_id=int(design.hull_id), pic=int(design.pic),
+            armor=int(design.armor), turn_designed=int(design.turn_designed),
+            slots=raw_slots, name=design.name, staging_name=design.name,
+            is_starbase=True,
+        )
+        overlap=sum(
+            (int(old.category),int(old.item_id),int(old.count)) ==
+            (int(new.category),int(new.item_id),int(new.count))
+            for old,new in zip(raw_slots,design.slots)
+        )
+        rank=(overlap,int(raw.get("turn_designed",0) or 0),source_slot)
+        candidates.append((rank,seed,source_slot))
+    if not candidates:
+        return None
+    _,seed,source_slot=max(candidates,key=lambda item:item[0])
+    return seed,source_slot
 
 
 def _fresh_filehash_block(order_stream:list[NativeBlock])->NativeBlock:
@@ -1610,6 +1684,30 @@ def _build_decision_report(
             f"{fleet.name} - {action} - {intent['reason']}"
         )
 
+    lines += ["", "SCOUT PRODUCTIVITY"]
+    scout_policy=(state.native or {}).get("scout_exploration_policy",{}) or {}
+    scout_build=(state.native or {}).get("scout_build_policy",{}) or {}
+    scout_stack=(state.native or {}).get("scout_stack_diagnostics",{}) or {}
+    lines.append(
+        "Scout hulls={}; fleets={}; singleton fleets={}; stacked fleets={}; "
+        "wasted survey capacity={}; active routes={}; idle={}; duplicate targets={}.".format(
+            scout_policy.get("scout_hull_count",0),scout_policy.get("scout_fleet_count",0),
+            scout_policy.get("singleton_scout_capacity",0),
+            scout_policy.get("stacked_scout_fleet_count",scout_stack.get("stacked_fleet_count",0)),
+            scout_stack.get("wasted_survey_capacity",0),scout_policy.get("active_scout_routes",0),
+            scout_policy.get("idle_scout_count",0),scout_policy.get("duplicate_scout_targets",0),
+        )
+    )
+    lines.append(
+        "Local unknowns: home-radius={}; priority-hub radii={}; desired scout force={}; "
+        "live/imminent={}; actual build gap={}.".format(
+            scout_policy.get("unknown_within_home_radius",0),
+            scout_policy.get("unknown_within_priority_hub_radius",0),
+            scout_build.get("desired_scout_force",0),scout_build.get("live_imminent_scout_force",0),
+            scout_build.get("actual_scout_build_gap",0),
+        )
+    )
+
     lines += ["", "TERRITORIAL DEFENSE"]
     territorial = (state.native or {}).get("territorial_defense") or {}
     violations = list(territorial.get("violations", []) or [])
@@ -1753,7 +1851,7 @@ def _build_decision_report(
         if queue:
             q=", ".join(
                 (
-                    f"{x.get('quantity',1)}x {x.get('design_name','Design')}"
+                    f"[B{x.get('queue_priority_band',4)}] {x.get('quantity',1)}x {x.get('design_name','Design')}"
                     if x.get('item') in ('ship_design','starbase_design')
                     else f"{x.get('quantity',1)}x {x.get('item','?')}"
                 )
@@ -1778,6 +1876,14 @@ def _build_decision_report(
     else:
         lines.append(
             "Empire Research - KEEP CURRENT FIELD - No research-field change selected this turn."
+        )
+    sprint=(state.native or {}).get("research_sprint_execution",{}) or {}
+    if sprint.get("capability_id"):
+        lines.append(
+            f"Sprint execution: requested={sprint.get('requested_research_allocation',0)}%; "
+            f"contributors={sprint.get('contributor_planet_ids',[])}; expected resources="
+            f"{sprint.get('expected_available_resource_total',0)}; deferred installations="
+            f"{sprint.get('factories_or_mines_deferred',[])}; blocked={sprint.get('blocked_reason') or 'no'}."
         )
 
     lines += ["", "DIPLOMACY"]
@@ -2033,6 +2139,11 @@ def write_ai_turn(
     prior_scan_history=copy.deepcopy(memory.scan_target_history)
     agent=StarsAgent(state,memory=memory,persona=_persona(persona_name))
     orders=agent.play_turn()
+    # Persist the semantic intent before the native boundary decides whether a
+    # Type-27 body can actually be emitted.  The corresponding emitted/blocked
+    # transition is recorded below after structural validation.
+    agent.memory.record_capability_plans(orders,state)
+    state.native["capability_execution"]=agent.memory.capability_execution_payload()
 
     # Emit the actual relation change only until the real M-file reports Friend.
     for target in requested_friends:
@@ -2512,10 +2623,24 @@ def write_ai_turn(
                 except UnsafeShipDesignMutationError as exc:
                     skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
                     continue
-                design_blocks=(
-                    create_starbase_design_blocks(design,player_id=player_id)
-                    if is_starbase else create_ship_design_blocks(design,player_id=player_id)
-                )
+                client_seed=None
+                if is_starbase:
+                    client_seed=_starbase_client_seed(state,design)
+                    if client_seed is None:
+                        skipped.append({
+                            "kind":o.kind,
+                            "reason":(
+                                "Starbase creation requires a populated existing design on the same hull "
+                                "to seed the captured Bn/7n native lifecycle; no safe client baseline exists."
+                            ),
+                            "payload":o.payload,
+                        })
+                        continue
+                    design_blocks=create_starbase_design_blocks(
+                        design,player_id=player_id,baseline_design=client_seed[0],
+                    )
+                else:
+                    design_blocks=create_ship_design_blocks(design,player_id=player_id)
                 design_tail.extend(design_blocks)
                 touched_design=True
                 type27_client_framing=bool(is_starbase)
@@ -2530,9 +2655,12 @@ def write_ai_turn(
                 ep["design_body_codec"]="StarsAPI DesignBlock.encode/decode port"
                 if is_starbase:
                     ep["native_reference"]=(
-                        "Player-1 native Space Station capture: four-record Type27 "
-                        "starbase lifecycle, replayed with ordinary autoplay orders"
+                        "Player-4 native submission: populated same-hull Bn seed followed "
+                        "by the populated 7n commit body before Save+Submit; both bodies "
+                        "use the validated five-byte visible Base NN wire name"
                     )
+                    ep["type27_seed_design_slot"]=int(client_seed[1])
+                    ep["type27_wire_name"]=f"Base {int(design.slot) + 1:02d}"
                 ep["type27_transaction_mode"]=(
                     "client_captured_starbase_lifecycle"
                     if is_starbase else
@@ -2703,9 +2831,9 @@ def write_ai_turn(
                 "payload":o.payload
             })
 
-    # Starbase creation has an independent, host-accepted four-record
-    # lifecycle.  Preserve ordinary orders while applying its exact
-    # client-derived Save+Submit framing; ship lifecycle behavior is unchanged.
+    # Starbase creation has an independent two-record, Player-4 client-captured
+    # lifecycle. Emit it before ordinary orders with its client-derived
+    # Save+Submit framing; ship lifecycle behavior is unchanged.
     ordinary_order_block_count=len(generated)
     if type27_exact_client_transaction:
         order_stream=_frame_starbase_design_transaction(
@@ -2761,6 +2889,8 @@ def write_ai_turn(
     agent.memory.sync_scout_routes_from_native(state)
     agent.memory.record_emitted_scan_orders(emitted,state.year)
     agent.memory.record_emitted_actions(emitted,state)
+    agent.memory.record_native_capability_execution(emitted,skipped,state)
+    state.native["capability_execution"]=agent.memory.capability_execution_payload()
 
     # Autoplay writes a pending memory transaction and promotes it only after
     # host acceptance. Standalone callers keep the historical direct-save path.
@@ -2810,6 +2940,7 @@ def write_ai_turn(
             "movement_progress_diagnostics":state.native.get("movement_progress_diagnostics",[]),
             "command_outcomes":state.native.get("command_outcomes",[]),
             "pending_command_expectations":dict(getattr(agent.memory,"action_expectations",{})),
+            "capability_execution":agent.memory.capability_execution_payload(),
             "waypoint_diagnostics":waypoint_diagnostics,
             "persistent_scout_routes":dict(getattr(agent.memory,"scout_routes",{})),
             "memory_path":str(memory_path) if memory_path else None,

@@ -354,3 +354,6 @@ def test_idle_freighter_at_nonexporter_returns_to_ready_homeworld_before_new_bui
     assert return_order.payload["fleet_id"] == 3
     assert return_order.payload["destination_planet_id"] == 0
     assert return_order.payload["mission"] == "return_for_population_export"
+    transport=next(row for row in state.native["population_transport"] if row["fleet_id"]==3)
+    assert transport["state"]=="returning"
+    assert transport["exporter_id"]==0
