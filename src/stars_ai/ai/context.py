@@ -7,7 +7,7 @@ from typing import Any, TYPE_CHECKING
 
 from ..memory import AgentMemory
 from ..models import GameState, OrderSet
-from ..persona import StrategicPersona
+from ..persona import StrategicPersona, StrategicPlan
 from .ai_state import AIState, TurnInput
 
 if TYPE_CHECKING:
@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 class TurnContext:
     """References the working objects used while planning a single turn.
 
-    ``ai_state`` is a typed facade view of observed, persistent, and turn-only
-    state.  The unchanged legacy agent remains available during this migration
-    and retains its established ``GameState.native`` compatibility mirror.
+    ``ai_state`` is the typed view of observed, persistent, and turn-only
+    state.  ``strategic_plan`` and ``legacy_fleet_intents`` retain the exact
+    existing compatibility values needed by callers still using ``StarsAgent``.
     """
 
     turn_input: TurnInput
@@ -31,3 +31,5 @@ class TurnContext:
     decision_events: list[dict[str, Any]] = field(default_factory=list)
     legacy_agent: "StarsAgent | None" = None
     ai_state: AIState | None = None
+    strategic_plan: StrategicPlan | None = None
+    legacy_fleet_intents: list[dict[str, Any]] = field(default_factory=list)

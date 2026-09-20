@@ -1,51 +1,292 @@
-"""Compatibility facade for the current AI turn implementation."""
+"""Authoritative, behavior-preserving orchestration of one AI turn.
+
+The helpers below deliberately follow the long-standing ``StarsAgent`` order.
+They coordinate existing planners only; strategy, persistence, and native
+encoding rules remain in their established modules.
+"""
 
 from __future__ import annotations
 
-from ..agent import StarsAgent
+from dataclasses import dataclass, field
+from typing import Any
+
+from ..design_development import add_design_development_orders
+from ..fleet_intent import ensure_fleet_activity
+from ..fleet_management import (
+    add_tactical_fleet_management,
+    enforce_scout_split_precedence,
+    prepare_scout_split_precedence,
+)
+from ..fuel_planner import apply_fuel_safety
+from ..memory import AgentMemory
+from ..models import OrderSet
+from ..persona import BalancedPersona, StrategicPlan
+from ..research_planner import ResearchDecision, plan_research
+from ..strategic_watchdog import evaluate_strategic_watchdog
+from ..strategy.diplomacy import add_diplomacy_orders
+from ..strategy.economy import add_economic_orders
+from ..strategy.exploration import add_exploration_orders, deconflict_recon_orders
+from ..strategy.military import add_military_orders
+from ..strategy.research import add_research_orders
+from ..v4_coordinator import augment_orders_v4
+from ..warp_policy import optimize_active_route_warps
 from .ai_state import AIState, PersistentAIState, TurnAIState, TurnInput
 from .context import TurnContext
 from .result import TurnDecision
 
 
-class StarsAI:
-    """Future public AI entry point backed by the unchanged legacy agent.
+@dataclass(slots=True)
+class _TurnWork:
+    """Explicit, short-lived values shared by the ordered orchestration steps."""
 
-    Phase 1 has exactly one execution path: construct ``StarsAgent`` using
-    the caller's existing state, memory, and persona references, then invoke
-    ``play_turn``.  This preserves planner ordering, side effects, safety
-    checks, and persistent-memory semantics while providing a stable facade
-    for future architecture-only phases.
+    context: TurnContext
+    orders: OrderSet
+    intel_diagnostics: dict[str, Any] = field(default_factory=dict)
+    command_outcomes: list[dict[str, Any]] = field(default_factory=list)
+    movement_diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    plan: StrategicPlan | None = None
+    research_decision: ResearchDecision | None = None
+    legacy_fleet_intents: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def state(self):
+        return self.context.state
+
+    @property
+    def memory(self) -> AgentMemory:
+        return self.context.memory
+
+    @property
+    def persona(self):
+        return self.context.persona
+
+    @property
+    def ai_state(self) -> AIState:
+        if self.context.ai_state is None:
+            raise RuntimeError("Turn orchestration requires AIState")
+        return self.context.ai_state
+
+
+class StarsAI:
+    """The authoritative lifecycle for one complete AI player turn.
+
+    The public path is intentionally linear and readable:
+
+    1. initialize observed, persistent, and current-turn state;
+    2. reconcile observations and previous actions;
+    3. assess strategic position and select research;
+    4. run strategic planners in their established order;
+    5. resolve movement, safety, and fleet-intent invariants; and
+    6. finalize semantic orders and persistent state.
+
+    ``StarsAgent`` delegates here as a compatibility wrapper.
     """
 
     def run_turn(self, turn_input: TurnInput) -> TurnDecision:
-        """Plan one turn through the existing ``StarsAgent`` implementation."""
-        legacy_agent = StarsAgent(
-            turn_input.state,
-            memory=turn_input.memory,
-            persona=turn_input.persona,
+        """Run the complete existing AI lifecycle for one normalized turn."""
+
+        work = self._begin_turn(turn_input)
+        self._reconcile_observed_and_persistent_state(work)
+        self._evaluate_strategy(work)
+        self._choose_research(work)
+        self._run_strategic_planners(work)
+        self._resolve_navigation_and_safety(work)
+        self._ensure_fleet_intents(work)
+        self._append_turn_diagnostics(work)
+        self._finalize_turn(work)
+        return TurnDecision(
+            orders=work.orders,
+            context=work.context,
+            decision_events=work.context.decision_events,
         )
-        ai_state = AIState.from_agent_memory(legacy_agent.state, legacy_agent.memory)
+
+    def _begin_turn(self, turn_input: TurnInput) -> _TurnWork:
+        """Initialize only the existing working objects and semantic order set."""
+
+        memory = turn_input.memory or AgentMemory()
+        persona = turn_input.persona or BalancedPersona()
+        ai_state = AIState.from_agent_memory(turn_input.state, memory)
         context = TurnContext(
             turn_input=turn_input,
-            state=legacy_agent.state,
-            memory=legacy_agent.memory,
-            persona=legacy_agent.persona,
-            legacy_agent=legacy_agent,
+            state=turn_input.state,
+            memory=memory,
+            persona=persona,
             ai_state=ai_state,
         )
-        orders = legacy_agent.play_turn()
-        context.orders = orders
-        # Capture the post-turn memory and the legacy runtime scratch as
-        # detached typed views.  This does not change the legacy agent's
-        # planner order, mutation behavior, or native/report consumers.
-        ai_state.persistent = PersistentAIState.from_agent_memory(legacy_agent.memory)
-        ai_state.turn = TurnAIState.from_legacy_native(
-            legacy_agent.state.native,
-            fleet_intents=legacy_agent.fleet_intents,
+        orders = OrderSet(
+            game_name=context.state.game_name,
+            year=context.state.year,
+            player_id=context.state.player_id,
         )
-        return TurnDecision(
-            orders=orders,
-            context=context,
-            decision_events=context.decision_events,
+        context.orders = orders
+        return _TurnWork(context=context, orders=orders)
+
+    def _reconcile_observed_and_persistent_state(self, work: _TurnWork) -> None:
+        """Run legacy observation, action, route, and movement reconciliation."""
+
+        work.intel_diagnostics = work.memory.reconcile_state(work.state)
+        work.state.native["persistent_intel"] = dict(work.intel_diagnostics)
+        capability_diagnostics = work.memory.reconcile_capability_execution(work.state)
+        work.state.native["capability_execution_diagnostics"] = capability_diagnostics
+        work.memory.prepare_territorial_exposure(
+            work.state,
+            work.intel_diagnostics.get("lost_owned_planet_ids", []),
+        )
+        work.memory.sync_scout_routes_from_native(work.state)
+        work.command_outcomes = work.memory.evaluate_action_outcomes(work.state)
+        work.state.native["command_outcomes"] = work.command_outcomes
+        work.movement_diagnostics = work.memory.update_movement_progress(work.state)
+        work.state.native["movement_progress_diagnostics"] = work.movement_diagnostics
+        work.state.native["recent_scan_targets"] = sorted(
+            work.memory.recent_scan_target_ids(work.state.year, cooldown_years=3)
+        )
+
+    def _evaluate_strategy(self, work: _TurnWork) -> None:
+        """Evaluate the watchdog, then select the same persona plan as before."""
+
+        watchdog = evaluate_strategic_watchdog(work.state, work.memory)
+        work.state.native["strategic_watchdog"] = dict(watchdog)
+
+        work.plan = work.persona.build_plan(work.state)
+        work.context.strategic_plan = work.plan
+        work.orders.notes.append(f"Persona: {work.plan.persona_name}")
+        work.state.native["strategic_phase"] = {
+            "phase": work.plan.phase,
+            "reason": work.plan.phase_reason,
+            "assessment": dict(work.plan.phase_assessment),
+        }
+        work.orders.notes.append(f"PHASE: {work.plan.phase} â€” {work.plan.phase_reason}")
+        work.orders.notes.append(
+            f"PERSISTENT INTEL: current M observed={work.intel_diagnostics['current_m_observed']}, "
+            f"ever observed={work.intel_diagnostics['ever_observed']}/{work.intel_diagnostics['total_planets']}, "
+            f"restored from memory={work.intel_diagnostics['restored_from_memory']}."
+        )
+        work.orders.notes.extend(
+            outcome["message"] for outcome in work.command_outcomes
+            if outcome.get("status") in ("WARNING", "UNVERIFIED")
+        )
+        work.orders.notes.extend(watchdog.get("notes", []))
+        work.orders.notes.extend(work.plan.notes)
+
+    def _choose_research(self, work: _TurnWork) -> None:
+        """Choose research before production, preserving the research contract."""
+
+        if work.plan is None:
+            raise RuntimeError("Research selection requires a strategic plan")
+        work.research_decision = plan_research(work.state, work.plan, work.memory)
+        work.state.native["research_strategy"] = work.research_decision.to_payload()
+        work.orders.notes.append(f"RESEARCH PLAN: {work.research_decision.reason}")
+        for unlocked in work.research_decision.recently_unlocked:
+            work.orders.notes.append(
+                f"RESEARCH UNLOCK: {unlocked} completed; execute its post-unlock action and select the next capability."
+            )
+
+    def _run_strategic_planners(self, work: _TurnWork) -> None:
+        """Invoke every legacy strategic planner in its original call order."""
+
+        if work.plan is None or work.research_decision is None:
+            raise RuntimeError("Strategic planners require plan and research decision")
+
+        # Native-safe singleton splits intentionally precede ordinary movement.
+        prepare_scout_split_precedence(work.state, work.orders)
+        add_diplomacy_orders(work.state, work.orders, work.plan)
+        add_military_orders(work.state, work.orders, work.plan)
+        add_tactical_fleet_management(work.state, work.orders, work.plan)
+        add_economic_orders(
+            work.state,
+            work.orders,
+            work.plan,
+            research_decision=work.research_decision,
+        )
+        add_exploration_orders(work.state, work.orders, work.plan, memory=work.memory)
+        add_research_orders(work.state, work.orders, work.plan, decision=work.research_decision)
+        add_design_development_orders(work.state, work.orders, work.plan)
+        augment_orders_v4(work.state, work.orders, work.plan)
+
+    def _resolve_navigation_and_safety(self, work: _TurnWork) -> None:
+        """Resolve legacy conflicts, route warps, and fuel safety in that order."""
+
+        deconflict_recon_orders(work.state, work.orders)
+        optimize_active_route_warps(work.state, work.orders)
+        apply_fuel_safety(work.state, work.orders)
+
+    def _ensure_fleet_intents(self, work: _TurnWork) -> None:
+        """Apply fleet activity and final split precedence after ordinary planning."""
+
+        if work.plan is None:
+            raise RuntimeError("Fleet intent evaluation requires a strategic plan")
+        work.legacy_fleet_intents = ensure_fleet_activity(work.state, work.orders, work.plan)
+        work.context.legacy_fleet_intents = work.legacy_fleet_intents
+        enforce_scout_split_precedence(work.state, work.orders)
+
+    def _append_turn_diagnostics(self, work: _TurnWork) -> None:
+        """Append the existing diagnostics before final order sorting and persistence."""
+
+        for fleet in work.state.fleets:
+            if fleet.owner == work.state.player_id:
+                work.orders.notes.append(
+                    f"FLEET STATE: id={fleet.id} role={fleet.role} "
+                    f"pos=({int(fleet.position.x)},{int(fleet.position.y)}) "
+                    f"dest={fleet.destination_planet_id} destination_warp={fleet.destination_warp} "
+                    f"destination_task={fleet.destination_task} speed={fleet.speed}"
+                )
+        for diagnostic in work.movement_diagnostics:
+            if diagnostic.get("actual_progress") is None:
+                continue
+            work.orders.notes.append(
+                f"MOVEMENT PROGRESS: fleet={diagnostic['fleet_id']} "
+                f"destination={diagnostic['destination_planet_id']} "
+                f"range {diagnostic['prior_range']}->{diagnostic['current_range']} "
+                f"at W{diagnostic['commanded_warp']}; expected~{diagnostic['expected_movement']} "
+                f"actual={diagnostic['actual_progress']}"
+            )
+            if diagnostic.get("flag"):
+                work.orders.notes.append(diagnostic["flag"])
+
+        owned_count = sum(1 for planet in work.state.planets if planet.owner == work.state.player_id)
+        scout_count = sum(
+            1 for fleet in work.state.fleets
+            if fleet.owner == work.state.player_id and fleet.role == "scout"
+        )
+        move_count = sum(1 for order in work.orders.orders if order.kind == "move_fleet")
+        if work.state.year <= 2425 and owned_count <= 2 and scout_count > 0 and move_count == 0:
+            work.orders.notes.append(
+                "EXPANSION WATCHDOG: early empire has scouts but generated no movement orders."
+            )
+
+    def _finalize_turn(self, work: _TurnWork) -> None:
+        """Sort semantic orders, commit legacy memory, and capture typed turn state."""
+
+        if work.plan is None:
+            raise RuntimeError("Turn finalization requires a strategic plan")
+
+        work.orders.orders.sort(key=lambda order: order.priority, reverse=True)
+
+        # Non-native adapters commit semantic intent directly. The native writer
+        # snapshots this state, rolls it back, and reapplies emitted routes only.
+        work.memory.record_scan_orders(work.orders, work.state.year)
+        work.memory.commit_territorial_exposure(work.state)
+        watchdog = evaluate_strategic_watchdog(work.state, work.memory)
+        work.state.native["strategic_watchdog"] = dict(watchdog)
+        work.memory.append_kpi(watchdog)
+
+        work.memory.last_year = work.state.year
+        work.memory.strategic_notes = work.orders.notes[-75:]
+        work.memory.goal_progress = {
+            **dict(work.plan.goal_progress),
+            "explored_count": float(watchdog["explored_count"]),
+            "explored_percent": float(watchdog["explored_percent"]),
+            "new_colonies": float(watchdog["new_colonies"]),
+            "exploration_pressure": float(watchdog["exploration_pressure"]),
+            "colonization_pressure": float(watchdog["colonization_pressure"]),
+        }
+        work.memory.diplomacy = {
+            str(player_id): dict(relation)
+            for player_id, relation in work.plan.diplomacy.items()
+        }
+
+        work.ai_state.persistent = PersistentAIState.from_agent_memory(work.memory)
+        work.ai_state.turn = TurnAIState.from_legacy_native(
+            work.state.native,
+            fleet_intents=work.legacy_fleet_intents,
         )
