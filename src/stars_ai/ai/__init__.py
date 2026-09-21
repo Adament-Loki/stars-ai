@@ -5,6 +5,7 @@ from .context import TurnContext
 from .engine import StarsAI
 from .pipeline import TurnPlanner
 from .result import TurnDecision
+from .state_store import AIStateStore
 
 __all__ = [
     "StarsAI",
@@ -15,4 +16,5 @@ __all__ = [
     "TurnDecision",
     "TurnInput",
     "TurnPlanner",
+    "AIStateStore",
 ]

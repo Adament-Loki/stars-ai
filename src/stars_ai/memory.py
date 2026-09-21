@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import math
 from dataclasses import dataclass, field, asdict, fields
@@ -96,10 +97,17 @@ class AgentMemory:
         raw = json.loads(p.read_text(encoding="utf-8"))
         allowed = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in raw.items() if k in allowed}
+        # Keep fields introduced by a newer writer opaque but intact. They are
+        # not strategy inputs until modeled explicitly, yet silently erasing
+        # them during a rollback-safe refactor would make a memory migration
+        # destructive.
+        extra_fields = {k: v for k, v in raw.items() if k not in allowed}
         # Loading an older file is the schema migration: missing fields take
         # their dataclass defaults and the next save advertises the current schema.
         filtered["schema_version"]=cls().schema_version
-        return cls(**filtered)
+        memory = cls(**filtered)
+        memory._legacy_extra_fields = deepcopy(extra_fields)
+        return memory
 
     def save(self, path: str | Path | None) -> None:
         if not path:
@@ -107,7 +115,11 @@ class AgentMemory:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(p.suffix + ".tmp")
-        tmp.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        payload = {
+            **deepcopy(getattr(self, "_legacy_extra_fields", {})),
+            **asdict(self),
+        }
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         tmp.replace(p)
 
     def _state_game_id(self, state) -> int | None:
@@ -128,6 +140,7 @@ class AgentMemory:
         )
         for f in fields(self):
             setattr(self, f.name, getattr(fresh, f.name))
+        self._legacy_extra_fields = {}
 
     def ensure_game(self, state) -> bool:
         """
@@ -445,7 +458,7 @@ class AgentMemory:
             "purged_fleet_movement_ids":sorted(purged_fleet_movement_ids),
         }
 
-    def reconcile_state(self, state) -> dict[str, Any]:
+    def _reconcile_state(self, state) -> dict[str, Any]:
         """
         Merge CURRENT observations into memory, then restore older learned data
         onto map-only/sparse planets for strategic reasoning.
@@ -623,7 +636,7 @@ class AgentMemory:
             if bool(x.get("ever_observed"))
         }
 
-    def recent_scan_target_ids(self, year: int, cooldown_years: int = 3) -> set[int]:
+    def _recent_scan_target_ids(self, year: int, cooldown_years: int = 3) -> set[int]:
         out = set()
         for key, info in self.scan_target_history.items():
             last = info.get("last_assigned_year")
@@ -679,7 +692,7 @@ class AgentMemory:
             route["native_queued"]=True
             self.scout_routes[rkey]=route
 
-    def record_scan_orders(self, orders, year: int) -> None:
+    def _record_scan_orders(self, orders, year: int) -> None:
         """Record semantic scan orders for non-native adapters."""
         for o in orders.orders:
             if o.kind != "move_fleet":
@@ -688,7 +701,7 @@ class AgentMemory:
                 continue
             self._record_scan_payload(o.payload,year)
 
-    def record_emitted_scan_orders(self, emitted, year: int) -> None:
+    def _record_emitted_scan_orders(self, emitted, year: int) -> None:
         """Record only scan routes that survived native writer validation."""
         for item in emitted:
             if item.get("kind") != "move_fleet":
@@ -896,7 +909,7 @@ class AgentMemory:
         key=str(expectation["id"])
         self.action_expectations[key]=dict(expectation)
 
-    def record_emitted_actions(self, emitted, state) -> None:
+    def _record_emitted_actions(self, emitted, state) -> None:
         """Persist observable outcomes for native commands that were emitted.
 
         The writer calls this only after it has serialized and structurally
@@ -1376,7 +1389,7 @@ class AgentMemory:
             f"{expectation.get('description',kind)}."
         )
 
-    def evaluate_action_outcomes(self, state) -> list[dict[str, Any]]:
+    def _evaluate_action_outcomes(self, state) -> list[dict[str, Any]]:
         """Evaluate committed command expectations against the current M state."""
         outcomes=[]
         ordered=sorted(
@@ -1431,11 +1444,11 @@ class AgentMemory:
 
 
 
-    def scout_route(self, fleet_id: int) -> dict[str, Any] | None:
+    def _scout_route(self, fleet_id: int) -> dict[str, Any] | None:
         route=self.scout_routes.get(str(int(fleet_id)))
         return dict(route) if isinstance(route,dict) else None
 
-    def set_scout_route(
+    def _set_scout_route(
         self,
         fleet_id: int,
         planet_ids: list[int],
@@ -1472,10 +1485,10 @@ class AgentMemory:
             ],
         }
 
-    def clear_scout_route(self, fleet_id: int) -> None:
+    def _clear_scout_route(self, fleet_id: int) -> None:
         self.scout_routes.pop(str(int(fleet_id)),None)
 
-    def sync_scout_routes_from_native(self, state) -> None:
+    def _sync_scout_routes_from_native(self, state) -> None:
         """Make queued Stars! waypoint chains authoritative for scout memory."""
         for fleet in state.fleets:
             if fleet.owner!=state.player_id or fleet.role not in ("scout","unknown"):
@@ -1506,7 +1519,7 @@ class AgentMemory:
             })
             self.scout_routes[key]=route
 
-    def prune_scout_routes(self, state) -> None:
+    def _prune_scout_routes(self, state) -> None:
         """
         Drop dead fleets and planets already observed/reached from persistent
         routes. The remaining list is the probe's forward campaign.
@@ -1549,7 +1562,7 @@ class AgentMemory:
             )
             self.scout_routes[key]=route
 
-    def reserved_scout_route_targets(self, exclude_fleet_id: int | None = None) -> set[int]:
+    def _reserved_scout_route_targets(self, exclude_fleet_id: int | None = None) -> set[int]:
         reserved=set()
         for key,route in self.scout_routes.items():
             if exclude_fleet_id is not None and int(key)==int(exclude_fleet_id):
@@ -1558,127 +1571,104 @@ class AgentMemory:
                 reserved.add(int(pid))
         return reserved
 
-    def discoveries_in_recent_years(self, year: int, window: int = 5) -> int:
-        floor = int(year) - max(0, int(window) - 1)
-        return sum(
-            1 for x in self.planet_intel.values()
-            if x.get("first_seen_year") is not None
-            and int(x["first_seen_year"]) >= floor
+    # Compatibility facade -------------------------------------------------
+    # Keep the established AgentMemory API while focused services take public
+    # ownership of memory algorithms.  Local imports deliberately avoid a
+    # module cycle during legacy AgentMemory construction.
+
+    def reconcile_state(self, state) -> dict[str, Any]:
+        from .memory_services import intelligence_memory_service
+        return intelligence_memory_service.reconcile(self, state)
+
+    def recent_scan_target_ids(self, year: int, cooldown_years: int = 3) -> set[int]:
+        from .memory_services import exploration_memory_service
+        return exploration_memory_service.recent_scan_target_ids(self, year, cooldown_years)
+
+    def record_scan_orders(self, orders, year: int) -> None:
+        from .memory_services import exploration_memory_service
+        exploration_memory_service.record_scan_orders(self, orders, year)
+
+    def record_emitted_scan_orders(self, emitted, year: int) -> None:
+        from .memory_services import exploration_memory_service
+        exploration_memory_service.record_emitted_scan_orders(self, emitted, year)
+
+    def record_emitted_actions(self, emitted, state) -> None:
+        from .memory_services import action_outcome_service
+        action_outcome_service.record_emitted(self, emitted, state)
+
+    def evaluate_action_outcomes(self, state) -> list[dict[str, Any]]:
+        from .memory_services import action_outcome_service
+        return action_outcome_service.evaluate(self, state)
+
+    def scout_route(self, fleet_id: int) -> dict[str, Any] | None:
+        from .memory_services import exploration_memory_service
+        return exploration_memory_service.scout_route(self, fleet_id)
+
+    def set_scout_route(
+        self,
+        fleet_id: int,
+        planet_ids: list[int],
+        year: int,
+        *,
+        expected_discoveries: int | None = None,
+        total_distance: float | None = None,
+        sector_index: int | None = None,
+        sector_count: int | None = None,
+        terminal: bool = True,
+        awaiting_refuel: bool = False,
+        waypoints: list[dict[str, int]] | None = None,
+    ) -> None:
+        from .memory_services import exploration_memory_service
+        exploration_memory_service.set_scout_route(
+            self,
+            fleet_id,
+            planet_ids,
+            year,
+            expected_discoveries=expected_discoveries,
+            total_distance=total_distance,
+            sector_index=sector_index,
+            sector_count=sector_count,
+            terminal=terminal,
+            awaiting_refuel=awaiting_refuel,
+            waypoints=waypoints,
         )
+
+    def clear_scout_route(self, fleet_id: int) -> None:
+        from .memory_services import exploration_memory_service
+        exploration_memory_service.clear_scout_route(self, fleet_id)
+
+    def sync_scout_routes_from_native(self, state) -> None:
+        from .memory_services import exploration_memory_service
+        exploration_memory_service.sync_from_native(self, state)
+
+    def prune_scout_routes(self, state) -> None:
+        from .memory_services import exploration_memory_service
+        exploration_memory_service.prune(self, state)
+
+    def reserved_scout_route_targets(self, exclude_fleet_id: int | None = None) -> set[int]:
+        from .memory_services import exploration_memory_service
+        return exploration_memory_service.reserved_targets(self, exclude_fleet_id)
+
+    def discoveries_in_recent_years(self, year: int, window: int = 5) -> int:
+        from .memory_services import kpi_history_service
+        return kpi_history_service.discoveries_in_recent_years(self, year, window)
 
     def new_colonies_count(self) -> int:
-        # Keep the full colonization history for rate/trend analysis, but use
-        # only worlds currently remembered as ours for expansion posture. A
-        # captured colony must not inflate the live-territory milestone.
-        return sum(
-            1 for key in self.colonized_years
-            if int((self.planet_intel.get(str(key),{}) or {}).get(
-                "last_known_owner",-1
-            ) or -1)==int(self.player_id or -1)
-        )
+        from .memory_services import kpi_history_service
+        return kpi_history_service.new_colonies_count(self)
 
     def scan_order_count(self) -> int:
-        return sum(
-            int(x.get("assignment_count", 0))
-            for x in self.scan_target_history.values()
-        )
+        from .memory_services import kpi_history_service
+        return kpi_history_service.scan_order_count(self)
 
     def unique_scan_target_count(self) -> int:
-        return len(self.scan_target_history)
+        from .memory_services import kpi_history_service
+        return kpi_history_service.unique_scan_target_count(self)
 
     def append_kpi(self, status: dict[str, Any], keep: int = 200) -> None:
-        self.kpi_history.append(dict(status))
-        if len(self.kpi_history) > keep:
-            self.kpi_history = self.kpi_history[-keep:]
+        from .memory_services import kpi_history_service
+        kpi_history_service.append(self, status, keep)
 
     def update_movement_progress(self, state) -> list[dict[str, Any]]:
-        """Compare native active-waypoint range across observed turns."""
-        planets={int(p.id):p for p in state.planets}
-        diagnostics=[]
-        current_ids=set()
-        for fleet in state.fleets:
-            if fleet.owner!=state.player_id or fleet.destination_planet_id is None:
-                continue
-            target=planets.get(int(fleet.destination_planet_id))
-            if target is None:
-                continue
-            key=str(int(fleet.id))
-            current_ids.add(key)
-            current_range=math.hypot(
-                float(target.position.x)-float(fleet.position.x),
-                float(target.position.y)-float(fleet.position.y),
-            )
-            warp=(
-                fleet.destination_warp
-                if fleet.destination_warp is not None
-                else (fleet.native or {}).get("native_destination_warp")
-            )
-            task=(
-                fleet.destination_task
-                if fleet.destination_task is not None
-                else (fleet.native or {}).get("native_destination_task")
-            )
-            prior=self.fleet_movement_history.get(key)
-            row={
-                "fleet_id":int(fleet.id),
-                "destination_planet_id":int(fleet.destination_planet_id),
-                "year":int(state.year),
-                "current_range":round(current_range,3),
-                "commanded_warp":int(warp) if warp is not None else None,
-                "native_task":int(task) if task is not None else None,
-                "prior_range":None,
-                "expected_movement":None,
-                "actual_progress":None,
-                "suspicious":False,
-                "suspicious_slow_turns":0,
-                "flag":None,
-            }
-            repeated=0
-            if (
-                prior
-                and int(prior.get("destination_planet_id",-1))==int(fleet.destination_planet_id)
-                and int(prior.get("year",state.year)) < int(state.year)
-            ):
-                years=int(state.year)-int(prior["year"])
-                prior_range=float(prior.get("range",current_range))
-                actual=prior_range-current_range
-                expected=None
-                if warp is not None and int(warp)>0:
-                    expected=min(prior_range,float(int(warp)**2*years))
-                suspicious=bool(
-                    expected is not None
-                    and expected>=16.0
-                    and prior_range>8.0
-                    and actual < expected*0.35
-                )
-                repeated=(int(prior.get("suspicious_slow_turns",0))+1) if suspicious else 0
-                row.update({
-                    "prior_year":int(prior["year"]),
-                    "prior_range":round(prior_range,3),
-                    "expected_movement":round(expected,3) if expected is not None else None,
-                    "actual_progress":round(actual,3),
-                    "suspicious":suspicious,
-                    "suspicious_slow_turns":repeated,
-                })
-                if repeated>=2:
-                    row["flag"]=(
-                        f"SUSPICIOUS MOVEMENT: W{warp} fleet advanced only "
-                        f"{actual:.1f} ly versus approximately {expected:.1f} ly expected; "
-                        f"slow progress observed {repeated} consecutive times."
-                    )
-            self.fleet_movement_history[key]={
-                "fleet_id":int(fleet.id),
-                "destination_planet_id":int(fleet.destination_planet_id),
-                "year":int(state.year),
-                "range":current_range,
-                "commanded_warp":int(warp) if warp is not None else None,
-                "native_task":int(task) if task is not None else None,
-                "suspicious_slow_turns":repeated,
-            }
-            diagnostics.append(row)
-
-        # Dead/idle fleets are not useful as future comparison baselines.
-        for key in list(self.fleet_movement_history):
-            if key not in current_ids:
-                self.fleet_movement_history.pop(key,None)
-        return diagnostics
+        from .memory_services import movement_audit_service
+        return movement_audit_service.update(self, state)

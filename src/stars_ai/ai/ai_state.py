@@ -131,6 +131,9 @@ class PersistentAIState:
     diplomacy: PersistentDiplomacyState = field(default_factory=PersistentDiplomacyState)
     action_ledger: PersistentActionLedgerState = field(default_factory=PersistentActionLedgerState)
     history: PersistentHistoryState = field(default_factory=PersistentHistoryState)
+    # Opaque future/legacy JSON fields are retained by the persistence adapter
+    # but deliberately do not become strategic inputs until modeled here.
+    legacy_extra_fields: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_agent_memory(cls, memory: AgentMemory) -> "PersistentAIState":
@@ -172,6 +175,9 @@ class PersistentAIState:
                 kpi_history=deepcopy(memory.kpi_history),
                 territorial_exposure_history=deepcopy(memory.territorial_exposure_history),
             ),
+            legacy_extra_fields=deepcopy(
+                getattr(memory, "_legacy_extra_fields", {})
+            ),
         )
 
     def apply_to_agent_memory(self, memory: AgentMemory) -> None:
@@ -205,6 +211,7 @@ class PersistentAIState:
         memory.goal_progress = deepcopy(self.history.goal_progress)
         memory.kpi_history = deepcopy(self.history.kpi_history)
         memory.territorial_exposure_history = deepcopy(self.history.territorial_exposure_history)
+        memory._legacy_extra_fields = deepcopy(self.legacy_extra_fields)
 
     def to_agent_memory(self) -> AgentMemory:
         """Return a new legacy-memory object for persistence compatibility."""

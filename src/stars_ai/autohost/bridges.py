@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from ..ai.state_store import AIStateStore
 from ..native.x_writer import write_ai_turn
 
 
@@ -46,7 +47,10 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         )
         self.allied_pairs = [list(map(int, pair)) for pair in (allied_pairs or [])]
         self.memory_root = Path(memory_root).resolve() if memory_root else None
+        # Retained for direct legacy callers/tests that used this diagnostic
+        # surface before AIStateStore owned the transaction mechanics.
         self._pending_memories: dict[int, tuple[Path, Path]] = {}
+        self._pending_memory_stores: dict[int, AIStateStore] = {}
 
     def _friend_ids_for(self, player_id: int) -> list[int]:
         friend_ids = set()
@@ -68,14 +72,12 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             raise RuntimeError(
                 f"Integrated writer needs a persistent known-good .x{player_id} template."
             )
-        memory_path = (
-            self.memory_root / f"player-{int(player_id):02d}-memory.json"
+        state_store = (
+            AIStateStore.for_player(self.memory_root, int(player_id))
             if self.memory_root is not None else None
         )
-        pending_memory_path = (
-            self.memory_root / f"player-{int(player_id):02d}-memory.pending.json"
-            if self.memory_root is not None else None
-        )
+        memory_path = state_store.committed_path if state_store is not None else None
+        pending_memory_path = state_store.pending_path if state_store is not None else None
         result = write_ai_turn(
             player_id=player_id,
             m_path=m_path,
@@ -90,7 +92,11 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             memory_output_path=pending_memory_path,
         )
         if memory_path is not None and pending_memory_path is not None:
+            # The writer deliberately remains responsible only for producing
+            # the pending snapshot; the store owns promotion/rollback.
+            state_store.adopt_pending_file()
             self._pending_memories[int(player_id)] = (memory_path, pending_memory_path)
+            self._pending_memory_stores[int(player_id)] = state_store
 
         moves = [event for event in result.emitted if event.get("kind") == "move_fleet"]
         skipped_moves = [event for event in result.skipped if event.get("kind") == "move_fleet"]
@@ -118,17 +124,24 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
 
     def commit_pending_memory(self) -> None:
         for player_id, (committed, pending) in sorted(self._pending_memories.items()):
-            if not pending.exists():
-                raise RuntimeError(
-                    f"Pending AI memory is missing for player {player_id}: {pending}"
-                )
-            pending.replace(committed)
+            store = self._pending_memory_stores.get(player_id)
+            if store is None:
+                # Compatibility with callers that populated _pending_memories
+                # directly before AIStateStore was introduced.
+                store = AIStateStore(committed, pending)
+                store.adopt_pending_file()
+            store.commit()
         self._pending_memories.clear()
+        self._pending_memory_stores.clear()
 
     def discard_pending_memory(self) -> None:
-        for _, pending in self._pending_memories.values():
-            pending.unlink(missing_ok=True)
+        for player_id, (committed, pending) in self._pending_memories.items():
+            store = self._pending_memory_stores.get(player_id)
+            if store is None:
+                store = AIStateStore(committed, pending)
+            store.rollback()
         self._pending_memories.clear()
+        self._pending_memory_stores.clear()
 
 
 class ExternalCommandOrderBridge(NativeOrderBridge):
