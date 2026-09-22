@@ -162,7 +162,7 @@ class StarsAI:
             "reason": work.plan.phase_reason,
             "assessment": dict(work.plan.phase_assessment),
         }
-        work.orders.notes.append(f"PHASE: {work.plan.phase} â€” {work.plan.phase_reason}")
+        work.orders.notes.append(f"PHASE: {work.plan.phase} — {work.plan.phase_reason}")
         work.orders.notes.append(
             f"PERSISTENT INTEL: current M observed={work.intel_diagnostics['current_m_observed']}, "
             f"ever observed={work.intel_diagnostics['ever_observed']}/{work.intel_diagnostics['total_planets']}, "

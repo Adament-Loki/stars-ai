@@ -2114,6 +2114,21 @@ def write_native_orders(
     )
     type27_exact_client_transaction=False
 
+    # The normalized native adapter retains the current M-file provenance in
+    # raw observed-state metadata.  The serializer needs its header only to
+    # preserve the current game/turn/player framing; it does not decode or
+    # plan from that file here.
+    m_source = (state.native or {}).get("population_source_m_file")
+    if not m_source:
+        raise ValueError(
+            "Native serialization requires the current M-file provenance in "
+            "GameState.native['population_source_m_file']."
+        )
+    m_path = Path(str(m_source))
+    if not m_path.is_file():
+        raise FileNotFoundError(
+            f"Current M-file provenance is unavailable for native serialization: {m_path}"
+        )
     # Read current M header and known-good X template.
     m_header, mblocks, _ = read_blocks(m_path)
     m_header_block=next(b for b in mblocks if b.type_id==8)
