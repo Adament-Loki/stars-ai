@@ -7,7 +7,7 @@ import shutil
 import subprocess
 
 from ..ai.state_store import AIStateStore
-from ..native.x_writer import write_ai_turn
+from ..turn_execution import execute_native_ai_turn
 from ..reporting import DecisionJournalReporter, turn_number_from_tag
 
 
@@ -79,9 +79,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             AIStateStore.for_player(self.memory_root, int(player_id))
             if self.memory_root is not None else None
         )
-        memory_path = state_store.committed_path if state_store is not None else None
-        pending_memory_path = state_store.pending_path if state_store is not None else None
-        result = write_ai_turn(
+        execution = execute_native_ai_turn(
             player_id=player_id,
             m_path=m_path,
             xy_path=xy_path,
@@ -91,17 +89,19 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             persona_name=self.personas.get(str(player_id), "Balanced"),
             trace_path=turn_dir / f"{getattr(self, 'turn_tag', 'current')}-player-{player_id:02d}-decision-native.json",
             friend_player_ids=self._friend_ids_for(int(player_id)),
-            memory_path=memory_path,
-            memory_output_path=pending_memory_path,
+            state_store=state_store,
         )
-        if memory_path is not None and pending_memory_path is not None:
-            # The writer deliberately remains responsible only for producing
-            # the pending snapshot; the store owns promotion/rollback.
-            state_store.adopt_pending_file()
-            self._pending_memories[int(player_id)] = (memory_path, pending_memory_path)
+        result = execution.native_result
+        if state_store is not None and state_store.has_staged_state:
+            # The application layer stages semantic/native-confirmed memory;
+            # the bridge alone promotes or rolls it back after host execution.
+            self._pending_memories[int(player_id)] = (
+                state_store.committed_path,
+                state_store.pending_path,
+            )
             self._pending_memory_stores[int(player_id)] = state_store
 
-        report_model = getattr(result, "report_model", None)
+        report_model = execution.report_model
         if self.report_root is not None and report_model is not None:
             try:
                 execution_turn = turn_number_from_tag(getattr(self, "turn_tag", None))

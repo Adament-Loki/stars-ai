@@ -8,23 +8,14 @@ or records enough provenance for a playtest failure to be diagnosed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
-import copy
 import secrets
 from typing import Any
-import json
 import shutil
 
 from stars_ai.adapters.stars_native import (
     read_blocks, parse_xy, NativeBlock, _rng, _crypt
-)
-from stars_ai.adapters.native_core_adapter import NativeCoreTurnAdapter
-from stars_ai.agent import StarsAgent
-from stars_ai.memory import AgentMemory
-from stars_ai.persona import (
-    BalancedPersona, ExpansionistPersona, IndustrialistPersona,
-    TechnologistPersona, MilitaristPersona
 )
 from stars_ai.native_capabilities import capability
 from stars_ai.native.design_change import (
@@ -67,9 +58,8 @@ class NativeWriteResult:
     skipped: list[dict]
     output_x: str
     waypoint_diagnostics: list[dict]
-    # Structured human-report data is deliberately post-transaction metadata;
-    # it has no bearing on the emitted native bytes.
-    report_model: Any | None = None
+    # Facts observed while serializing, suitable for a caller-owned audit.
+    native_audit: dict[str, Any] = field(default_factory=dict)
 
 
 class UnsafeWaypointMutationError(RuntimeError):
@@ -1596,15 +1586,6 @@ def _copy_client_fleet_split_pairs(
         index += 1
     return copied, source_ids, diagnostics
 
-def _persona(name:str):
-    n=(name or "Balanced").lower()
-    if n=="expansionist": return ExpansionistPersona()
-    if n=="industrialist": return IndustrialistPersona()
-    if n=="technologist": return TechnologistPersona()
-    if n=="militarist": return MilitaristPersona()
-    return BalancedPersona()
-
-
 def _object_name_for_planet(state, planet_id:int) -> str:
     p=next((p for p in state.planets if p.id==planet_id),None)
     return p.name if p is not None else f"Planet {planet_id}"
@@ -2094,71 +2075,34 @@ def _build_decision_report(
         )
     return "\n".join(lines) + "\n"
 
-def write_ai_turn(
+def write_native_orders(
     *,
-    player_id:int,
-    m_path:Path,
-    xy_path:Path,
+    game_state,
+    orders,
     template_x_path:Path,
     output_x_path:Path,
     client_x_path:Path|None=None,
-    persona_name:str="Balanced",
-    trace_path:Path|None=None,
-    friend_player_ids:list[int]|None=None,
-    memory_path:Path|None=None,
-    memory_output_path:Path|None=None,
 ) -> NativeWriteResult:
+    """Serialize already-planned semantic orders into a validated Stars! X file.
+
+    This is deliberately the native boundary: it maps an observed
+    ``GameState`` and an ``OrderSet`` to native blocks, applies every existing
+    capability/lifecycle gate, and returns only native audit facts.  It does
+    not decode a turn, instantiate an AI, select strategy, load/save memory,
+    or render human reports.
+    """
+
+    state=game_state
+    player_id=int(state.player_id)
+    if int(orders.player_id) != player_id:
+        raise ValueError(
+            f"Semantic OrderSet player {orders.player_id} does not match GameState player {player_id}"
+        )
     if not template_x_path.exists():
         raise FileNotFoundError(
             f"Missing X template {template_x_path}. A known-good .x{player_id} "
             "from this game is required to preserve X-file authentication/static blocks."
         )
-
-    # Build GameState and semantic AI orders.
-    adapter=NativeCoreTurnAdapter(xy_path=xy_path)
-    state=adapter.read_state(m_path,player_id)
-
-    requested_friends=sorted({
-        int(x) for x in (friend_player_ids or [])
-        if int(x) != int(player_id)
-    })
-    actual_relations=list(state.race.native.get("player_relations",[]))
-    state.native["actual_player_relations"]=list(actual_relations)
-
-    # Treat configured allies as Friends immediately for strategic/military
-    # decisions so this turn cannot contain both "become Friend" and an attack
-    # against that same player.
-    effective_relations=list(actual_relations)
-    if requested_friends:
-        max_target=max(requested_friends)
-        if len(effective_relations) < max_target:
-            effective_relations.extend([0] * (max_target-len(effective_relations)))
-        for target in requested_friends:
-            effective_relations[target-1]=1
-        state.race.native["player_relations"]=effective_relations
-
-    memory=AgentMemory.load(memory_path)
-    prior_scout_routes=copy.deepcopy(memory.scout_routes)
-    prior_scan_history=copy.deepcopy(memory.scan_target_history)
-    agent=StarsAgent(state,memory=memory,persona=_persona(persona_name))
-    orders=agent.play_turn()
-    # Persist the semantic intent before the native boundary decides whether a
-    # Type-27 body can actually be emitted.  The corresponding emitted/blocked
-    # transition is recorded below after structural validation.
-    agent.memory.record_capability_plans(orders,state)
-    state.native["capability_execution"]=agent.memory.capability_execution_payload()
-
-    # Emit the actual relation change only until the real M-file reports Friend.
-    for target in requested_friends:
-        actual = actual_relations[target-1] if 0 <= target-1 < len(actual_relations) else 0
-        if int(actual) != 1:
-            orders.add(
-                "set_player_relation",
-                {"player_id":target,"relation":"friend","configured_alliance":True},
-                f"Configured reciprocal alliance: mark Player {target} as Friend.",
-                priority=150,
-            )
-    orders.orders.sort(key=lambda o:o.priority, reverse=True)
 
     # Retain the native Type-27 lifecycle selected for diagnostics and framing.
     type27_client_framing=False
@@ -2883,84 +2827,29 @@ def write_ai_turn(
             f"Generated X FileHash order length {stored_order_len} != actual {actual_order_len}"
         )
 
-    # Strategy mutates route memory for same-turn deconfliction. Restore the
-    # committed baseline, reconcile native M waypoints, then apply only scan
-    # routes whose native blocks survived writer validation.
-    agent.memory.scout_routes=prior_scout_routes
-    agent.memory.scan_target_history=prior_scan_history
-    agent.memory.prune_scout_routes(state)
-    agent.memory.sync_scout_routes_from_native(state)
-    agent.memory.record_emitted_scan_orders(emitted,state.year)
-    agent.memory.record_emitted_actions(emitted,state)
-    agent.memory.record_native_capability_execution(emitted,skipped,state)
-    state.native["capability_execution"]=agent.memory.capability_execution_payload()
-
-    # Autoplay writes a pending memory transaction and promotes it only after
-    # host acceptance. Standalone callers keep the historical direct-save path.
-    memory_destination=memory_output_path or memory_path
-    agent.memory.save(memory_destination)
-
     # Every non-validated native capability remains enabled when it has a
     # concrete writer, but is retained in the trace as an attributable
     # experiment. Population transport additionally records its exact blocks
     # at the point of emission above.
     _annotate_untrusted_emissions(emitted)
 
-    result=NativeWriteResult(
-        player_id,state.year,emitted,skipped,str(output_x_path),waypoint_diagnostics
+    return NativeWriteResult(
+        player_id,state.year,emitted,skipped,str(output_x_path),waypoint_diagnostics,
+        native_audit={
+            "fresh_salt":fresh_salt,
+            "template_salt":template_salt,
+            "m_salt":m_salt,
+            "save_submit_count":sum(1 for b in order_stream if b.type_id==46),
+            "filehash_order_length":int.from_bytes(filehash.data[:2],"little"),
+            "type27_autoplay_enabled":TYPE27_AUTOPLAY_ENABLED,
+            "type27_isolation_enabled":TYPE27_ISOLATE_TRANSACTION,
+            "type27_requested":type27_requested,
+            "type27_exact_client_transaction":type27_exact_client_transaction,
+            "type27_client_framing":type27_client_framing,
+            "type27_mixed_with_ordinary_orders":bool(design_tail and ordinary_order_block_count),
+            "type27_kind":type27_kind,
+            "type27_slot":type27_slot,
+            "client_fleet_split_snapshot":str(client_x_path) if client_x_path else None,
+            "client_fleet_split_diagnostics":client_split_diagnostics,
+        },
     )
-    decision_report=_build_decision_report(
-        state,orders,agent,emitted,skipped,waypoint_diagnostics
-    )
-    if trace_path:
-        trace_path.parent.mkdir(parents=True,exist_ok=True)
-        trace_path.write_text(json.dumps({
-            "state":{"game":state.game_name,"year":state.year,"player":state.player_id},
-            "orders":orders.to_dict(),
-            "fleet_intents":getattr(agent,"fleet_intents",[]),
-            "x_lifecycle":{
-                "fresh_salt":fresh_salt,
-                "template_salt":template_salt,
-                "m_salt":m_salt,
-                "save_submit_count":sum(1 for b in order_stream if b.type_id==46),
-                "filehash_order_length":int.from_bytes(filehash.data[:2],"little"),
-                "type27_autoplay_enabled":TYPE27_AUTOPLAY_ENABLED,
-                "type27_isolation_enabled":TYPE27_ISOLATE_TRANSACTION,
-                "type27_requested":type27_requested,
-                "type27_exact_client_transaction":type27_exact_client_transaction,
-                "type27_client_framing":type27_client_framing,
-                "type27_mixed_with_ordinary_orders":bool(
-                    design_tail and ordinary_order_block_count
-                ),
-                "type27_kind":type27_kind,
-                "type27_slot":type27_slot,
-                "client_fleet_split_snapshot":str(client_x_path) if client_x_path else None,
-                "client_fleet_split_diagnostics":client_split_diagnostics,
-            },
-            "persistent_intel":state.native.get("persistent_intel",{}),
-            "strategic_watchdog":state.native.get("strategic_watchdog",{}),
-            "probe_route_diagnostics":state.native.get("probe_route_diagnostics",[]),
-            "movement_progress_diagnostics":state.native.get("movement_progress_diagnostics",[]),
-            "command_outcomes":state.native.get("command_outcomes",[]),
-            "pending_command_expectations":dict(getattr(agent.memory,"action_expectations",{})),
-            "capability_execution":agent.memory.capability_execution_payload(),
-            "waypoint_diagnostics":waypoint_diagnostics,
-            "persistent_scout_routes":dict(getattr(agent.memory,"scout_routes",{})),
-            "memory_path":str(memory_path) if memory_path else None,
-            "memory_output_path":str(memory_destination) if memory_destination else None,
-            "native_result":asdict(result),
-        },indent=2),encoding="utf-8")
-        report_path=trace_path.with_name(
-            trace_path.name.replace("-decision-native.json","-DECISION_REPORT.txt")
-        )
-        report_path.write_text(decision_report,encoding="utf-8")
-    # Build optional reporting data only after semantic/native work is final.
-    # Reporting must never alter the X transaction or veto a valid order file.
-    try:
-        from ..reporting import build_turn_report_model
-        result.report_model = build_turn_report_model(
-            state, orders, agent, emitted, skipped, waypoint_diagnostics,
-        )
-    except Exception:
-        result.report_model = None
-    return result

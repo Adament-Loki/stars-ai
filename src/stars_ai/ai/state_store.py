@@ -1,9 +1,10 @@
 """Transactional storage for persistent AI state.
 
-The native writer creates a pending memory snapshot while it emits an X file.
-``AIStateStore`` makes the resulting lifecycle explicit: only a successful
-Stars! host pass may promote that snapshot; failed or abandoned passes discard
-it.  The stored JSON remains the established :class:`AgentMemory` schema.
+The application turn-execution layer stages a pending memory snapshot after
+semantic orders have passed native serialization. ``AIStateStore`` makes the
+resulting lifecycle explicit: only a successful Stars! host pass may promote
+that snapshot; failed or abandoned passes discard it. The stored JSON remains
+the established :class:`AgentMemory` schema.
 """
 
 from __future__ import annotations
@@ -86,9 +87,9 @@ class AIStateStore:
     def adopt_pending_file(self) -> None:
         """Register an already-written pending file without interpreting it.
 
-        The bridge uses this at the native boundary, where it must be able to
-        promote the exact writer artifact.  ``stage_existing`` remains the
-        typed inspection API for valid saved-memory JSON.
+        Retained for callers migrating from pre-Phase-7 pending artifacts.
+        ``stage_existing`` remains the typed inspection API for valid
+        saved-memory JSON.
         """
 
         if self.pending_path is None or not self.pending_path.exists():
@@ -98,9 +99,8 @@ class AIStateStore:
     def stage_existing(self) -> PersistentAIState:
         """Adopt a pending snapshot written by the unchanged native writer.
 
-        This is the narrow adapter between writer output and the host lifecycle:
-        the writer serializes the staged snapshot, while the store alone owns
-        its eventual promotion or rollback.
+        This is the narrow adapter for a pre-existing pending snapshot; the
+        store alone owns its eventual promotion or rollback.
         """
 
         if self.pending_path is None:

@@ -20,7 +20,8 @@ from .adapters.native_core_adapter import NativeCoreTurnAdapter
 from .adapters.stars_native import NativeBlock, read_blocks
 from .memory import AgentMemory
 from .models import GameState
-from .native.x_writer import ORDER_BLOCK_TYPES, write_ai_turn
+from .native.x_writer import ORDER_BLOCK_TYPES
+from .turn_execution import write_ai_turn
 from .persona import BalancedPersona, StrategicPersona
 
 

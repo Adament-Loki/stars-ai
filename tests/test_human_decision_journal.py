@@ -144,8 +144,9 @@ def test_markdown_and_json_use_the_same_stable_report_model(tmp_path):
 
 def test_bridge_writes_flat_report_from_writer_structured_model(monkeypatch, tmp_path):
     model = _model(2400, 1)
-    result = SimpleNamespace(year=2400, emitted=[], skipped=[], report_model=model)
-    monkeypatch.setattr("stars_ai.autohost.bridges.write_ai_turn", lambda **_: result)
+    result = SimpleNamespace(year=2400, emitted=[], skipped=[])
+    execution = SimpleNamespace(native_result=result, report_model=model)
+    monkeypatch.setattr("stars_ai.autohost.bridges.execute_native_ai_turn", lambda **_: execution)
     template = tmp_path / "GAME.x1"
     template.write_bytes(b"template")
     bridge = IntegratedNativeOrderBridge(report_root=tmp_path)

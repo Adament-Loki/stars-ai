@@ -14,6 +14,13 @@ from pathlib import Path
 import re
 from typing import Any, Iterable
 
+from .planet_economy import (
+    planet_population_capacity,
+    population_capacity_fraction,
+    projected_next_population,
+    projected_population_growth,
+)
+
 
 REPORT_SCHEMA_VERSION = 1
 
@@ -182,7 +189,7 @@ class TurnReportModel:
 def build_turn_report_model(
     state,
     orders,
-    agent,
+    decision_or_agent,
     emitted: list[dict[str, Any]],
     skipped: list[dict[str, Any]],
     waypoint_diagnostics: list[dict[str, Any]],
@@ -195,8 +202,16 @@ def build_turn_report_model(
         planet for planet in state.planets
         if planet.owner not in (None, state.player_id) and bool(planet.observed)
     ]
-    plan = getattr(agent, "last_plan", None)
-    persona = getattr(plan, "persona_name", None) or getattr(getattr(agent, "persona", None), "name", "Balanced")
+    context = getattr(decision_or_agent, "context", None)
+    plan = (
+        getattr(context, "strategic_plan", None)
+        if context is not None else getattr(decision_or_agent, "last_plan", None)
+    )
+    persona_source = (
+        getattr(context, "persona", None)
+        if context is not None else getattr(decision_or_agent, "persona", None)
+    )
+    persona = getattr(plan, "persona_name", None) or getattr(persona_source, "name", "Balanced")
     phase = getattr(plan, "phase", None) or ((state.native or {}).get("strategic_phase") or {}).get("phase", "unclassified")
     phase_reason = getattr(plan, "phase_reason", None) or ((state.native or {}).get("strategic_phase") or {}).get("reason", "No phase reason recorded.")
     objective_weights = dict(getattr(plan, "objective_weights", {}) or {})
@@ -214,9 +229,13 @@ def build_turn_report_model(
         "active_fleets": len(own_fleets),
         "known_enemy_colonies": len(known_enemy),
     }
+    fleet_intents = (
+        getattr(context, "legacy_fleet_intents", [])
+        if context is not None else getattr(decision_or_agent, "fleet_intents", [])
+    )
     intent_by_fleet = {
         int(item["fleet_id"]): item
-        for item in (getattr(agent, "fleet_intents", []) or [])
+        for item in (fleet_intents or [])
         if item.get("fleet_id") is not None
     }
     fleets = []
@@ -233,7 +252,10 @@ def build_turn_report_model(
             "status": "Holding" if destination is None else "Moving/queued",
             "reason": str(intent.get("reason", "No fleet-intent diagnostic was recorded.")),
         })
-    journal = getattr(agent, "decision_journal", None)
+    journal = (
+        getattr(context, "decision_journal", None)
+        if context is not None else getattr(decision_or_agent, "decision_journal", None)
+    )
     decisions = list((journal.to_dict() if journal is not None else {}).get("events", []))
     order_rows = []
     for order in sorted(orders.orders, key=lambda item: (-int(item.priority), item.kind, str(item.payload))):
@@ -559,3 +581,261 @@ def turn_number_from_tag(tag: str | None) -> int | None:
 
     match = re.fullmatch(r"turn-(\d+)", str(tag or ""))
     return int(match.group(1)) if match else None
+
+
+def _audit_planet_name(state, planet_id: int) -> str:
+    return _planet_name(state, planet_id) or f"Planet {planet_id}"
+
+
+def _audit_fleet_name(state, fleet_id: int) -> str:
+    fleet = next(
+        (item for item in state.fleets if int(item.id) == int(fleet_id) and item.owner == state.player_id),
+        None,
+    )
+    return fleet.name if fleet is not None else f"Fleet {fleet_id}"
+
+
+def _audit_waypoint_target(state, payload: dict[str, Any]) -> str:
+    target_fleet_id = payload.get("destination_fleet_id")
+    if target_fleet_id is not None:
+        owner = payload.get("destination_fleet_owner")
+        fleet = next(
+            (
+                candidate for candidate in state.fleets
+                if int(candidate.id) == int(target_fleet_id)
+                and (owner is None or int(candidate.owner) == int(owner))
+            ),
+            None,
+        )
+        label = fleet.name if fleet is not None else f"Fleet {target_fleet_id}"
+        return f"P{owner if owner is not None else '?'} {label}"
+    target = payload.get("destination_planet_id")
+    return _audit_planet_name(state, int(target)) if target is not None else "none"
+
+
+def build_native_decision_report(
+    state,
+    orders,
+    fleet_intents: list[dict[str, Any]],
+    emitted: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+    waypoint_diagnostics: list[dict[str, Any]] | None = None,
+) -> str:
+    """Render the retained forensic decision report outside the native writer.
+
+    It receives semantic decisions plus writer audit facts.  It deliberately
+    has no access to native block construction or persistence transactions.
+    """
+
+    lines = [
+        f"STARS! AI DECISION REPORT — {state.game_name} — Year {state.year} — Player {state.player_id}",
+        "",
+        "Format: Object Name - Action - Reason/Justification",
+        "",
+        "COMMAND OUTCOME STATUS",
+    ]
+    command_outcomes = list((state.native or {}).get("command_outcomes", []) or [])
+    if command_outcomes:
+        lines.extend(str(item.get("message", "UNVERIFIED - Missing outcome message.")) for item in command_outcomes)
+        counts = {
+            status: sum(1 for item in command_outcomes if item.get("status") == status)
+            for status in ("COMPLETED", "PENDING", "WARNING", "UNVERIFIED")
+        }
+        lines.append(
+            "SUMMARY - completed={COMPLETED}; pending={PENDING}; warnings={WARNING}; unverified={UNVERIFIED}.".format(**counts)
+        )
+    else:
+        lines.extend([
+            "NO PRIOR EMITTED COMMANDS DUE - Nothing to verify against this M file.",
+            "SUMMARY - completed=0; pending=0; warnings=0; unverified=0.",
+        ])
+
+    by_fleet_id = {int(item["fleet_id"]): item for item in fleet_intents if item.get("fleet_id") is not None}
+    lines.extend(["", "FLEETS"])
+    for fleet in (item for item in state.fleets if item.owner == state.player_id):
+        intent = by_fleet_id.get(fleet.id, {
+            "action": "BLOCKED",
+            "reason": "Fleet missing from activity coverage.",
+            "destination_planet_id": None,
+        })
+        action = str(intent["action"])
+        destination = intent.get("destination_planet_id")
+        if destination is not None:
+            action = f"{action} -> {_audit_planet_name(state, int(destination))}"
+        lines.append(f"{fleet.name} - {action} - {intent['reason']}")
+
+    scout_policy = ((state.native or {}).get("scout_exploration_policy", {}) or {})
+    scout_build = ((state.native or {}).get("scout_build_policy", {}) or {})
+    scout_stack = ((state.native or {}).get("scout_stack_diagnostics", {}) or {})
+    lines.extend(["", "SCOUT PRODUCTIVITY"])
+    lines.append(
+        "Scout hulls={}; fleets={}; singleton fleets={}; stacked fleets={}; wasted survey capacity={}; active routes={}; idle={}; duplicate targets={}.".format(
+            scout_policy.get("scout_hull_count", 0), scout_policy.get("scout_fleet_count", 0),
+            scout_policy.get("singleton_scout_capacity", 0),
+            scout_policy.get("stacked_scout_fleet_count", scout_stack.get("stacked_fleet_count", 0)),
+            scout_stack.get("wasted_survey_capacity", 0), scout_policy.get("active_scout_routes", 0),
+            scout_policy.get("idle_scout_count", 0), scout_policy.get("duplicate_scout_targets", 0),
+        )
+    )
+    lines.append(
+        "Local unknowns: home-radius={}; priority-hub radii={}; desired scout force={}; live/imminent={}; actual build gap={}.".format(
+            scout_policy.get("unknown_within_home_radius", 0),
+            scout_policy.get("unknown_within_priority_hub_radius", 0), scout_build.get("desired_scout_force", 0),
+            scout_build.get("live_imminent_scout_force", 0), scout_build.get("actual_scout_build_gap", 0),
+        )
+    )
+
+    territorial = ((state.native or {}).get("territorial_defense", {}) or {})
+    violations = list(territorial.get("violations", []) or [])
+    lines.extend(["", "TERRITORIAL DEFENSE"])
+    if violations:
+        lines.append(str(territorial.get("reason", "Territorial response active.")))
+        for violation in violations:
+            lines.append(
+                f"P{violation.get('owner')} fleet {violation.get('fleet_name', violation.get('fleet_id'))} - "
+                f"{str(violation.get('classification', 'unknown')).upper()} VIOLATION near "
+                f"{violation.get('anchor_planet_name', 'owned world')} at "
+                f"{float(violation.get('distance_ly', 0)):.1f}/{float(violation.get('claim_radius_ly', 0)):.1f} ly; "
+                f"severity={float(violation.get('severity', 0)):.2f}; "
+                f"patrol={'Y' if violation.get('requires_patrol') else 'N'}; "
+                f"minefield={'Y' if violation.get('requires_minefield') else 'N'}."
+            )
+    else:
+        lines.append("No non-friendly armed or transport fleet is inside perceived territory.")
+
+    colony_intents = [item for item in fleet_intents if item.get("role") == "colony"]
+    lines.extend(["", "COLONIZATION PRIORITY"])
+    if colony_intents:
+        for intent in colony_intents:
+            fleet_name = intent.get("fleet_name", f"Fleet {intent.get('fleet_id')}")
+            candidates = list(intent.get("colony_candidates", []) or [])
+            if candidates:
+                lines.append(f"{fleet_name} - BEST KNOWN CANDIDATE {candidates[0]['planet_name']} - {intent['reason']}")
+                for rank, candidate in enumerate(candidates, 1):
+                    lines.append(
+                        f"  #{rank} {candidate['planet_name']} - score {candidate['score']:.1f} - "
+                        f"habitability {candidate['habitability']}%; fleet distance {candidate['distance_from_fleet']:.1f}; "
+                        f"nearest-owned distance {candidate['distance_from_nearest_owned']:.1f}; {candidate['explanation']}"
+                    )
+            else:
+                lines.append(f"{fleet_name} - NO COLONY TARGET - {intent.get('reason', 'No viable candidate')}")
+    else:
+        lines.append("Colonization - NO COLONY FLEET AVAILABLE - No owned fleet is currently classified as colony.")
+
+    lines.extend(["", "DESIGN DEVELOPMENT"])
+    design_orders = [item for item in orders.orders if item.kind in ("create_design", "create_ship_design", "delete_ship_design", "replace_ship_design")]
+    if design_orders:
+        for order in design_orders:
+            payload = order.payload
+            lines.append(
+                f"{payload.get('name', 'New Design')} - PROPOSE {str(payload.get('role', 'design')).upper()} - "
+                f"hull={payload.get('desired_hull_name', 'unknown hull')} - {order.reason} "
+                "NATIVE STATUS: PENDING DESIGN-CREATION VALIDATION."
+            )
+    else:
+        lines.append("Design Development - KEEP CURRENT DESIGNS - No material capability gap selected this turn.")
+
+    production_by_planet = {int(item.payload["planet_id"]): item for item in orders.orders if item.kind == "set_planet_queue"}
+    lines.extend(["", "PLANET PRODUCTION"])
+    for planet in (item for item in state.planets if item.owner == state.player_id):
+        order = production_by_planet.get(int(planet.id))
+        if order is None:
+            capacity = planet_population_capacity(planet, state.race)
+            growth = projected_population_growth(planet, state.race)
+            next_population = projected_next_population(planet, state.race)
+            lines.append(
+                f"{planet.name} - RESEARCH / KEEP EMPTY - capacity={population_capacity_fraction(planet, state.race) * 100:.1f}% of {capacity:,}; "
+                f"projected growth={growth:+,} -> {next_population:,}; factories {planet.factories}; mines {planet.mines}. "
+                "No useful planet build selected this turn."
+            )
+            continue
+        queue = order.payload.get("queue", [])
+        queue_text = ", ".join(
+            f"{item.get('quantity', 1)}x {item.get('design_name', 'Design')}" if item.get("item") in ("ship_design", "starbase_design")
+            else f"{item.get('quantity', 1)}x {item.get('item', '?')}"
+            for item in queue
+        )
+        lines.append(f"{planet.name} - {'BUILD ' + queue_text if queue else 'CLEAR QUEUE -> RESEARCH'} - {order.reason}")
+
+    lines.extend(["", "RESEARCH"])
+    research_orders = [item for item in orders.orders if item.kind == "set_research"]
+    if research_orders:
+        for order in research_orders:
+            payload = order.payload
+            field = payload.get("current_field", payload.get("field", "unknown"))
+            next_field = payload.get("next_field", field)
+            lines.append(
+                f"Empire Research - {payload.get('capability_name', 'named capability')} - "
+                f"{payload.get('posture', 'TARGETED')} - {str(field).upper()} -> {str(next_field).upper()} "
+                f"at {payload.get('allocation_percent', 15)}% - contributors={payload.get('contributor_planet_ids', [])} - {order.reason}"
+            )
+    else:
+        lines.append("Empire Research - KEEP CURRENT FIELD - No research-field change selected this turn.")
+
+    lines.extend(["", "DIPLOMACY"])
+    relation_orders = [item for item in orders.orders if item.kind == "set_player_relation"]
+    emitted_targets = {int(item["payload"]["player_id"]) for item in emitted if item.get("kind") == "set_player_relation"}
+    if relation_orders:
+        for order in relation_orders:
+            target = int(order.payload["player_id"])
+            status = "EMITTED" if target in emitted_targets else "NOT EMITTED"
+            lines.append(f"Player {target} - {str(order.payload.get('relation', 'unknown')).upper()} - {status} - {order.reason}")
+    else:
+        lines.append("Diplomacy - NO RELATION CHANGE - Preserve current relations.")
+
+    lines.extend(["", "NATIVE WAYPOINT LIFECYCLE"])
+    for diagnostic in waypoint_diagnostics or []:
+        requested = f"F{diagnostic.get('requested_target_id')}" if diagnostic.get("requested_target_type") == 2 else f"P{diagnostic.get('requested_target_id')}"
+        lines.append(
+            f"Fleet {diagnostic.get('fleet_id')} - {diagnostic.get('result')} - normalized destination={diagnostic.get('normalized_destination')}; "
+            f"native destination={diagnostic.get('native_waypoint_destination')}; native warp/task={diagnostic.get('native_waypoint_warp')}/{diagnostic.get('native_waypoint_task')}; "
+            f"requested {diagnostic.get('requested_mission')} -> {requested} @ W{diagnostic.get('requested_warp')}. {diagnostic.get('reason')}"
+        )
+    if not waypoint_diagnostics:
+        lines.append("No native movement transaction requested.")
+
+    lines.extend(["", "NATIVE EXECUTION DETAILS"])
+    for event in emitted:
+        payload = event.get("payload", {})
+        kind = event.get("kind")
+        if kind == "colony_operation":
+            name = _audit_fleet_name(state, int(payload.get("fleet_id", -1)))
+            target = _audit_waypoint_target(state, payload)
+            transfer = payload.get("population_loaded")
+            load = f"YES - native 25 kT instruction; expected transfer={int(transfer):,} colonists" if payload.get("load_25kt_population") and transfer is not None else "NO"
+            lines.append(
+                f"{name} - NATIVE COLONY ORDER -> {target} warp {payload.get('warp', '?')} - "
+                f"race-adjusted hab current={payload.get('target_current_habitability', payload.get('target_habitability', '?'))}%; "
+                f"current-tech terraform={payload.get('target_current_tech_terraform_habitability', payload.get('target_habitability', '?'))}%; "
+                f"eventual terraform={payload.get('target_eventual_terraform_habitability', payload.get('target_habitability', '?'))}%; "
+                f"planning value={payload.get('target_habitability', '?')}%; policy={payload.get('colonization_stage', '?')} "
+                f"floor={payload.get('habitability_floor', '?')}% basis={payload.get('selection_basis', '?')}; "
+                f"home distance={payload.get('target_distance_from_homeworld', '?')} ly; route={payload.get('native_waypoint_action', '?')} waypoint #1; "
+                f"load block emitted: {load}; population aboard before={payload.get('cargo_population_before', '?')}; "
+                f"source population={payload.get('source_population', '?')}; source after load={payload.get('source_population_after_load', '?')}."
+            )
+        elif kind in ("move_fleet", "transport_population", "transport_minerals", "transport_unload_remainder", "remote_mine"):
+            name = _audit_fleet_name(state, int(payload.get("fleet_id", -1)))
+            lines.append(f"{name} - NATIVE {kind.upper()} -> {_audit_waypoint_target(state, payload)} warp {payload.get('warp', '?')} - {event.get('reason', '')}")
+    if skipped:
+        lines.extend(["", "NATIVE WRITER LIMITATIONS / SKIPPED ACTIONS"])
+        for event in skipped:
+            lines.append(f"{event.get('kind', 'Order')} - SKIPPED {event.get('kind', 'order')} - {event.get('reason', 'unknown reason')}")
+
+    unintentional = [item for item in fleet_intents if item.get("action") == "BLOCKED"]
+    colony_operations = [item for item in fleet_intents if item.get("action") == "LOAD + COLONIZE"]
+    colony_other = [item for item in fleet_intents if item.get("role") == "colony" and item.get("action") != "LOAD + COLONIZE"]
+    lines.extend(["", "COLONIZE NATIVE STATUS"])
+    if colony_operations:
+        lines.append("Native Colonize task - EMITTED - Complete validated load/move/task=2 colony sequence generated.")
+    elif colony_other:
+        lines.append("Native Colonize task - DEFERRED - Colony asset is intentionally holding or returning for population; no purposeless colony movement emitted.")
+    else:
+        lines.append("Native Colonize task - NOT REQUIRED - No colony fleet available.")
+    lines.extend(["", "ACTIVITY CHECK"])
+    lines.append(
+        f"WARNING - {len(unintentional)} fleet(s) BLOCKED - These fleets require capability/state follow-up; none are silently idle."
+        if unintentional else
+        "PASS - ALL OWNED FLEETS ACCOUNTED FOR - Every fleet has movement, an existing waypoint, or a conscious armed hold."
+    )
+    return "\n".join(lines) + "\n"

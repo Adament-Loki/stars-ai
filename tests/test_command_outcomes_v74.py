@@ -11,7 +11,7 @@ from stars_ai.models import (
     RaceProfile,
     Tech,
 )
-from stars_ai.native.x_writer import _build_decision_report
+from stars_ai.reporting import build_native_decision_report
 
 
 def _state(
@@ -234,10 +234,10 @@ def test_agent_notes_and_decision_report_surface_command_warning():
     warning=next(x for x in orders.notes if x.startswith("WARNING - Fleet #1 should have arrived"))
     assert state.native["command_outcomes"][0]["status"]=="WARNING"
 
-    report=_build_decision_report(
+    report=build_native_decision_report(
         state,
         OrderSet("GAME",2401,1),
-        SimpleNamespace(fleet_intents=[],memory=memory),
+        [],
         [],[],[],
     )
     assert "COMMAND OUTCOME STATUS" in report
