@@ -28,12 +28,14 @@ from .native.history_merge import (
 from .autohost import (
     ExternalCommandOrderBridge,
     HistorySyncError,
+    HostedTurnLifecycle,
     IntegratedNativeOrderBridge,
     LiveGameValidationError,
     NativeOrderBridge,
     NoopOrderBridge,
     SeedValidationError,
     TurnExecution,
+    TurnArchiver,
     ValidatedLiveGame,
     ValidatedSeedGame,
     WindowsAutoHostConfig,
@@ -42,7 +44,6 @@ from .native_observer import (
     read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn,
     build_human_report, build_running_game_report, build_turn_status_report,
 )
-from .turn_archive import archive_turn_phase, archive_approved_next_turn_actions
 
 def _persistent_x_template_root(cfg: WindowsAutoHostConfig, seed: Path) -> Path:
     if cfg.x_template_dir:
@@ -1480,6 +1481,21 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
         )
 
     executions: list[TurnExecution] = []
+    turn_lifecycle = HostedTurnLifecycle(order_bridge)
+    turn_archiver = (
+        TurnArchiver(
+            archive_root=logs_root / "turn-archive",
+            game_dir=game,
+            basename=validated.basename,
+            logs_root=logs_root,
+            templates_root=templates_root,
+            ai_state_root=ai_state_root,
+            config=cfg,
+            include_logs=cfg.turn_archive_include_logs,
+            json_index=cfg.turn_archive_json_index,
+        )
+        if cfg.turn_archive_enabled else None
+    )
 
     for turn in range(1, cfg.turns + 1):
         turn_tag = f"turn-{turn:03d}"
@@ -1489,20 +1505,16 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
 
         try:
             cfg._active_turn_tag = turn_tag
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                order_bridge.turn_tag = turn_tag
+            turn_lifecycle.activate(turn_tag)
 
             first_pre_m=_live_game_file(
                 game,validated.basename,f".m{cfg.player_ids[0]}"
             )
             year_before=_read_year(first_pre_m,xy)
-            if cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="00-pre-write",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            if turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="00-pre-write",
                     metadata={"execution_turn":turn,"native_year_before":year_before},
                 )
             # This is deliberately before deleting or generating any X file.
@@ -1511,8 +1523,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             _history_sync_barrier(
                 cfg,game,validated.basename,logs_root,turn
             )
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                order_bridge.discard_pending_memory()
+            turn_lifecycle.begin_staging()
 
             # Each player completes synchronously before the next begins.
             for player_id in cfg.player_ids:
@@ -1544,6 +1555,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     client_x_path=client_x_snapshot,
                 )
                 order_files.append(str(generated))
+                turn_lifecycle.record_order_file(generated)
                 shutil.copy2(
                     generated,
                     logs_root/f"{turn_tag}-player-{player_id:02d}-GENERATED.x{player_id}"
@@ -1559,13 +1571,10 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             if missing and cfg.stop_on_missing_x:
                 raise RuntimeError(f"Missing native order files for players: {missing}")
 
-            if cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="10-pre-host",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            if turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="10-pre-host",
                     metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files)},
                 )
 
@@ -1585,13 +1594,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             # into that prior cycle's archive so a user opening turn-010 can
             # see the actions chosen from turn 10's committed state without
             # needing to infer the one-cycle archive offset.
-            if cfg.turn_archive_enabled and turn > 1:
+            if turn_archiver is not None and turn > 1:
                 prior_turn_tag=f"turn-{turn - 1:03d}"
-                archive_approved_next_turn_actions(
-                    logs_root/"turn-archive", turn_tag=prior_turn_tag,
+                turn_archiver.capture_approved_actions(
+                    turn_tag=prior_turn_tag,
                     decision_turn_tag=turn_tag,
-                    game_dir=game, basename=validated.basename,
-                    logs_root=logs_root, json_index=cfg.turn_archive_json_index,
                     metadata={
                         "execution_turn":turn,
                         "state_turn_tag":prior_turn_tag,
@@ -1621,13 +1628,10 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             year_advanced=(year_before is None or year_after is None or year_after>year_before)
             x_consumed=bool(post_audit.get("all_consumed",False))
             host_success=cp.returncode==0 and settled and year_advanced and x_consumed
-            if cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="20-post-host-attempt",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            if turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="20-post-host-attempt",
                     metadata={
                         "execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,
                         "host_returncode":cp.returncode,"host_settled":bool(settled),
@@ -1671,18 +1675,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     ).get("ready",False)
                 )
             success=host_success and history_ready
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                if success:
-                    order_bridge.commit_pending_memory()
-                else:
-                    order_bridge.discard_pending_memory()
-            if success and cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="30-committed",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            turn_lifecycle.settle_after_host(success)
+            if success and turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="30-committed",
                     metadata={"execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,"success":True},
                 )
             msg=(
@@ -1769,14 +1766,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 break
 
         except Exception as exc:
-            if getattr(cfg,"turn_archive_enabled",False):
+            if turn_archiver is not None:
                 try:
-                    archive_turn_phase(
-                        logs_root/"turn-archive", turn_tag=turn_tag, phase="99-failure",
-                        game_dir=game, basename=validated.basename,
-                        logs_root=(logs_root if getattr(cfg,"turn_archive_include_logs",True) else None),
-                        templates_root=templates_root, ai_state_root=ai_state_root,
-                        config=cfg, json_index=cfg.turn_archive_json_index,
+                    turn_archiver.capture(
+                        turn_tag=turn_tag,
+                        phase="99-failure",
                         metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files),
                                   "exception_type":type(exc).__name__,"exception":str(exc)},
                     )
@@ -1784,8 +1778,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     (logs_root/f"{turn_tag}-TURN_ARCHIVE_ERROR.txt").write_text(
                         f"{type(archive_exc).__name__}: {archive_exc}",encoding="utf-8"
                     )
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                order_bridge.discard_pending_memory()
+            turn_lifecycle.rollback()
             e = TurnExecution(
                 turn, order_files, None, year_before, None, False, False,
                 f"{type(exc).__name__}: {exc}"

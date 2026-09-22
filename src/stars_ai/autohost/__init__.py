@@ -11,6 +11,7 @@ from .bridges import (
     NativeOrderBridge,
     NoopOrderBridge,
 )
+from .lifecycle import HostedTurnLifecycle, TurnArchiver, TurnLifecyclePhase
 from .models import (
     HistorySyncError,
     LiveGameValidationError,
@@ -24,12 +25,15 @@ from .models import (
 __all__ = [
     "ExternalCommandOrderBridge",
     "HistorySyncError",
+    "HostedTurnLifecycle",
     "IntegratedNativeOrderBridge",
     "LiveGameValidationError",
     "NativeOrderBridge",
     "NoopOrderBridge",
     "SeedValidationError",
     "TurnExecution",
+    "TurnArchiver",
+    "TurnLifecyclePhase",
     "ValidatedLiveGame",
     "ValidatedSeedGame",
     "WindowsAutoHostConfig",
