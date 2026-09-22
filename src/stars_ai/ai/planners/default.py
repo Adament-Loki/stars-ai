@@ -219,4 +219,10 @@ def run_pipeline(context: TurnContext, stages: Iterable[TurnPlanner]) -> None:
     """Run an ordered planner or policy sequence without adding a dispatcher layer."""
 
     for stage in stages:
+        before = len(_orders(context).orders)
         stage.plan(context)
+        for order in _orders(context).orders[before:]:
+            context.decision_journal.record_order(stage.name, context.state, order)
+        if stage.name == "fleet_activity":
+            for intent in context.legacy_fleet_intents:
+                context.decision_journal.record_fleet_intent(context.state, intent)

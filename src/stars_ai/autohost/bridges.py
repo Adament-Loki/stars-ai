@@ -8,6 +8,7 @@ import subprocess
 
 from ..ai.state_store import AIStateStore
 from ..native.x_writer import write_ai_turn
+from ..reporting import DecisionJournalReporter, turn_number_from_tag
 
 
 class NativeOrderBridge:
@@ -40,6 +41,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         console_player_logs: list[int] | None = None,
         allied_pairs: list[list[int]] | None = None,
         memory_root: str | Path | None = None,
+        report_root: str | Path | None = None,
     ):
         self.personas = personas or {}
         self.console_player_logs = (
@@ -47,6 +49,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         )
         self.allied_pairs = [list(map(int, pair)) for pair in (allied_pairs or [])]
         self.memory_root = Path(memory_root).resolve() if memory_root else None
+        self.report_root = Path(report_root).resolve() if report_root else None
         # Retained for direct legacy callers/tests that used this diagnostic
         # surface before AIStateStore owned the transaction mechanics.
         self._pending_memories: dict[int, tuple[Path, Path]] = {}
@@ -97,6 +100,21 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             state_store.adopt_pending_file()
             self._pending_memories[int(player_id)] = (memory_path, pending_memory_path)
             self._pending_memory_stores[int(player_id)] = state_store
+
+        report_model = getattr(result, "report_model", None)
+        if self.report_root is not None and report_model is not None:
+            try:
+                execution_turn = turn_number_from_tag(getattr(self, "turn_tag", None))
+                if execution_turn is not None:
+                    report_model = report_model.with_turn(execution_turn)
+                DecisionJournalReporter(self.report_root).write_turn(report_model)
+            except Exception as exc:
+                # A human-report failure must not veto a validated X file.
+                diagnostic = self.report_root / "verbose" / "diagnostics" / (
+                    f"{getattr(self, 'turn_tag', 'current')}-player-{int(player_id):02d}-reporting-error.txt"
+                )
+                diagnostic.parent.mkdir(parents=True, exist_ok=True)
+                diagnostic.write_text(f"{type(exc).__name__}: {exc}", encoding="utf-8")
 
         moves = [event for event in result.emitted if event.get("kind") == "move_fleet"]
         skipped_moves = [event for event in result.skipped if event.get("kind") == "move_fleet"]

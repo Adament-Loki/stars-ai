@@ -28,6 +28,7 @@ class StarsAgent:
         self.persona = persona or BalancedPersona()
         self.last_plan: StrategicPlan | None = None
         self.fleet_intents: list[dict] = []
+        self.decision_journal = None
         self._stars_ai = StarsAI()
 
     def play_turn(self) -> OrderSet:
@@ -41,6 +42,7 @@ class StarsAgent:
         ))
         self.last_plan = decision.context.strategic_plan
         self.fleet_intents = decision.context.legacy_fleet_intents
+        self.decision_journal = decision.decision_journal
         return decision.orders
 
     def _observe(self) -> None:

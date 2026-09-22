@@ -10,6 +10,7 @@ from ..models import GameState, OrderSet
 from ..persona import StrategicPersona, StrategicPlan
 from ..research_planner import ResearchDecision
 from .ai_state import AIState, TurnInput
+from .decision_journal import DecisionJournal
 
 if TYPE_CHECKING:
     from ..agent import StarsAgent
@@ -29,7 +30,10 @@ class TurnContext:
     memory: AgentMemory
     persona: StrategicPersona
     orders: OrderSet | None = None
+    # Existing integrations append lightweight dictionaries to this field.
+    # Keep that surface stable while new code records typed journal entries.
     decision_events: list[dict[str, Any]] = field(default_factory=list)
+    decision_journal: DecisionJournal = field(default_factory=DecisionJournal)
     legacy_agent: "StarsAgent | None" = None
     ai_state: AIState | None = None
     strategic_plan: StrategicPlan | None = None

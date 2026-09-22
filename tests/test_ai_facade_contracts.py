@@ -51,6 +51,24 @@ def test_stars_ai_facade_matches_legacy_semantic_orders_and_memory():
     assert decision.ai_state.turn.research_decision is not None
 
 
+def test_facade_records_direct_planner_decision_evidence():
+    state = _fixture_state()
+    decision = StarsAI().run_turn(TurnInput(
+        state=state,
+        player_id=state.player_id,
+        memory=AgentMemory(),
+    ))
+
+    # ``decision_events`` remains the legacy list, while the new journal
+    # records strategy/research choices and orders at the planner boundary.
+    assert isinstance(decision.decision_events, list)
+    events = decision.decision_journal.to_dict()["events"]
+    domains = {event["domain"] for event in events}
+    assert {"strategy", "research"} <= domains
+    assert any(event["domain"] == "exploration" for event in events)
+    assert any(event["reason"] for event in events)
+
+
 def test_turn_planner_is_a_structural_protocol_only():
     class PlaceholderPlanner:
         name = "placeholder"

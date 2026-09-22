@@ -67,6 +67,9 @@ class NativeWriteResult:
     skipped: list[dict]
     output_x: str
     waypoint_diagnostics: list[dict]
+    # Structured human-report data is deliberately post-transaction metadata;
+    # it has no bearing on the emitted native bytes.
+    report_model: Any | None = None
 
 
 class UnsafeWaypointMutationError(RuntimeError):
@@ -2951,4 +2954,13 @@ def write_ai_turn(
             trace_path.name.replace("-decision-native.json","-DECISION_REPORT.txt")
         )
         report_path.write_text(decision_report,encoding="utf-8")
+    # Build optional reporting data only after semantic/native work is final.
+    # Reporting must never alter the X transaction or veto a valid order file.
+    try:
+        from ..reporting import build_turn_report_model
+        result.report_model = build_turn_report_model(
+            state, orders, agent, emitted, skipped, waypoint_diagnostics,
+        )
+    except Exception:
+        result.report_model = None
     return result

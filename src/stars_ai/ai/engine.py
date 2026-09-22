@@ -17,6 +17,7 @@ from ..research_planner import ResearchDecision, plan_research
 from ..strategic_watchdog import evaluate_strategic_watchdog
 from .ai_state import AIState, PersistentAIState, TurnAIState, TurnInput
 from .context import TurnContext
+from .decision_journal import DecisionJournal
 from .planners import (
     DEFAULT_PLANNERS,
     DEFAULT_POST_PLANNING_POLICIES,
@@ -87,6 +88,7 @@ class StarsAI:
             orders=work.orders,
             context=work.context,
             decision_events=work.context.decision_events,
+            decision_journal=work.context.decision_journal,
         )
 
     def _begin_turn(self, turn_input: TurnInput) -> _TurnWork:
@@ -101,6 +103,11 @@ class StarsAI:
             memory=memory,
             persona=persona,
             ai_state=ai_state,
+            decision_journal=DecisionJournal(
+                player_id=turn_input.player_id,
+                turn=int(turn_input.state.year),
+                persona=persona.name,
+            ),
         )
         orders = OrderSet(
             game_name=context.state.game_name,
@@ -138,6 +145,17 @@ class StarsAI:
 
         work.plan = work.persona.build_plan(work.state)
         work.context.strategic_plan = work.plan
+        work.context.decision_journal.record(
+            domain="strategy",
+            action=f"Strategic phase: {work.plan.phase}",
+            reason=work.plan.phase_reason,
+            target=work.plan.phase,
+            evidence={
+                "assessment": dict(work.plan.phase_assessment),
+                "objective_weights": dict(work.plan.objective_weights),
+                "plan_notes": list(work.plan.notes),
+            },
+        )
         work.orders.notes.append(f"Persona: {work.plan.persona_name}")
         work.state.native["strategic_phase"] = {
             "phase": work.plan.phase,
@@ -164,6 +182,14 @@ class StarsAI:
             raise RuntimeError("Research selection requires a strategic plan")
         work.research_decision = plan_research(work.state, work.plan, work.memory)
         work.context.research_decision = work.research_decision
+        work.context.decision_journal.record(
+            domain="research",
+            action="Select research strategy",
+            reason=work.research_decision.reason,
+            target=work.research_decision.capability_name,
+            priority=work.research_decision.allocation_percent,
+            evidence=work.research_decision.to_payload(),
+        )
         work.state.native["research_strategy"] = work.research_decision.to_payload()
         work.orders.notes.append(f"RESEARCH PLAN: {work.research_decision.reason}")
         for unlocked in work.research_decision.recently_unlocked:
@@ -250,6 +276,16 @@ class StarsAI:
             str(player_id): dict(relation)
             for player_id, relation in work.plan.diplomacy.items()
         }
+
+        for outcome in work.command_outcomes:
+            work.context.decision_journal.record(
+                domain="previous_turn_outcome",
+                action=str(outcome.get("status", "UNVERIFIED")),
+                reason=str(outcome.get("message", "No outcome message was recorded.")),
+                subject=outcome.get("description"),
+                evidence=dict(outcome),
+                selected=False,
+            )
 
         work.ai_state.persistent = PersistentAIState.from_agent_memory(work.memory)
         work.ai_state.turn = TurnAIState.from_legacy_native(

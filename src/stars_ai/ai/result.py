@@ -8,6 +8,7 @@ from typing import Any
 from ..models import OrderSet
 from .ai_state import AIState
 from .context import TurnContext
+from .decision_journal import DecisionJournal
 
 
 @dataclass(slots=True)
@@ -16,7 +17,9 @@ class TurnDecision:
 
     orders: OrderSet
     context: TurnContext
+    # Compatibility surface retained for callers predating the typed journal.
     decision_events: list[dict[str, Any]] = field(default_factory=list)
+    decision_journal: DecisionJournal = field(default_factory=DecisionJournal)
 
     @property
     def ai_state(self) -> AIState:

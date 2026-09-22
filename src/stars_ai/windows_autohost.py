@@ -1461,6 +1461,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
     ai_state_root.mkdir(parents=True,exist_ok=True)
     if isinstance(order_bridge, IntegratedNativeOrderBridge):
         order_bridge.memory_root=ai_state_root
+        order_bridge.report_root=root
 
     observer_history = []
     last_checkpoint_observer = None
