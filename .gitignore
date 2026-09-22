@@ -25,6 +25,7 @@ dist/
 # Runtime / temporary files
 tmp/
 temp/
+out/
 
 # Stars AI playtest output
 logs/
@@ -34,6 +35,14 @@ autoplay-output/
 # Persistent local AI state
 *-stars-ai-state/
 *-stars-ai-x-templates/
+
+# Local/native experiments are generated output, never root-level fixtures.
+/sandbox/
+/sandbox-*/
+/.ai-state-*/
+/.x-template-*/
+/playtests/runs/
+/.pytest-tmp-*/
 
 # Local configuration overrides
 .env

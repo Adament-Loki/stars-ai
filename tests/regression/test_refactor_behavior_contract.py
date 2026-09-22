@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from stars_ai.adapters.json_adapter import JsonTurnAdapter
 from stars_ai.adapters.stars_native import NativeBlock
@@ -14,8 +13,10 @@ from stars_ai.regression_contract import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
+from tests.helpers.resources import test_resource as resource_path
+
+
+FIXTURES = resource_path("regression")
 
 
 def _load_json(path: Path) -> dict:

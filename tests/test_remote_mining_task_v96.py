@@ -29,7 +29,7 @@ def test_remote_mining_task_reproduces_sandbox_x2_client_block():
     })
     assert block is not None
     assert block.type_id == 5
-    # sandbox/GAME.x2, Player 2 fleet #9 (zero-based id 8), Sheridan id 98.
+    # Native client capture: Player 2 fleet #9 (zero-based id 8), Sheridan id 98.
     assert block.data == bytes.fromhex("08 02 00 00 92 05 e7 07 62 00 03 11")
 
 

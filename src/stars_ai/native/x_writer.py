@@ -519,7 +519,7 @@ def _pending_waypoint_delete_blocks(
 def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
     """Encode the client-captured stationary Remote Mining task transition.
 
-    ``sandbox/GAME.x2`` is the controlling sample: a miner already at
+    A captured native client order is the controlling sample: a miner already at
     Sheridan uses Type 5 on waypoint index 0, with warp 0, task 3, and the
     current planet object type.  This deliberately does *not* synthesize a
     move-and-mine transaction; travel completes first, then this exact current
@@ -539,7 +539,7 @@ def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
     if int(native.get("waypoint_count",len(waypoints)) or 0) != 1 or not waypoints:
         raise UnsafeWaypointMutationError({
             "operation":"remote_mine","fleet_id":fleet_id,"result":"BLOCK",
-            "reason":"Remote Mining is validated only for the single stationary current waypoint captured in sandbox/GAME.x2.",
+            "reason":"Remote Mining is validated only for the captured stationary current-waypoint transition.",
         })
     current=waypoints[0]
     object_type=int(current.get("position_object_type",0)) & 0xff
@@ -1054,7 +1054,7 @@ def _transport_population_blocks(state:Any,payload:dict)->list[NativeBlock]:
     # absent from the current hold.  Do not append an inferred fuel directive:
     # the controlling live-client order stops after those four unload fields.
     route_type=0x51
-    # sandbox/GAME.x1: a human merged two Privateers and issued Type37 followed
+    # A captured human client order merged two Privateers and issued Type37 followed
     # by one Type2 ``12 0E`` B/G/Population load.  The client uses the Type2
     # selection mask to carry the entire mixed manifest; do not synthesize a
     # competing Type1 mineral order after the population load.
@@ -2486,7 +2486,7 @@ def write_native_orders(
                     "CONTINUE_REMOTE_MINING" if mining_block is None else "CHANGE_CURRENT_TASK_TO_REMOTE_MINING"
                 )
                 ep["native_waypoint_task"]=3
-                ep["native_reference"]="sandbox/GAME.x2: Type5 index=0 warp=0 task=3 object_type=current"
+                ep["native_reference"]="native client capture: Type5 index=0 warp=0 task=3 object_type=current"
                 if mining_block is not None:
                     generated.append(mining_block)
                     ep["native_block_hex"]=mining_block.data.hex(" ")

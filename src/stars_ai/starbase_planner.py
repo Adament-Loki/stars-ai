@@ -16,6 +16,7 @@ from .planet_economy import (
     working_mineral_reserve,
 )
 from .combat_doctrine import calculate_offensive_rating
+from .native.resources import native_resource_path
 from .starsapi_items import stock_component_database
 from .territorial_defense import assess_territorial_defense
 from .util import distance
@@ -647,7 +648,7 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
 @lru_cache(maxsize=1)
 def _stock_starbase_hull_costs() -> dict[int, dict[str, int]]:
     """Read stock hull costs from the same MOD data used for native designs."""
-    path = Path(__file__).with_name("data_hulls.mod")
+    path = native_resource_path("mod", "data_hulls.mod")
     costs: dict[int, dict[str, int]] = {}
     for row in csv.reader(path.read_text(encoding="latin-1").splitlines()):
         if not row or int(row[0]) != 16:

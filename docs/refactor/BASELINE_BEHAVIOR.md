@@ -55,7 +55,7 @@ themselves.
 The checked-in semantic fixture is:
 
 ```text
-tests/regression/fixtures/expansion_turn/
+tests/TestResource/regression/expansion_turn/
   fixture.json                 fixed source and declared coverage
   semantic_contract.json       SHA-256 of the complete normalized capture
 ```
@@ -78,7 +78,7 @@ records (type ID and body). It deliberately excludes:
 
 It retains the full payload and sequence of every order block, so a changed
 order type, payload, addition, removal, or reordering changes the fingerprint.
-`tests/regression/fixtures/native_transaction/transaction.json` verifies both
+`tests/TestResource/regression/native_transaction/transaction.json` verifies both
 the salt/FileHash invariance and order-change sensitivity without adding a
 second encoder or changing Stars! wire behavior.
 

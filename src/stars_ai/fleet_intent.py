@@ -288,7 +288,7 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                         "fleet_id":fleet.id,"destination_planet_id":target.id,
                         "warp":0,"mission":"remote_mine",
                         "target_mineral_score":mineral_score,
-                        "native_reference":"sandbox/GAME.x2 Type5 current-waypoint task=3",
+                        "native_reference":"native client capture: Type5 current-waypoint task=3",
                     },f"Set Remote Mining task at {target.name}; concentration sum={mineral_score}. Client reference uses stationary WaypointChangeTask task 3.",priority=82)
                     assigned_targets.add(target.id)
                     intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"REMOTE MINE","reason":f"At observed mining target {target.name}; set native Remote Mining waypoint task.","destination_planet_id":target.id})

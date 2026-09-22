@@ -156,7 +156,7 @@ def test_experimental_population_trace_contains_exact_blocks_and_capability_stat
 
 
 def test_sandbox_x1_client_capture_proves_the_mixed_type2_selection_mask():
-    # sandbox/GAME.x1: Type37 fleet 7 absorbs fleet 8, then the retained fleet
+    # Native client capture: Type37 fleet 7 absorbs fleet 8, then the retained fleet
     # loads B=70, G=100, Population=330 in one 500 kT Type-2 manifest.
     block=medium_load_block(
         state(), 3, {"boranium":70,"germanium":100,"population":330},

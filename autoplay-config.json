@@ -1,7 +1,7 @@
 {
-  "stars_exe": "C:\\Dev\\repos\\stars-ai\\sandbox\\starsjrc4.exe",
-  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5Comps11Total",
-  "output_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\runs\\latestdemo",
+  "stars_exe": "tests/TestResource/sandboxes/sandbox-native-reference/starsjrc4.exe",
+  "seed_dir": "playtests/seed/5Comps11Total",
+  "output_dir": "playtests/runs/latestdemo",
   "game_name": "GAME",
   "player_ids": [
     1,

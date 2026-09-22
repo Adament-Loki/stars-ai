@@ -1,0 +1,20 @@
+{
+  "game_name": "GAME",
+  "seed_dir": "../../../../../playtests/seed/5small",
+  "templates": {
+    "1": "template.x1",
+    "2": "template.x2"
+  },
+  "template_sources": {
+    "1": {
+      "path": "template.x1",
+      "source": "existing persistent template"
+    },
+    "2": {
+      "path": "template.x2",
+      "source": "existing persistent template"
+    }
+  },
+  "play_on": true,
+  "note": "Immutable bootstrap templates. Live GAME.x# files are regenerated each turn."
+}

@@ -41,6 +41,7 @@ from .starsapi_items import (
 )
 from .logistics_capacity import evaluate_logistics_capacity, POPULATION_PULSE_KT
 from .native.design_change import EncodedShipDesign, starbase_design_slot_safety
+from .native.resources import native_resource_path
 from .standard_mod import TechLevels
 from .starbase_capabilities import starbase_capabilities
 
@@ -131,7 +132,7 @@ def stock_native_starbases() -> dict[int, HullNativeSpec]:
 def _stock_starbase_hull_costs() -> dict[int, dict[str, int]]:
     """Read bare-hull costs for value-for-purpose starbase selection."""
     costs: dict[int, dict[str, int]] = {}
-    path=Path(__file__).with_name("data_hulls.mod")
+    path=native_resource_path("mod", "data_hulls.mod")
     for row in csv.reader(path.read_text(encoding="latin-1").splitlines()):
         if not row or int(row[0]) != 16:
             continue

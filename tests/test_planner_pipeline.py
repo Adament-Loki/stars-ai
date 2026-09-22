@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from stars_ai.adapters.json_adapter import JsonTurnAdapter
 from stars_ai.ai import TurnInput, TurnPlanner
@@ -13,11 +12,10 @@ from stars_ai.ai.planners import default as planner_module
 from stars_ai.memory import AgentMemory
 from stars_ai.models import OrderSet
 from stars_ai.persona import BalancedPersona
+from tests.helpers.resources import test_resource as resource_path
 
 
-EXPANSION_FIXTURE = (
-    Path(__file__).parent / "regression" / "fixtures" / "expansion_turn" / "fixture.json"
-)
+EXPANSION_FIXTURE = resource_path("regression", "expansion_turn", "fixture.json")
 
 
 def _fixture_state():

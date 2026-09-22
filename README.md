@@ -21,10 +21,11 @@ Native design creation is a tightly controlled live-game path; see **Native safe
 src/stars_ai/              Application package
   adapters/                JSON and native-state adapters
   autohost/                Native host configuration and order-file bridge contracts
-  native/                  Native Stars! records, history merger, and X writer
+  native/                  Native Stars! records, resources, history merger, and X writer
   strategy/                Economy, exploration, military, research, diplomacy
   rules/                   Conservative rules-engine helpers
 tests/                     Regression and native-format tests
+  TestResource/            Immutable test inputs and golden references
 examples/                  JSON turn and manifest examples
 scripts/                   Maintenance helpers
 run-example.ps1            Create a venv, install, and run the JSON example
@@ -75,9 +76,9 @@ single large file. The first consolidation slices are intentionally narrow:
   `decision_trace`, and trace helpers become observability.
 
 Compatibility import shims will be left in place for one release after each
-move. The dated `*.pre-*.bak` files are migration evidence, not runtime code;
-after their tests and binary comparisons are captured, they should move out of
-`src/` into a dated archive or be removed from the repository.
+move. Obsolete dated `*.pre-*.bak` files have been removed from `src/`; Git
+preserves their history. Deliberate reverse-engineering patch artifacts remain
+separate from runtime source until their research value is reviewed.
 
 ### Documentation standard
 
@@ -126,17 +127,17 @@ stars-ai host-turn --manifest .\examples\game-manifest.json
 Inspect a native player turn or an existing order file:
 
 ```powershell
-stars-ai inspect-stars --mfile .\sandbox\GAME.m1 --xy .\sandbox\GAME.xy --out .\out\state.json
-stars-ai inspect-orders --xfile .\sandbox\GAME.x1 --xy .\sandbox\GAME.xy --out .\out\orders.json
+stars-ai inspect-stars --mfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.m1 --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy --out .\out\state.json
+stars-ai inspect-orders --xfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.x1 --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy --out .\out\orders.json
 ```
 
 Generate normalized AI orders from native state:
 
 ```powershell
 stars-ai play-native `
-  --mfile .\sandbox\GAME.m1 `
-  --xy .\sandbox\GAME.xy `
-  --xfile .\sandbox\GAME.x1 `
+  --mfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.m1 `
+  --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy `
+  --xfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.x1 `
   --player 1 `
   --out .\out\player1-orders.json `
   --state-out .\out\player1-state.json `
@@ -146,7 +147,7 @@ stars-ai play-native `
 For a lower-level native state inspection:
 
 ```powershell
-python -m stars_ai.native.cli .\sandbox\GAME.m1 --xy .\sandbox\GAME.xy --x .\sandbox\GAME.x1 --full --json-out .\out\native-state.json
+python -m stars_ai.native.cli .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.m1 --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy --x .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.x1 --full --json-out .\out\native-state.json
 ```
 
 ## Native autoplay
@@ -174,8 +175,9 @@ Do not use a valuable game for initial native-order or Type27 design-creation ex
 
 `run-autoplay.ps1 -Config` and `python -m stars_ai.autoplay_cli --config` load the
 top-level object in `autoplay-config.json` directly into the native autoplay
-configuration. Unknown fields are rejected; omitted fields use the defaults in
-the application. Start from [autoplay-config.example.json](autoplay-config.example.json).
+configuration. Paths are resolved relative to the configuration JSON, unknown
+fields are rejected, and omitted fields use the defaults in the application.
+Start from [autoplay-config.example.json](autoplay-config.example.json).
 
 The controller always runs the live game beside `stars_exe`; there is no
 `live_dir` setting. `seed_dir` is the immutable source when starting a new run,
@@ -281,4 +283,7 @@ See `AI-Status.md` for the exact confidence boundary and the recommended next va
 
 The main command entry point is `src/stars_ai/cli.py`; the native autoplay entry point is `src/stars_ai/autoplay_cli.py`. Strategy code consumes the stable `GameState` model rather than native records directly. The native adapter and writer form the boundary between strategy and Stars! binary files.
 
-Generated files belong under `out/`, `playtests/`, `sandbox/`, or a separately configured game/output location. Avoid modifying a live game before the configuration and seed validation steps have completed.
+Generated files belong under `out/`, `tmp/`, `playtests/runs/`, or a separately
+configured game/output location. Test fixtures belong under
+`tests/TestResource/` and must be copied before mutation. Avoid modifying a
+live game before the configuration and seed validation steps have completed.

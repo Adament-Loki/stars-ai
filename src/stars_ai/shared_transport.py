@@ -444,7 +444,7 @@ def _population_payload(
 def _consolidate_bulk_lanes(state: Any, orders: Any, schedule: list[dict[str, Any]]) -> None:
     """Turn a population+freight multi-hull lane into one full one-turn fleet.
 
-    ``sandbox/GAME.x1`` proves the client accepts Type37 merge followed by a
+    A native client capture proves the client accepts Type37 merge followed by a
     mixed Type2 load and a waypoint in the same transaction.  We preserve that
     sequence whenever a population lane also needs another hull of minerals;
     a pure-mineral multi-hull lane remains separate until its Type2-only form
@@ -506,7 +506,7 @@ def _consolidate_bulk_lanes(state: Any, orders: Any, schedule: list[dict[str, An
             "projected_cargo_capacity_kt": merged_capacity,
             "mission": "merge_for_shared_transport",
             "one_turn_transport": True,
-            "native_reference": "sandbox/GAME.x1: Type37 target + source fleet, immediately followed by a Type2 mixed load and Type4 waypoint",
+            "native_reference": "native client capture: Type37 target + source fleet, immediately followed by a Type2 mixed load and Type4 waypoint",
             "native_experiment": {
                 "enabled": True,
                 "trust_level": "CLIENT_CAPTURED_LAYOUT",

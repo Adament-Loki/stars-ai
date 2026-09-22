@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from .planet_economy import planet_population_capacity, theoretical_max_population
+from .native.resources import native_resource_path
 from .standard_mod import ComponentCategory, parse_mod_file
 from .util import distance
 
@@ -215,7 +216,7 @@ def _stock_hub_bootstrap_cost(
     gates. Therefore a gate accelerates empty-ship return/reposition legs; it
     does not extend loaded population/mineral transport range.
     """
-    mod_path = Path(__file__).with_name("data_hulls.mod")
+    mod_path = native_resource_path("mod", "data_hulls.mod")
     db = parse_mod_file(mod_path)
     base_id = 33 if improved_starbases else 34
 

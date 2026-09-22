@@ -1,0 +1,20 @@
+{
+  "game_name": "GAME",
+  "seed_dir": "../../../../../playtests/seed/defense-counter-v123",
+  "templates": {
+    "1": "template.x1",
+    "2": "template.x2"
+  },
+  "template_sources": {
+    "1": {
+      "path": "../../../sandboxes/sandbox-defense-counter-v123/GAME.x1",
+      "source": "validated staged X"
+    },
+    "2": {
+      "path": "../../../sandboxes/sandbox-defense-counter-v123/GAME.x2",
+      "source": "validated staged X"
+    }
+  },
+  "play_on": false,
+  "note": "Immutable bootstrap templates. Live GAME.x# files are regenerated each turn."
+}

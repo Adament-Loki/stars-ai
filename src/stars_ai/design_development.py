@@ -6,6 +6,7 @@ from pathlib import Path
 import csv
 
 from .fuel_planner import has_ife
+from .native.resources import native_resource_path
 from .colony_planner import colony_planet_is_eligible
 from .ship_design_synth import (
     COLONY_SHIP_HULL_ID,
@@ -285,7 +286,7 @@ class DesignProposal:
 
 @lru_cache(maxsize=1)
 def stock_hulls()->dict[int,HullOption]:
-    path=Path(__file__).with_name("data_hulls.mod")
+    path=native_resource_path("mod", "data_hulls.mod")
     out={}
     for parts in csv.reader(path.read_text(encoding="latin-1").splitlines()):
         if not parts or int(parts[0]) not in (15,16):

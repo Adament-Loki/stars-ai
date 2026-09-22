@@ -1,7 +1,7 @@
 {
-  "stars_exe": "C:\\Games\\Stars!\\stars!.exe",
-  "seed_dir": "C:\\Dev\\stars-ai\\playtests\\seed\\AIPLAY",
-  "output_dir": "C:\\Dev\\stars-ai\\playtests\\runs\\four-ai-001",
+  "stars_exe": "path/to/stars!.exe",
+  "seed_dir": "playtests/seed/AIPLAY",
+  "output_dir": "playtests/runs/four-ai-001",
   "player_ids": [
     1,
     2,

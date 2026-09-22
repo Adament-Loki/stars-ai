@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from pathlib import Path
 
 import stars_ai.ai.engine as engine_module
 from stars_ai.agent import StarsAgent
@@ -11,9 +10,10 @@ from stars_ai.adapters.json_adapter import JsonTurnAdapter
 from stars_ai.ai import StarsAI, TurnInput, TurnPlanner
 from stars_ai.ai.planners import DEFAULT_PLANNERS, DEFAULT_POST_PLANNING_POLICIES
 from stars_ai.memory import AgentMemory
+from tests.helpers.resources import test_resource as resource_path
 
 
-EXPANSION_FIXTURE = Path(__file__).parent / "regression" / "fixtures" / "expansion_turn" / "fixture.json"
+EXPANSION_FIXTURE = resource_path("regression", "expansion_turn", "fixture.json")
 
 
 def _fixture_state():
