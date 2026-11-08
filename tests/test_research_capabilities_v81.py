@@ -186,7 +186,7 @@ def _demand(capability_id,score_scale,field="electronics",level=2,utilization=1.
 
 
 def test_hysteresis_retains_incumbent_until_challenger_is_materially_better():
-    state=_state(external=[_demand("incumbent",1.4),_demand("challenger",1.5,"biotechnology")])
+    state=_state(external=[_demand("incumbent",1.4,"weapons"),_demand("challenger",1.5,"weapons",level=3)])
     state.native["design_profiles"][0]["cargo_capacity"]=3000
     state.native["strategic_watchdog"]={}
     memory=AgentMemory(research_state={"capability_id":"incumbent"})
@@ -196,7 +196,7 @@ def test_hysteresis_retains_incumbent_until_challenger_is_materially_better():
 
 
 def test_material_challenger_can_replace_incumbent():
-    state=_state(external=[_demand("incumbent",1.0),_demand("challenger",2.5,"biotechnology")])
+    state=_state(external=[_demand("incumbent",1.0,"weapons"),_demand("challenger",2.5,"weapons",level=4)])
     state.native["design_profiles"][0]["cargo_capacity"]=3000
     state.native["strategic_watchdog"]={}
     memory=AgentMemory(research_state={"capability_id":"incumbent"})

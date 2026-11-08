@@ -68,6 +68,38 @@ def empire_ready_to_press_border(state: Any, plan: Any) -> bool:
     return open_claims <= 3
 
 
+def paper_tiger_colony(state: Any, planet: Any) -> bool:
+    """An Alternate Reality colony is the orbital fort, not a defended world.
+
+    The fort is empty of ground defenses and population. A single armed scout
+    can destroy it. A real defense count or a warship on the world is not
+    this case.
+    """
+
+    from .population_invasion import is_alternate_reality_target
+
+    native = getattr(planet, "native", {}) or {}
+    orbital = bool((native.get("starbase_capabilities") or {}).get("is_orbital_fort"))
+    if not is_alternate_reality_target(state, planet) and not orbital:
+        return False
+    if int(getattr(planet, "defenses", 0) or 0) > 10:
+        return False
+    owner = int(getattr(planet, "owner", -1) or -1)
+    for fleet in getattr(state, "fleets", []) or []:
+        if int(getattr(fleet, "owner", -1) or -1) != owner:
+            continue
+        same_world = (
+            abs(float(fleet.position.x) - float(planet.position.x)) <= 1.0
+            and abs(float(fleet.position.y) - float(planet.position.y)) <= 1.0
+        )
+        if not same_world:
+            continue
+        role = str(getattr(fleet, "role", "") or "").casefold()
+        if role in {"combat", "escort", "warship", "bomber"} or float(getattr(fleet, "combat_power", 0.0) or 0.0) > 0.0:
+            return False
+    return True
+
+
 def weak_undefended_colony(state: Any, planet: Any) -> bool:
     """Whether a foreign colony is small enough for a colonist capture.
 

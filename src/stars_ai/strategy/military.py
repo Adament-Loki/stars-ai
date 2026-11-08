@@ -3,7 +3,13 @@
 from __future__ import annotations
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
-from ..invasion import empire_ready_to_press_border, plan_invasion, weak_undefended_colony, worth_securing
+from ..invasion import (
+    empire_ready_to_press_border,
+    paper_tiger_colony,
+    plan_invasion,
+    weak_undefended_colony,
+    worth_securing,
+)
 from ..territorial_defense import assess_territorial_defense
 from ..util import distance
 from ..warp_policy import mission_warp
@@ -409,8 +415,69 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
                 f"the {required_ratio:.2f}x intercept threshold and is reinforcing the planet instead."
             )
 
+    _add_paper_tiger_push(state, orders, plan, available_patrols)
     _add_weak_colony_assault(state, orders, plan, available_patrols, required_ratio)
     _add_border_pressure(state, orders, plan, available_patrols, required_ratio)
+
+
+def _add_paper_tiger_push(state, orders, plan, available_patrols) -> None:
+    """Send the lightest armed ship at a high-value empty orbital colony.
+
+    Alternate Reality territory looks large because every world has a fort.
+    Those forts have no ground defense. One scout with a weapon removes the
+    colony, and a valuable world on the border is then ours to settle.
+    """
+
+    lights = [
+        fleet for fleet in state.fleets
+        if _available_defensive_fleet(fleet, state.player_id) and _is_explicitly_armed(fleet)
+    ]
+    if not lights:
+        return
+    lights.sort(key=lambda fleet: (_defensive_power(fleet), int(fleet.id)))
+    owned = [planet for planet in state.planets if planet.owner == state.player_id]
+    if not owned:
+        return
+    candidates = []
+    for planet in state.planets:
+        owner = getattr(planet, "owner", None)
+        if owner is None or int(owner) == int(state.player_id) or not bool(getattr(planet, "observed", False)):
+            continue
+        if plan is not None:
+            view = (plan.diplomacy or {}).get(int(owner), {})
+            if str(view.get("attitude", "neutral") or "neutral").lower() in {"helpful", "allied"}:
+                continue
+        if not paper_tiger_colony(state, planet) or not worth_securing(planet):
+            continue
+        nearest = min(distance(planet.position, world.position) for world in owned)
+        if nearest > 180.0:
+            continue
+        candidates.append((nearest, int(planet.habitability or 0), int(planet.id), planet))
+    if not candidates:
+        return
+    candidates.sort(key=lambda row: (row[0], -row[1], row[2]))
+    _nearest, _habitability, _planet_id, planet = candidates[0]
+    scout = lights[0]
+    if scout in available_patrols:
+        available_patrols.remove(scout)
+    orders.add(
+        "move_fleet",
+        {
+            "fleet_id": scout.id,
+            "destination_planet_id": int(planet.id),
+            "warp": mission_warp(scout, planet.position, "attack"),
+            "mission": "attack",
+            "invasion_action": "CAPTURE",
+            "target_owner": int(planet.owner),
+            "secure_after_attack": True,
+            "paper_tiger": True,
+        },
+        (
+            f"push into {planet.name}: the colony is an empty orbital fort with no ground defense. "
+            f"One armed scout removes it, and habitability={int(planet.habitability or 0)}% is worth settling."
+        ),
+        priority=92,
+    )
 
 
 def _add_weak_colony_assault(state, orders, plan, available_patrols, required_ratio: float) -> None:

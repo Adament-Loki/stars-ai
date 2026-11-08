@@ -14,16 +14,20 @@ from .persona import StrategicPlan
 from .planet_economy import decode_race_economy, estimated_operating_resources, projected_population_growth
 from .research_capabilities import ResearchCapability, stock_capability_catalog
 from .research_cost import field_cost_label, field_cost_percent, research_turns, resources_to_requirements
+from .research_preferences import preference_points
 from .starsapi_items import (
     BEAM,
     ELECTRICAL,
     TORPEDO,
     MINING_ROBOT,
     component_spec,
+    hull_available_to_race,
+    hull_unlocked,
     prt_id,
     lrts,
     proven_available_components,
     stock_component_database,
+    stock_hulls,
 )
 from .terraforming import evaluate_terraforming
 from .turn_state import mapping as turn_mapping
@@ -32,6 +36,11 @@ from .util import distance
 
 FIELDS = ("energy", "weapons", "propulsion", "construction", "electronics", "biotechnology")
 EXPANSION_CATEGORIES = {"expansion", "logistics", "terraforming"}
+# Battle hulls worth a construction program once the Large Freighter exists.
+# Ordered by the stock construction gate: Cruiser 9, Galleon 11, Battleship 13,
+# Nubian 26. The planner chases only the next locked one.
+BATTLE_HULLS = ("Cruiser", "Galleon", "Battleship", "Nubian")
+BATTLE_HULL_MIN_CONSTRUCTION = 8
 ONION_NETWORK_TAG = "onion_network"
 OPENING_GROWTH_TURNS = 10
 
@@ -501,6 +510,124 @@ def _next_weapon_upgrade(state: GameState, current_weapon_tier: int) -> tuple[in
     return None
 
 
+def _next_battle_hull_demand(state: GameState) -> ResearchDemand | None:
+    """Chase the next Cruiser, Galleon, Battleship, or Nubian.
+
+    These hulls are the construction levels that turn a freighter empire into
+    one that can fight. Gravity terraforming spends the same years on
+    propulsion, so this demand exists only after construction 8, when the
+    Large Freighter is already available.
+    """
+    if int(state.tech.construction or 0) < BATTLE_HULL_MIN_CONSTRUCTION:
+        return None
+    locked: list[tuple[int, int, Any]] = []
+    for hull in stock_hulls().values():
+        if hull.name not in BATTLE_HULLS or hull.is_starbase:
+            continue
+        if not hull_available_to_race(hull, state) or hull_unlocked(hull, state):
+            continue
+        locked.append((
+            int(hull.tech_required[3]),
+            BATTLE_HULLS.index(hull.name),
+            hull,
+        ))
+    if not locked:
+        return None
+    hull = sorted(locked)[0][2]
+    construction = int(hull.tech_required[3])
+    return ResearchDemand(
+        ResearchCapability(
+            capability_id=f"hull:{hull.hull_id}",
+            name=hull.name,
+            category="combat",
+            requirements={"construction": construction},
+            post_unlock_action=(
+                f"Create a combat design on the {hull.name} and queue it from a shipyard "
+                "once the next M-file confirms the hull."
+            ),
+            source="stock battle-hull construction ladder",
+            tags=("combat_hull", "hull"),
+            unlocks=(hull.name,),
+            enables_roles=("combat",),
+            expiry_condition="A heavier race-legal battle hull becomes the next construction goal.",
+        ),
+        need=2.6,
+        urgency=2.2,
+        utilization=1.0,
+        value=2.8,
+        explanation=(
+            f"{hull.name} is the next battle hull and needs Construction {construction}. "
+            "That hull gives the empire a real combat slot layout; another gravity "
+            "terraform step would spend the same research on propulsion."
+        ),
+    )
+
+
+def _death_star_demand(state: GameState) -> ResearchDemand | None:
+    """Offer the Death Star as a construction candidate for a race that can build it.
+
+    Preference points, not a fixed second place, decide whether it is next.
+    """
+    hull = next((item for item in stock_hulls().values() if item.name == "Death Star"), None)
+    if hull is None or not hull_available_to_race(hull, state) or hull_unlocked(hull, state):
+        return None
+    construction = int(hull.tech_required[3])
+    return ResearchDemand(
+        ResearchCapability(
+            capability_id=f"hull:{hull.hull_id}",
+            name=hull.name,
+            category="combat",
+            requirements={"construction": construction},
+            post_unlock_action=(
+                "Design a Death Star once Construction reaches the hull and a shipyard can fund it."
+            ),
+            source="stock Death Star construction gate",
+            tags=("combat_hull", "hull"),
+            unlocks=(hull.name,),
+            enables_roles=("starbase",),
+        ),
+        need=2.2,
+        urgency=1.8,
+        utilization=1.0,
+        value=2.4,
+        explanation=(
+            f"Death Star needs Construction {construction}. "
+            "For Alternate Reality that hull is the construction payoff after Energy."
+        ),
+    )
+
+
+def _weapon_parity_demand(state: GameState) -> ResearchDemand | None:
+    """Offer weapons research up to one level above the fleets we can actually see."""
+    from .research_preferences import observed_enemy_weapon_level
+    enemy = observed_enemy_weapon_level(state)
+    if enemy is None:
+        return None
+    target = int(enemy) + 1
+    if int(state.tech.weapons or 0) >= target:
+        return None
+    return ResearchDemand(
+        ResearchCapability(
+            capability_id=f"military:weapon_parity:{target}",
+            name=f"Weapons {target} to match enemy fleets",
+            category="combat",
+            requirements={"weapons": target},
+            post_unlock_action="Refit combat designs once weapons match or slightly exceed the observed enemy fleet.",
+            source="observed enemy weapon level",
+            tags=("weapon_parity",),
+            expiry_condition="Observed enemy weapon tech is no longer above our own.",
+        ),
+        need=2.4,
+        urgency=2.2,
+        utilization=1.0,
+        value=2.2,
+        explanation=(
+            f"Observed enemy weapons are {enemy}. "
+            f"The matching target is Weapons {target}, one level above that fleet."
+        ),
+    )
+
+
 def _combat_weapon_upgrade_demand(
     state: GameState,
     designs: list[dict],
@@ -768,6 +895,15 @@ def _build_demands(
             ))
 
     demands.extend(expansion_demands)
+    battle_hull = _next_battle_hull_demand(state)
+    if battle_hull is not None:
+        demands.append(battle_hull)
+    death_star = _death_star_demand(state)
+    if death_star is not None:
+        demands.append(death_star)
+    weapon_parity = _weapon_parity_demand(state)
+    if weapon_parity is not None:
+        demands.append(weapon_parity)
 
     threats = _nearby_threats(state, plan)
     weapon_upgrade=_combat_weapon_upgrade_demand(state, designs, threats)
@@ -989,11 +1125,6 @@ def _score(
         score += 100.0
     elif "explicit_goal" in demand.capability.tags:
         score += 160.0
-    elif "race_resource" in demand.capability.tags:
-        # Alternate Reality's Energy level is the resource term other races get
-        # from factories. It stays ahead of a generic hull while the empire is
-        # still opening.
-        score *= 1.7
     elif opening_network_debt:
         # Before ~T30 the default research problem is expansion infrastructure:
         # range, freighter throughput, legal frontier bases, and useful gates.
@@ -1039,6 +1170,12 @@ def _score(
         # factor also prevents speculative military tech from crowding out a
         # usable economy/logistics capability.
         score *= 0.20 + 0.80 * max(0.0,min(1.0,demand.production_readiness))
+    preference_total, preference_rows = preference_points(state, demand.capability)
+    score += preference_total
+    trace = state.native.setdefault("preference_trace", {})
+    trace[demand.capability.capability_id] = [
+        {"name": name, "points": points} for name, points in preference_rows
+    ]
     return round(score, 3)
 
 
@@ -1228,6 +1365,7 @@ def plan_research(
     # but no sprint (including a military-selected one) is allowed until turn
     # 10.  This is shared economic doctrine, not a persona preference.
     opening_growth_lock = turn < OPENING_GROWTH_TURNS
+    state.native["preference_trace"] = {}
 
     candidates = sorted(
         (
@@ -1390,7 +1528,13 @@ def plan_research(
         reason += f" EXECUTION FAILURE: {execution_failure_reason}"
     if sprint_blocked_reason:
         reason += f" SPRINT DEFERRED: {sprint_blocked_reason}"
+    chosen_preferences = (state.native.get("preference_trace") or {}).get(chosen.capability.capability_id) or []
+    if chosen_preferences:
+        reason += " Preferences: " + ", ".join(
+            f"{row['name']} {row['points']:+.0f}" for row in chosen_preferences
+        ) + "."
 
+    preference_trace = state.native.get("preference_trace") or {}
     state.native["research_goals"] = [
         {
             "capability_id": demand.capability.capability_id,
@@ -1399,7 +1543,7 @@ def plan_research(
                 "race_resource" if "race_resource" in demand.capability.tags
                 else "growth" if "growth_unlock" in demand.capability.tags
                 else "short_unlock" if "short_unlock" in demand.capability.tags
-                else "fleet" if demand.capability.category in {"military", "logistics", "expansion"}
+                else "fleet" if demand.capability.category in {"military", "logistics", "expansion", "combat"}
                 else "general"
             ),
             "requirements": dict(demand.capability.requirements),
@@ -1412,6 +1556,7 @@ def plan_research(
             },
             "turns": research_turns(state, demand.capability.requirements)[0],
             "score": goal_score,
+            "preferences": list(preference_trace.get(demand.capability.capability_id) or []),
         }
         for demand, goal_score in candidates[:6]
     ]
