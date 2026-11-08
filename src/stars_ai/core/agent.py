@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from .ai.engine import StarsAI
-from .ai.ai_state import TurnInput
+from ..ai.engine import StarsAI
+from ..ai.ai_state import TurnInput
 from .memory import AgentMemory
 from .models import GameState, OrderSet
 from .persona import BalancedPersona, StrategicPersona, StrategicPlan

@@ -27,6 +27,7 @@ from .logistics_capacity import (
 )
 from .native.population_transport import MAX_SMALL_POPULATION_LOAD_KT
 from .planet_economy import decode_race_economy
+from .invasion import weak_undefended_colony
 from .population_invasion import is_recently_lost_world, population_capture_targets
 from .population_redistribution import (
     COLONISTS_PER_KT,
@@ -132,6 +133,9 @@ def _population_options(
         target = next((p for p in state.planets if int(p.id) == int(target_hub.planet_id)), None)
         if target is None or (target.habitability is not None and int(target.habitability) <= 0):
             continue
+        from .planet_economy import may_receive_homeworld_population
+        if not may_receive_homeworld_population(source, target, state.race):
+            continue
         remaining_colonists = max(
             0,
             int(getattr(target_hub, "import_population_to_25", 0) or 0)
@@ -163,7 +167,12 @@ def _population_options(
         # world.  A strategically blocked base can still outrank it through
         # the destination-level base/tactical score.
         urgency = min(600.0, float(remaining_colonists) / 400.0)
+        # A world still under its uncrowded band outranks a mineral haul.
+        # The 100-turn journals sent ironium while new colonies sat at 2,500 people.
+        underfed = int(getattr(target, "population", 0) or 0) < int(getattr(target_hub, "capacity", 1) or 1) * 0.25
         score = _destination_priority(target, target_hub, base_demands.get(int(target.id))) + urgency
+        if underfed:
+            score += 1_200.0
         out.append({
             "kind": "population",
             "score": score,
@@ -227,7 +236,11 @@ def _population_capture_options(
             # An ordinary population capture is a war action.  Only the
             # immediate recovery of a world just taken from us may bypass the
             # normal hostile/opposed diplomacy gate.
-            if attitude in {"helpful", "allied"} or (attitude != "hostile" and action != "oppose"):
+            if attitude in {"helpful", "allied"}:
+                continue
+            # Neutral seats are still legal targets when the colony is small,
+            # observed, and undefended. Allies and helpful partners are not.
+            if attitude != "hostile" and action != "oppose" and not weak_undefended_colony(state, target):
                 continue
         if int(source.population or 0) - int(target_info.required_colonists) < protected_floor:
             continue

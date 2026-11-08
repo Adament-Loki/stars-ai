@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, asdict, fields
 from pathlib import Path
 from typing import Any
 
-from .capability_execution import (
+from ..capability_execution import (
     BLOCKED_NATIVE,
     EMITTED,
     HOST_CONFIRMED,
@@ -80,6 +80,12 @@ class AgentMemory:
     # cannot be treated as a one-turn observation when production queues and
     # minefields take several turns to complete.
     territorial_exposure_history: dict[str, Any] = field(default_factory=dict)
+
+    # Yearly resource output from this race's population and factory settings.
+    # The latest snapshot is what strategy reads; the history is the trend.
+    resource_state: dict[str, Any] = field(default_factory=dict)
+    resource_history: list[dict[str, Any]] = field(default_factory=list)
+    border_operations: dict[str, Any] = field(default_factory=dict)
 
     # v8.0 strategic/native feedback loop.  A design request is not an
     # available capability until the host has read it back.  In particular,
@@ -202,6 +208,59 @@ class AgentMemory:
         }
         state.native["territorial_exposure_history"]=prepared
         return prepared
+
+    def prepare_empire_resources(self, state) -> dict[str, Any]:
+        """Publish this turn's resource output, compared with the remembered year."""
+
+        from ..planet_economy import measure_empire_resources
+
+        report = measure_empire_resources(state)
+        previous = dict(self.resource_state or {})
+        previous_resources = previous.get("resources")
+        report["previous_year"] = previous.get("year")
+        report["previous_resources"] = previous_resources
+        report["resource_delta"] = (
+            None if previous_resources is None
+            else int(report["resources"]) - int(previous_resources)
+        )
+        state.native["empire_resources"] = report
+        raids = [
+            int(planet_id)
+            for planet_id in ((self.border_operations or {}).get("raid_planet_ids") or [])
+        ]
+        state.native["raid_only_planet_ids"] = raids
+        return report
+
+    def commit_empire_resources(self, state) -> None:
+        """Remember the resource snapshot after this turn's observation is final."""
+
+        report = dict((state.native or {}).get("empire_resources") or {})
+        if not report:
+            report = self.prepare_empire_resources(state)
+        planets = list(report.get("planets") or [])
+        snapshot = {key: value for key, value in report.items() if key != "planets"}
+        snapshot["planets"] = planets
+        self.resource_state = snapshot
+        history = [
+            row for row in (self.resource_history or [])
+            if int(row.get("year", -1)) != int(snapshot.get("year", -1))
+        ]
+        history.append({
+            "year": snapshot.get("year"),
+            "resources": snapshot.get("resources"),
+            "population_resources": snapshot.get("population_resources"),
+            "factory_resources": snapshot.get("factory_resources"),
+            "resources_at_factory_cap": snapshot.get("resources_at_factory_cap"),
+            "population": snapshot.get("population"),
+            "factories": snapshot.get("factories"),
+            "worlds": snapshot.get("worlds"),
+        })
+        self.resource_history = history[-80:]
+        raids = [
+            int(planet_id)
+            for planet_id in ((state.native or {}).get("raid_only_planet_ids") or [])
+        ]
+        self.border_operations = {"raid_planet_ids": list(dict.fromkeys(raids))[-40:]}
 
     def commit_territorial_exposure(self, state) -> None:
         """Persist the assessed peak so pressure decays instead of vanishing."""

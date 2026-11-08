@@ -23,6 +23,7 @@ from .scout_policy import enemy_contact_summary, custom_scout_missions
 from .territorial_defense import assess_territorial_defense, hostile_colonies_inside_claimed_area
 from .planet_economy import decode_race_economy, working_mineral_reserve
 from .capability_execution import capability_status, design_capability_id, profile_is_blocked
+from .turn_state import mapping as turn_mapping
 
 
 # Stars! production queues are serial at a given yard.  Counting every ship
@@ -41,6 +42,10 @@ MODERNIZATION_SEED_HULLS = 2
 # ``native.colony_pipeline_cap`` to a tighter or broader program without
 # changing the source-backed claim invariant below.
 DEFAULT_COLONY_PIPELINE_CAP = 24
+
+
+def _watchdog(state):
+    return turn_mapping(state, "strategic_watchdog")
 
 
 @dataclass
@@ -329,14 +334,16 @@ def _pick(state,role,*,mission: str="survey"):
 
 
 def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
-    watchdog=(state.native or {}).get('strategic_watchdog') or {}; milestone=watchdog.get('milestone') or {}
+    watchdog=_watchdog(state); milestone=watchdog.get('milestone') or {}
     unknown=sum(1 for p in state.planets if not p.observed)
     contact=enemy_contact_summary(state)
     custom_missions=custom_scout_missions(state)
     scout_weight=plan.objective('scout') if plan else 1.0
-    late_posture=bool(plan and getattr(plan,'phase','') in {
+    phase_name=str(getattr(plan,'phase','') or '') if plan else ''
+    late_posture=phase_name in {
         'fortification','opportunistic_war','tech_acceleration','industrial_buildout',
-    })
+    }
+    midgame=phase_name=='midgame'
     if contact["enemy_contact"]:
         # Contact changes where scouts fly; it must not end expansion.  We
         # retain a real border screen while continuing to map uncontested
@@ -346,7 +353,7 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
         coverage=math.ceil(unknown/6) if unknown>0 else 0
         # A mature defensive/attack posture retains border intelligence but
         # stops treating every foreign sighting as an expansion-race demand.
-        phase_floor=2 if late_posture else 8
+        phase_floor=2 if late_posture else 4 if midgame else 8
         desired=min(24,max(phase_floor if unknown>0 else 0,required,coverage))
         purposes=", ".join(str(m["id"]) for m in custom_missions[:6]) or "open-frontier coverage"
         return desired,(
@@ -369,6 +376,8 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
     # sees it fall behind.
     if late_posture:
         persona_floor=2
+    elif midgame:
+        persona_floor=4
     elif scout_weight>1.15:
         persona_floor=9
     else:
@@ -381,7 +390,7 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
     # space is its own opportunity, so density can lift the program beyond the
     # deadline calculation instead of treating that calculation as a ceiling.
     opportunity_force=math.ceil(unknown/6)
-    minimum=2 if late_posture else 8
+    minimum=2 if late_posture else 4 if midgame else 8
     desired=min(24,max(minimum,int(desired),opportunity_force)); desired=min(desired,unknown)
     return desired,(f"exploration milestone needs {gap} more known worlds by T{deadline} (~{required_rate:.2f}/turn); "
                     f"measured scout productivity ~{productivity:.2f} discoveries/scout-turn; target scout force={desired}")
@@ -399,7 +408,7 @@ def _colony_pipeline_capacity(state, viable) -> dict:
     source_reserve=colony_source_reserve_for_turn(turn)
     export_packets=sum(max(0,(int(p.population or 0)-source_reserve)//COLONY_LOAD_COLONISTS) for p in owned)
     loaded=sum(1 for f in state.fleets if f.owner==state.player_id and f.role=='colony' and int(f.cargo_population or 0)>=COLONY_LOAD_COLONISTS)
-    watchdog=(state.native or {}).get('strategic_watchdog') or {}; pressure=float(watchdog.get('colonization_pressure',1.0))
+    watchdog=_watchdog(state); pressure=float(watchdog.get('colonization_pressure',1.0))
     phase_cap=15 if turn<=5 else DEFAULT_COLONY_PIPELINE_CAP if turn<=15 else 32
     concurrency_cap=phase_cap
     if pressure>=1.75: concurrency_cap+=10
@@ -456,7 +465,7 @@ def _desired_colony_force(state,viable,plan)->tuple[int,str]:
         return 0,f"no known {policy.stage} claims meeting {floor}"
     pipeline=_colony_pipeline_capacity(state,viable)
     turn=max(0,int(state.year)-2400)
-    watchdog=(state.native or {}).get('strategic_watchdog') or {}
+    watchdog=_watchdog(state)
     milestone=watchdog.get('milestone') or {}; deadline=int(milestone.get('deadline_turn',turn+10) or turn+10)
     new_colonies=int(watchdog.get('new_colonies',0) or 0); optimal=int(milestone.get('new_colonies_optimal',new_colonies+4) or (new_colonies+4))
     turns_left=max(1,deadline-turn); settlement_gap=max(0,optimal-new_colonies); required_rate=settlement_gap/turns_left
@@ -723,7 +732,7 @@ def plan_objective_ship_builds(state,plan=None):
             ds,counts,'colony',d,desired_colonies,effective_colony_assets,
         )
         if gap:
-            pressure=float(((state.native or {}).get('strategic_watchdog') or {}).get('colonization_pressure',1.0))
+            pressure=float(_watchdog(state).get('colonization_pressure',1.0))
             priority=200 if pressure>=1.45 else 182
             req.append(BuildRequest('colony',int(d['design_number']),d['name'],min(IMMEDIATE_SHIP_QUEUE_HORIZON,gap),priority,
                 f"{colony_reason}; live/imminent={colony_assets}; effective distinct-claim pipeline={effective_colony_assets}; duplicate active commitments={duplicate_commitments}; deep queue total={_role_count(ds,deep_queued,'colony')}; {generation_reason}."))
@@ -764,7 +773,7 @@ def plan_objective_ship_builds(state,plan=None):
         "actual_scout_build_gap":int(scout_gap),
     }
     if scout_gap and scout_build_authorized and (d:=_pick(state,'scout')):
-        pressure=float(((state.native or {}).get('strategic_watchdog') or {}).get('exploration_pressure',1.0))
+        pressure=float(_watchdog(state).get('exploration_pressure',1.0))
         priority=196 if pressure>=1.75 else 186 if pressure>=1.45 else 172 if pressure>=1.20 else 160
         if scout_contact["enemy_contact"] and scout_custom_missions:
             priority=max(priority,max(int(m.get("priority",110) or 110) for m in scout_custom_missions))
@@ -786,8 +795,8 @@ def plan_objective_ship_builds(state,plan=None):
     # number of 20k packets.  Bulk freight retains its separate industrial
     # material threshold.
     material_population_shortfall = bool(
-        population_backlog >= 2 * POPULATION_DELIVERY_HORIZON_COLONISTS
-        and int(throughput["exportable_population"]) > 0
+        population_backlog >= 20_000
+        and int(throughput["exportable_population"]) >= 20_000
         and int(throughput["transport_shortfall"]) > 0
     )
     significant_freight_backlog = bool(
@@ -1007,8 +1016,13 @@ def plan_objective_ship_builds(state,plan=None):
     # eight-hull defense program ahead of an empty colony pipeline. Explicit
     # territorial violations below still get the required response.
     phase_name=str(getattr(plan,'phase','') or '')
+    hold_line_worlds=sum(
+        1 for role in (getattr(plan,'planet_actions',{}) or {}).values() if role=='hold_line'
+    )
     phase_force_floor=(
-        min(24,max(4,math.ceil(owned_count*0.75)))
+        min(8,max(4,2*hold_line_worlds))
+        if phase_name=='midgame' and hold_line_worlds
+        else min(24,max(4,math.ceil(owned_count*0.75)))
         if phase_name=='fortification'
         else min(24,max(6,owned_count))
         if phase_name=='opportunistic_war'
@@ -1069,7 +1083,7 @@ def plan_objective_ship_builds(state,plan=None):
         ))
 
     req.sort(key=lambda r:r.priority,reverse=True)
-    watchdog=(state.native or {}).get('strategic_watchdog') or {}
+    watchdog=_watchdog(state)
     high_pressure=(float(watchdog.get('exploration_pressure',1.0))>=1.45 or float(watchdog.get('colonization_pressure',1.0))>=1.45)
     # This is the empire-wide strategic order budget.  Construction is spread
     # across every operational shipyard below, so a larger budget increases

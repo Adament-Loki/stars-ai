@@ -4,6 +4,7 @@ from __future__ import annotations
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
 from ..research_planner import ResearchDecision, plan_research
+from ..turn_state import publish as publish_turn_state
 
 
 
@@ -74,7 +75,11 @@ def add_research_orders(
             f"emit normal 15% recovery research instead. {blocked}"
         )
         priority=80
-        state.native["research_strategy"]={**payload,"execution_downgrade":True}
+        publish_turn_state(
+            state,
+            "research_strategy",
+            {**payload, "execution_downgrade": True},
+        )
     orders.add(
         "set_research",
         {

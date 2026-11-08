@@ -28,32 +28,36 @@ def _state(home_pop=100_000, two_freighters=False):
     return GameState("pop",2415,1,race,Tech(construction=4,propulsion=2),[home,child,*frontier],fleets,native={"design_profiles":[]})
 
 
-def test_100k_homeworld_uses_available_capacity_above_protected_floor():
-    state=_state(two_freighters=True)
+def test_homeworld_below_the_growth_band_does_not_export():
+    assert plan_population_redistribution(_state(home_pop=100_000))==[]
+
+
+def test_homeworld_exports_surplus_above_the_quarter_capacity_hold():
+    state=_state(home_pop=320_000, two_freighters=True)
     intents=plan_population_redistribution(state)
     assert len(intents)==1
     x=intents[0]
-    assert x.population_kt==200
-    assert x.population_colonists==20_000
-    assert x.source_population_before==100_000
-    assert x.source_population_after==80_000
-    assert x.source_protected_floor==80_000
+    assert x.population_kt==250
+    assert x.population_colonists==25_000
+    assert x.source_population_before==320_000
+    assert x.source_population_after==295_000
+    assert x.source_protected_floor==250_000
     assert "Source dispatch #1" in x.reason
 
 
 def test_homeworld_at_protected_floor_does_not_dispatch():
-    assert plan_population_redistribution(_state(home_pop=80_000))==[]
+    assert plan_population_redistribution(_state(home_pop=250_000))==[]
 
 
 def test_two_waiting_transports_do_not_double_strip_one_source():
-    state=_state(home_pop=140_000,two_freighters=True)
+    state=_state(home_pop=280_000,two_freighters=True)
     intents=plan_population_redistribution(state,max_transfers=4)
     assert len(intents)==1
     assert intents[0].population_colonists==25_000
 
 
 def test_empty_transport_returns_only_when_exporter_has_a_current_loadable_payload():
-    state=_state(home_pop=85_000)
+    state=_state(home_pop=260_000)
     # Move the empty ship to the child world. The homeworld has a real surplus
     # above its protected floor, so the transport should stage there.
     f=state.fleets[0]
@@ -62,7 +66,7 @@ def test_empty_transport_returns_only_when_exporter_has_a_current_loadable_paylo
     returns=plan_empty_freighter_returns(state)
     assert returns and returns[0].export_planet_id==0
 
-    state.planets[0].population=100_000
+    state.planets[0].population=320_000
     returns=plan_empty_freighter_returns(state)
     assert returns and returns[0].export_planet_id==0
     assert returns[0].current_planet_id==1
@@ -87,7 +91,7 @@ def test_layer1_graduation_stops_hw_feed_and_makes_hub_parent_for_layer2():
 
 
 def test_order_payload_never_credits_stargate_for_loaded_population():
-    state=_state(); orders=OrderSet("pop",2415,1)
+    state=_state(home_pop=270_000); orders=OrderSet("pop",2415,1)
     intents=add_population_redistribution_orders(state,orders)
     assert intents
     order=next(o for o in orders.orders if o.kind=="transport_population")

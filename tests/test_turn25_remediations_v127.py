@@ -619,7 +619,7 @@ def test_missed_one_turn_sprint_emits_an_execution_failure_next_turn(monkeypatch
     assert "Predicted one-turn sprint" in execution["blocked_reason"]
 
 
-def test_idle_colony_uses_controlled_close_terraform_fallback_after_two_turns():
+def test_land_grab_colonizes_a_positive_world_without_waiting_for_idle():
     race=RaceProfile(native={
         "hab_center":[50,50,50],"hab_low":[0,0,0],"hab_high":[100,100,100],
         "hab_immune":[False,False,False],
@@ -645,7 +645,7 @@ def test_idle_colony_uses_controlled_close_terraform_fallback_after_two_turns():
     colonize=next(order for order in orders.orders if order.kind=="colony_operation")
     assert colonize.payload["destination_planet_id"]==1
     diagnostic=next(row for row in state.native["colony_target_diagnostics"] if row["planet_id"]==1)
-    assert diagnostic["fallback_used"] is True
+    assert diagnostic["fallback_used"] is False
     assert diagnostic["hard_rejection_reason"] is None
     assert diagnostic["current_racial_hab"]==30
     assert diagnostic["eventual_hab"]==70

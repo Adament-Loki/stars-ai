@@ -1,6 +1,6 @@
 
 from stars_ai.models import GameState,RaceProfile,Tech,Planet,Position,OrderSet
-from stars_ai.planet_economy import decode_race_economy, installation_caps, installation_status
+from stars_ai.planet_economy import decode_race_economy, factory_build_ceiling, installation_caps, installation_status
 from stars_ai.strategy.economy import add_economic_orders
 from stars_ai.native.x_writer import _production_block
 
@@ -61,6 +61,12 @@ def test_population_cap_formula():
     assert installation_caps(25_000,e)==(37,30)
 
 
+def test_factory_ceiling_is_five_percent_above_the_operable_cap():
+    assert factory_build_ceiling(0)==0
+    assert factory_build_ceiling(100)==105
+    assert factory_build_ceiling(17)==18
+
+
 def test_never_build_factories_beyond_current_population_cap():
     s=state(100_000,100,20)
     o=OrderSet("g",2400,1)
@@ -68,6 +74,33 @@ def test_never_build_factories_beyond_current_population_cap():
     q=next(x for x in o.orders if x.kind=="set_planet_queue").payload["queue"]
     assert not any(x["item"]=="factory" for x in q)
     assert any(x["item"]=="mine" for x in q)
+
+
+def test_operable_cap_keeps_a_five_percent_factory_buffer_behind_overflow():
+    s=state(100_000,100,20)
+    s.planets[0].germanium=400
+    o=OrderSet("g",2400,1)
+    add_economic_orders(s,o,None)
+    q=next(x for x in o.orders if x.kind=="set_planet_queue").payload["queue"]
+    factories=[item for item in q if item["item"]=="factory"]
+    assert sum(item["quantity"] for item in factories)==5
+    assert all(item.get("overflow_buffer") for item in factories)
+    assert q[0]["item"]=="mine"
+    assert [item["item"] for item in q].index("mine") < [item["item"] for item in q].index("factory")
+    mode=next(x for x in o.orders if x.kind=="set_planet_research_mode")
+    assert mode.payload["leftover_only"] is True
+    assert mode.payload["planet_id"]==0
+
+
+def test_factories_stop_once_the_five_percent_buffer_is_full():
+    s=state(100_000,105,20)
+    s.planets[0].germanium=400
+    o=OrderSet("g",2400,1)
+    add_economic_orders(s,o,None)
+    q=next(x for x in o.orders if x.kind=="set_planet_queue").payload["queue"]
+    assert not any(item["item"]=="factory" for item in q)
+    assert q[0]["item"]=="mine"
+    assert any(x.kind=="set_planet_research_mode" and x.payload["leftover_only"] for x in o.orders)
 
 
 def test_never_build_mines_beyond_current_population_cap():

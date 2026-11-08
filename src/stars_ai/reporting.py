@@ -20,6 +20,7 @@ from .planet_economy import (
     projected_next_population,
     projected_population_growth,
 )
+from .turn_state import mapping as turn_mapping, sequence as turn_sequence
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -97,6 +98,49 @@ def _order_subject_target(state, order) -> tuple[str, str]:
     return subject, target
 
 
+def _native_action_rows(state, orders, emitted: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Make native-surviving actions visible beside their semantic intent."""
+
+    semantic_reasons: dict[tuple[str, object, object], str] = {}
+    for order in orders.orders:
+        payload = order.payload or {}
+        key = (
+            str(order.kind),
+            payload.get("fleet_id", payload.get("planet_id")),
+            payload.get("destination_planet_id"),
+        )
+        semantic_reasons.setdefault(key, str(order.reason))
+
+    rows = []
+    for item in emitted:
+        payload = dict(item.get("payload") or {})
+        kind = str(item.get("kind", "action"))
+        subject = _fleet_name(state, payload.get("fleet_id"))
+        if subject is None:
+            subject = _planet_name(state, payload.get("planet_id"))
+        if subject is None:
+            subject = str(payload.get("design_name") or kind)
+        target = _planet_name(state, payload.get("destination_planet_id"))
+        if target is None and payload.get("target_fleet_id") is not None:
+            target = _fleet_name(state, payload.get("target_fleet_id"))
+        if target is None:
+            target = str(payload.get("design_name") or payload.get("item") or "—")
+        key = (
+            kind,
+            payload.get("fleet_id", payload.get("planet_id")),
+            payload.get("destination_planet_id"),
+        )
+        rows.append({
+            "action": kind,
+            "subject": subject,
+            "target": target,
+            "reason": str(
+                item.get("reason") or semantic_reasons.get(key) or "Native action emitted."
+            ),
+        })
+    return rows
+
+
 def _fleet_location(state, fleet) -> str:
     at_world = next(
         (
@@ -111,10 +155,10 @@ def _fleet_location(state, fleet) -> str:
 
 def _warning_lines(state, skipped: list[dict[str, Any]], waypoint_diagnostics: list[dict[str, Any]]) -> list[str]:
     warnings: list[str] = []
-    for outcome in (state.native or {}).get("command_outcomes", []) or []:
+    for outcome in turn_sequence(state, "command_outcomes"):
         if str(outcome.get("status", "")).upper() in {"WARNING", "UNVERIFIED"}:
             warnings.append(str(outcome.get("message", "Prior action needs review.")))
-    for diagnostic in (state.native or {}).get("movement_progress_diagnostics", []) or []:
+    for diagnostic in turn_sequence(state, "movement_progress_diagnostics"):
         if diagnostic.get("flag"):
             warnings.append(str(diagnostic["flag"]))
     for item in skipped:
@@ -212,12 +256,13 @@ def build_turn_report_model(
         if context is not None else getattr(decision_or_agent, "persona", None)
     )
     persona = getattr(plan, "persona_name", None) or getattr(persona_source, "name", "Balanced")
-    phase = getattr(plan, "phase", None) or ((state.native or {}).get("strategic_phase") or {}).get("phase", "unclassified")
-    phase_reason = getattr(plan, "phase_reason", None) or ((state.native or {}).get("strategic_phase") or {}).get("reason", "No phase reason recorded.")
+    phase_payload = turn_mapping(state, "strategic_phase")
+    phase = getattr(plan, "phase", None) or phase_payload.get("phase", "unclassified")
+    phase_reason = getattr(plan, "phase_reason", None) or phase_payload.get("reason", "No phase reason recorded.")
     objective_weights = dict(getattr(plan, "objective_weights", {}) or {})
     primary_objective = max(objective_weights, key=objective_weights.get) if objective_weights else None
-    research = dict((state.native or {}).get("research_strategy", {}) or {})
-    territorial = dict((state.native or {}).get("territorial_defense", {}) or {})
+    research = turn_mapping(state, "research_strategy")
+    territorial = turn_mapping(state, "territorial_defense")
     violations = list(territorial.get("violations", []) or [])
     primary_threat = str(territorial.get("reason")) if violations and territorial.get("reason") else None
     metrics = {
@@ -267,11 +312,12 @@ def build_turn_report_model(
             "target": target,
             "reason": str(order.reason),
         })
-    outcomes = [dict(item) for item in ((state.native or {}).get("command_outcomes", []) or [])]
+    outcomes = [dict(item) for item in turn_sequence(state, "command_outcomes")]
     warnings = _warning_lines(state, skipped, waypoint_diagnostics)
     native_execution = {
         "semantic_order_count": len(order_rows),
         "emitted_count": len(emitted),
+        "emitted_actions": _native_action_rows(state, orders, emitted),
         "skipped_count": len(skipped),
         "blocked_actions": [
             {
@@ -401,6 +447,21 @@ def render_turn_entry(report: TurnReportModel, previous: TurnReportModel | None 
         [(order["priority"], order["unit"], order["order"], order["target"], order["reason"]) for order in report.orders],
     ) if report.orders else ["No semantic orders were produced."])
     lines.extend(["", "## Native Execution Summary", "", f"**Semantic orders:** {report.native_execution.get('semantic_order_count', 0)}  ", f"**Native actions emitted:** {report.native_execution.get('emitted_count', 0)}  ", f"**Skipped/blocked:** {report.native_execution.get('skipped_count', 0)}"])
+    emitted = report.native_execution.get("emitted_actions", []) or []
+    if emitted:
+        lines.extend(["", "### Emitted Native Actions", ""])
+        lines.extend(_table(
+            ["Action", "Subject", "Target", "Reason"],
+            [
+                (
+                    item.get("action", "action"),
+                    item.get("subject", "—"),
+                    item.get("target", "—"),
+                    item.get("reason", "Native action emitted."),
+                )
+                for item in emitted
+            ],
+        ))
     blocked = report.native_execution.get("blocked_actions", []) or []
     if blocked:
         lines.extend(["", "### Blocked Actions", ""])
@@ -634,7 +695,7 @@ def build_native_decision_report(
         "",
         "COMMAND OUTCOME STATUS",
     ]
-    command_outcomes = list((state.native or {}).get("command_outcomes", []) or [])
+    command_outcomes = turn_sequence(state, "command_outcomes")
     if command_outcomes:
         lines.extend(str(item.get("message", "UNVERIFIED - Missing outcome message.")) for item in command_outcomes)
         counts = {
@@ -685,7 +746,7 @@ def build_native_decision_report(
         )
     )
 
-    territorial = ((state.native or {}).get("territorial_defense", {}) or {})
+    territorial = turn_mapping(state, "territorial_defense")
     violations = list(territorial.get("violations", []) or [])
     lines.extend(["", "TERRITORIAL DEFENSE"])
     if violations:

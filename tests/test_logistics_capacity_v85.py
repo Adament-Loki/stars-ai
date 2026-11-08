@@ -4,7 +4,7 @@ from stars_ai.logistics_capacity import evaluate_logistics_capacity
 
 def _base_state():
     race=RaceProfile(growth_rate=.15,native={"lrts":["IFE"]})
-    home=Planet(0,"Home",Position(0,0),owner=1,habitability=100,population=100_000,
+    home=Planet(0,"Home",Position(0,0),owner=1,habitability=100,population=320_000,
         ironium=300,boranium=220,germanium=220,native={"is_homeworld":True,"starbase_capabilities":{"can_build_ships":True,"can_refuel":True}})
     child=Planet(1,"Child",Position(120,0),owner=1,habitability=80,population=50_000,
         ironium=20,boranium=20,germanium=20,native={})

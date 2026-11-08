@@ -21,7 +21,7 @@ import math
 from typing import Any
 
 from .expansion_network import evaluate_expansion_network
-from .planet_economy import planet_population_capacity, projected_population_growth
+from .planet_economy import breeder_export_floor, projected_population_growth
 from .starbase_planner import plan_support_base_material_demands
 from .util import distance
 
@@ -200,12 +200,7 @@ def population_export_floor(state: Any, hub, network=None) -> int:
     planet = next((p for p in state.planets if int(p.id) == int(hub.planet_id)), None)
     if planet is None:
         return HOMEWORLD_POST_EXPORT_FLOOR
-    if network.homeworld_id is not None and int(hub.planet_id) == int(network.homeworld_id):
-        return HOMEWORLD_POST_EXPORT_FLOOR
-    cap = max(1, int(planet_population_capacity(planet, state.race)))
-    fraction = OPENING_HUB_HOLD_FRACTION if int(network.turn) <= 30 else LATE_HUB_HOLD_FRACTION
-    late_absolute = 100_000 if int(network.turn) > 30 else HOMEWORLD_POST_EXPORT_FLOOR
-    return max(late_absolute, int(math.ceil(cap * fraction)))
+    return breeder_export_floor(planet, state.race)
 
 
 def _children_by_parent(network) -> dict[int, list]:

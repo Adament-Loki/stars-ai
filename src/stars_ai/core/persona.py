@@ -5,10 +5,12 @@ from enum import Enum
 from typing import Any, Iterable
 
 from .models import GameState
-from .util import distance
-from .goals import Goal
-from .diplomacy import DiplomacyPolicy
-from .phase_strategy import StrategicPhaseManager
+from ..util import distance
+from ..goals import Goal
+from ..colony_planner import colony_support_distance
+from ..planet_economy import RESOURCE_TARGET, measure_empire_resources
+from ..diplomacy import DiplomacyPolicy, allied_player_ids
+from ..phase_strategy import StrategicPhase, StrategicPhaseManager, assign_planet_roles
 
 
 class Objective(str, Enum):
@@ -47,6 +49,7 @@ class StrategicPlan:
     phase: str = "unclassified"
     phase_reason: str = ""
     phase_assessment: dict[str, float | int] = field(default_factory=dict)
+    planet_actions: dict[int, str] = field(default_factory=dict)
 
     def objective(self, name: Objective | str, default: float = 1.0) -> float:
         key = name.value if isinstance(name, Objective) else str(name)
@@ -154,7 +157,11 @@ class StrategicPersona:
 
         owned = [p for p in state.planets if p.owner == state.player_id]
         unknown = [p for p in state.planets if not p.observed]
-        hostiles = [f for f in state.fleets if f.owner != state.player_id]
+        allies = allied_player_ids(state)
+        hostiles = [
+            f for f in state.fleets
+            if f.owner != state.player_id and int(f.owner) not in allies
+        ]
         combat = [f for f in state.fleets if f.owner == state.player_id and f.role == "combat"]
         colony = [f for f in state.fleets if f.owner == state.player_id and f.role == "colony"]
 
@@ -173,9 +180,86 @@ class StrategicPersona:
             planets["defenses"] = planets.get("defenses", 1.0) * 1.25
             missions["defend"] = missions.get("defend", 1.0) * 1.30
             notes.append(f"Detected {nearby_threats} nearby hostile fleet(s); increased defense posture.")
+            # A nearby fleet used to flip the primary objective to defend while
+            # dozens of unowned claims remained. During the opening and first
+            # contact, expansion stays ahead of that defensive bump. Fortification
+            # and later phases keep the phase weights unchanged.
+            light_contact = (
+                phase_decision.phase == StrategicPhase.FRONTIER_CONTACT
+                and float(phase_decision.assessment.hostile_pressure) < 0.5
+            )
+            if phase_decision.phase == StrategicPhase.EARLY_EXPANSION or light_contact:
+                defend_weight = objectives.get(Objective.DEFEND.value, 1.0)
+                expand_weight = objectives.get(Objective.EXPAND.value, 1.0)
+                floor = 1.45 if phase_decision.phase == StrategicPhase.EARLY_EXPANSION else 1.2
+                if expand_weight < defend_weight * floor:
+                    objectives[Objective.EXPAND.value] = defend_weight * floor
+                    notes.append(
+                        "Opening frontier remains; expansion stays ahead of the nearby-fleet defense bump."
+                    )
 
         if unknown and not nearby_threats:
             objectives[Objective.SCOUT.value] = objectives.get(Objective.SCOUT.value, 1.0) * 1.10
+
+        # A shared allied border is not a frontier. While supply range still
+        # contains unowned worlds, keep planting and keep one scout program
+        # alive even if a real hostile fleet is near home.
+        open_claims = _open_supply_claims(state)
+        if open_claims >= 6 and phase_decision.phase in {
+            StrategicPhase.EARLY_EXPANSION, StrategicPhase.FRONTIER_CONTACT,
+        }:
+            growth_floor = max(
+                objectives.get(Objective.DEFEND.value, 1.0),
+                objectives.get(Objective.DEVELOP.value, 1.0),
+            ) * 1.15
+            if objectives.get(Objective.EXPAND.value, 1.0) < growth_floor:
+                objectives[Objective.EXPAND.value] = growth_floor
+                notes.append(
+                    f"{open_claims} unowned worlds remain inside supply range; expansion stays ahead of defense and development."
+                )
+        if unknown:
+            objectives[Objective.SCOUT.value] = max(objectives.get(Objective.SCOUT.value, 1.0), 1.05)
+
+        resources = measure_empire_resources(state)
+        remembered = dict(state.native.get("empire_resources") or {})
+        resources["previous_year"] = remembered.get("previous_year")
+        resources["previous_resources"] = remembered.get("previous_resources", remembered.get("resources"))
+        resources["resource_delta"] = remembered.get("resource_delta")
+        state.native["empire_resources"] = resources
+        gap = int(resources["factory_gap_resources"])
+        current_resources = int(resources["resources"])
+        capped_resources = int(resources["resources_at_factory_cap"])
+        if gap > max(20, int(current_resources * 0.15)):
+            objectives[Objective.DEVELOP.value] = max(
+                objectives.get(Objective.DEVELOP.value, 1.0),
+                objectives.get(Objective.RESEARCH.value, 1.0),
+            )
+            notes.append(
+                f"Population plus factories produce {current_resources:,} resources; "
+                f"the factory cap would produce {capped_resources:,}. Factories stay ahead of research."
+            )
+        if capped_resources < RESOURCE_TARGET and open_claims >= 4:
+            develop_weight = objectives.get(Objective.DEVELOP.value, 1.0)
+            if objectives.get(Objective.EXPAND.value, 1.0) < develop_weight:
+                objectives[Objective.EXPAND.value] = develop_weight
+                notes.append(
+                    f"Fully factored output would be {capped_resources:,}, under {RESOURCE_TARGET:,}. "
+                    f"{open_claims} claims remain, so growth stays with defense."
+                )
+        saturated = (
+            phase_decision.phase != StrategicPhase.EARLY_EXPANSION
+            and float(phase_decision.assessment.expansion_saturation) >= 0.55
+            and open_claims <= 3
+            and len(owned) >= 8
+        )
+        if saturated:
+            objectives[Objective.ATTACK.value] = max(
+                objectives.get(Objective.ATTACK.value, 1.0),
+                objectives.get(Objective.DEFEND.value, 1.0),
+            )
+            notes.append(
+                "The nearby frontier is saturated. Capture high-value enemy worlds and raid the rest."
+            )
 
         if colony and unknown:
             research["propulsion"] = research.get("propulsion", 1.0) * 1.08
@@ -190,6 +274,18 @@ class StrategicPersona:
         for goal in self.goals:
             goal_progress[goal.goal_id] = goal.progress(state)
             notes.append(goal.apply(state, objectives, research, missions, planets))
+
+        planet_actions = assign_planet_roles(
+            state,
+            full=phase_decision.phase == StrategicPhase.MIDGAME,
+        ) if phase_decision.phase in {StrategicPhase.FRONTIER_CONTACT, StrategicPhase.MIDGAME} else {}
+        if planet_actions:
+            notes.append(
+                "Planet jobs: "
+                + ", ".join(f"{role}={sum(1 for item in planet_actions.values() if item == role)}"
+                            for role in ("hold_line", "industrialize", "ships", "tech")
+                            if any(item == role for item in planet_actions.values()))
+            )
 
         return StrategicPlan(
             persona_name=self.name,
@@ -215,7 +311,10 @@ class StrategicPersona:
                 "open_frontier_fraction": phase_decision.assessment.open_frontier_fraction,
                 "frontier_pressure": phase_decision.assessment.frontier_pressure,
                 "expansion_saturation": phase_decision.assessment.expansion_saturation,
+                "hostile_worlds": phase_decision.assessment.hostile_worlds,
+                "hostile_pressure": phase_decision.assessment.hostile_pressure,
             },
+            planet_actions=planet_actions,
         )
 
 
@@ -355,6 +454,25 @@ PERSONAS = {
 }
 
 
+def _open_supply_claims(state: GameState) -> int:
+    """Unowned worlds close enough that a colony ship can still be supplied."""
+
+    owned = [planet for planet in state.planets if planet.owner == state.player_id]
+    if not owned:
+        return 0
+    limit = colony_support_distance(state)
+    count = 0
+    for planet in state.planets:
+        if planet.owner is not None:
+            continue
+        nearest = min(distance(planet.position, owned_planet.position) for owned_planet in owned)
+        if nearest > limit:
+            continue
+        if (not planet.observed) or int(planet.habitability or 0) > 0:
+            count += 1
+    return count
+
+
 def persona_from_name(name: str | None) -> StrategicPersona:
     key = (name or "balanced").strip().lower()
     try:
@@ -366,7 +484,8 @@ def persona_from_name(name: str | None) -> StrategicPersona:
 # --- Phase-strategy defaults (v2.4) ---
 # These are class-level defaults so existing persona constructors remain backward compatible.
 try:
-    StrategicPersona.opening_min_planets = 4
+    StrategicPersona.opening_min_planets = 8
+    StrategicPersona.midgame_planets = 12
     StrategicPersona.frontier_contact_threshold = 0.18
     StrategicPersona.expansion_saturation_threshold = 0.55
     StrategicPersona.transition_style = "consolidate"

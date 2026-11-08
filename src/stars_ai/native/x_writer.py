@@ -1250,22 +1250,50 @@ RELATION_CODES = {
     "enemy": 2,
 }
 
-def _player_relation_friend_block(target_player_id:int)->NativeBlock:
-    """
-    Controlled Stars!-generated sample:
-      Player 2 marks Player 1 as Friend -> Type 38 payload: 01 00
+def _game_player_count(m_path: Path, minimum: int) -> int:
+    """Return the seat count stored in the sibling map file, at least ``minimum``."""
 
-    Payload layout used here:
-      byte 0 = relation (1 = Friend)
-      byte 1 = zero-based target player index
+    count = int(minimum)
+    xy_path = m_path.with_suffix(".xy")
+    if xy_path.is_file():
+        try:
+            count = max(count, int(parse_xy(xy_path).get("player_count") or 0))
+        except (OSError, ValueError, KeyError):
+            pass
+    return max(1, min(16, count))
 
-    Only Friend is enabled natively until Neutral/Enemy are separately sampled.
+
+def _player_relation_block(
+    player_id: int,
+    player_count: int,
+    actual: list[int],
+    updates: dict[int, str],
+) -> NativeBlock:
+    """Build one Type 38 relation array for the submitting seat.
+
+    Stars! writes one byte per seat, in seat order. ``0`` is neutral, ``1`` is
+    friend, and ``2`` is enemy. The submitting seat's own byte stays neutral.
+    A two-player sample of player 2 friending player 1 is therefore ``01 00``.
+    A seven-player sample of player 1 friending players 2, 3, and 4 is
+    ``00 01 01 01 00 00 00``.
     """
-    target=int(target_player_id)
-    if target < 1 or target > 16:
-        raise ValueError(f"Invalid Stars! target player id {target}")
-    data=bytes([RELATION_CODES["friend"], (target-1) & 0xff])
-    return NativeBlock(38,len(data),data)
+
+    count = max(1, min(16, int(player_count)))
+    data = bytearray(count)
+    for index, value in enumerate(list(actual)[:count]):
+        data[index] = int(value) & 0xFF
+    own = int(player_id) - 1
+    if 0 <= own < count:
+        data[own] = 0
+    for target, relation in updates.items():
+        index = int(target) - 1
+        if index == own or not 0 <= index < count:
+            continue
+        code = RELATION_CODES.get(str(relation).lower())
+        if code is None:
+            continue
+        data[index] = code
+    return NativeBlock(38, len(data), bytes(data))
 
 
 FILEHASH_CANONICAL_TAIL = bytes.fromhex(
@@ -2181,7 +2209,7 @@ def write_native_orders(
     # waypoint is one legal transaction for that retained fleet.
     merged_transport_fleets=set()
     touched_planets=set()
-    touched_relations=set()
+    relation_updates: dict[int, str] = {}
     touched_design=False
     waypoint_diagnostics=[]
 
@@ -2768,17 +2796,18 @@ def write_native_orders(
                 if target==player_id:
                     skipped.append({"kind":o.kind,"reason":"Cannot set relation toward self.","payload":o.payload})
                     continue
-                if target in touched_relations:
+                if target in relation_updates:
                     continue
-                if relation!="friend":
+                if relation not in RELATION_CODES:
                     skipped.append({
                         "kind":o.kind,
-                        "reason":"PARTIAL: only empirically validated Friend relation serialization is enabled.",
+                        "reason":f"Unknown relation {relation!r}.",
                         "payload":o.payload,
                     })
                     continue
-                generated.append(_player_relation_friend_block(target))
-                touched_relations.add(target)
+                # One Type 38 block carries the whole seat array. Collect every
+                # requested change and emit that block once after this loop.
+                relation_updates[target]=relation
                 emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
             else:
                 skipped.append({
@@ -2792,6 +2821,16 @@ def write_native_orders(
                 "reason":f"writer error: {type(exc).__name__}: {exc}",
                 "payload":o.payload
             })
+
+    if relation_updates:
+        actual=list((state.native or {}).get("actual_player_relations") or [])
+        minimum=max([player_id, len(actual), *relation_updates.keys()])
+        generated.append(_player_relation_block(
+            player_id,
+            _game_player_count(m_path, minimum),
+            actual,
+            relation_updates,
+        ))
 
     # Starbase creation has an independent two-record, Player-4 client-captured
     # lifecycle. Emit it before ordinary orders with its client-derived

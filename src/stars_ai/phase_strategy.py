@@ -5,6 +5,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Iterable
 
+from .diplomacy import allied_player_ids, world_faces_hostile
+from .util import distance
+
 
 class StrategicPhase(str, Enum):
     EARLY_EXPANSION = "early_expansion"
@@ -14,6 +17,7 @@ class StrategicPhase(str, Enum):
     FORTIFICATION = "fortification"
     TECH_ACCELERATION = "tech_acceleration"
     INDUSTRIAL_BUILDOUT = "industrial_buildout"
+    MIDGAME = "midgame"
 
 
 @dataclass
@@ -63,10 +67,14 @@ class FrontierAssessment:
     open_frontier_fraction: float
     frontier_pressure: float
     expansion_saturation: float
+    hostile_worlds: int = 0
+    hostile_pressure: float = 0.0
 
     @property
     def has_contact(self) -> bool:
-        return self.known_enemy_players > 0 or self.contested_frontier_fraction > 0.0
+        """True only when a hostile fleet or colony is actually on our border."""
+
+        return self.hostile_worlds > 0
 
 
 @dataclass
@@ -87,17 +95,37 @@ def _known_planets(state: Any) -> list[Any]:
     return list(getattr(state, "planets", []) or [])
 
 
+def _owner_of(obj: Any) -> int | None:
+    owner = getattr(obj, "owner_id", None)
+    if owner is None:
+        owner = getattr(obj, "owner", None)
+    if owner is None:
+        return None
+    try:
+        return int(owner)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_ally(state: Any, owner: int | None) -> bool:
+    return owner is not None and owner in allied_player_ids(state)
+
+
 def _known_other_players(state: Any) -> set[int]:
-    player_id = getattr(state, "player_id", None)
+    player_id = _owner_of(state) or getattr(state, "player_id", None)
+    try:
+        player_id = int(player_id)
+    except (TypeError, ValueError):
+        player_id = None
     players = set()
     for fleet in getattr(state, "fleets", []) or []:
-        owner = getattr(fleet, "owner_id", getattr(fleet, "owner", None))
-        if owner is not None and owner != player_id:
-            players.add(int(owner))
+        owner = _owner_of(fleet)
+        if owner is not None and owner != player_id and not _is_ally(state, owner):
+            players.add(owner)
     for planet in getattr(state, "planets", []) or []:
-        owner = getattr(planet, "owner_id", getattr(planet, "owner", None))
-        if owner is not None and owner not in (-1, player_id):
-            players.add(int(owner))
+        owner = _owner_of(planet)
+        if owner is not None and owner not in (-1, player_id) and not _is_ally(state, owner):
+            players.add(owner)
     return players
 
 
@@ -125,25 +153,27 @@ def assess_frontier(state: Any) -> FrontierAssessment:
     open_frontier = 0
     contested = 0
     player_id = getattr(state, "player_id", None)
+    owned_planets = _owned_planets(state)
+    hostile_worlds = sum(
+        1 for planet in owned_planets
+        if getattr(planet, "position", None) is not None and world_faces_hostile(state, planet)
+    )
     for p in planets:
-        owner = getattr(p, "owner_id", getattr(p, "owner", None))
+        owner = _owner_of(p)
         observed_p = _planet_is_observed(p)
         if owner in (None, -1):
             if not observed_p or getattr(p, "habitability", None) is not None:
                 open_frontier += 1
-        elif owner != player_id:
+        elif owner != player_id and not _is_ally(state, owner) and _near_owned(p, owned_planets):
             contested += 1
 
     open_fraction = open_frontier / total
-    contested_fraction = contested / total
+    contested_fraction = contested / max(1, owned)
 
-    # Frontier pressure rises with contact and with a shrinking pool of open worlds.
-    pressure = min(
-        1.0,
-        0.15 * len(others)
-        + 0.65 * contested_fraction
-        + 0.35 * max(0.0, explored_fraction - open_fraction)
-    )
+    # Pressure is the share of our worlds with a hostile on the border.
+    # A known ally, or a hostile that is nowhere near us, is not pressure.
+    local = hostile_worlds / max(1, owned)
+    pressure = min(1.0, 0.80 * local + 0.20 * min(1.0, contested_fraction))
     saturation = min(
         1.0,
         0.60 * explored_fraction
@@ -158,7 +188,73 @@ def assess_frontier(state: Any) -> FrontierAssessment:
         open_frontier_fraction=open_fraction,
         frontier_pressure=pressure,
         expansion_saturation=saturation,
+        hostile_worlds=hostile_worlds,
+        hostile_pressure=local,
     )
+
+
+def _near_owned(planet: Any, owned: list[Any], radius: float = 120.0) -> bool:
+    position = getattr(planet, "position", None)
+    if position is None:
+        return False
+    for world in owned:
+        other = getattr(world, "position", None)
+        if other is not None and distance(position, other) <= radius:
+            return True
+    return False
+
+
+def assign_planet_roles(state: Any, *, full: bool) -> dict[int, str]:
+    """Give each owned world one midgame job.
+
+    A world with a hostile nearby holds the line. Quiet worlds that are still
+    short of the factories their population can run keep industrializing.
+    Worlds already near that cap either build ships for the rest of the empire
+    or spend their resources on research.
+    """
+
+    owned = [
+        planet for planet in getattr(state, "planets", []) or []
+        if _owner_of(planet) == int(getattr(state, "player_id", 0) or 0)
+    ]
+    roles: dict[int, str] = {}
+    quiet: list[Any] = []
+    for planet in owned:
+        if getattr(planet, "position", None) is not None and world_faces_hostile(state, planet):
+            roles[int(planet.id)] = "hold_line"
+        else:
+            quiet.append(planet)
+    if not full or not quiet:
+        return roles
+
+    from .planet_economy import decode_race_economy, installation_caps
+
+    economy = decode_race_economy(getattr(state, "race", None))
+    developing: list[Any] = []
+    mature: list[Any] = []
+    for planet in quiet:
+        factories, _mines = installation_caps(int(getattr(planet, "population", 0) or 0), economy)
+        built = int(getattr(planet, "factories", 0) or 0)
+        at_peak = factories >= 10 and built >= max(2, int(factories * 0.80))
+        if at_peak:
+            mature.append(planet)
+        else:
+            developing.append(planet)
+            roles[int(planet.id)] = "industrialize"
+    def ship_rank(planet: Any) -> tuple[int, int, int]:
+        yard = bool(((getattr(planet, "native", {}) or {}).get("starbase_capabilities") or {}).get("can_build_ships"))
+        return (int(yard), int(getattr(planet, "population", 0) or 0), int(getattr(planet, "factories", 0) or 0))
+
+    mature.sort(key=ship_rank, reverse=True)
+    ship_count = max(1, -(-len(mature) * 2 // 5)) if mature else 0
+    for index, planet in enumerate(mature):
+        roles[int(planet.id)] = "ships" if index < ship_count else "tech"
+    if not mature and developing:
+        best = max(developing, key=ship_rank)
+        native = getattr(best, "native", {}) or {}
+        if (native.get("starbase_capabilities") or {}).get("can_build_ships"):
+            roles[int(best.id)] = "ships"
+    return roles
 
 
 def resource_score(planet: Any) -> float | None:
@@ -249,63 +345,44 @@ class StrategicPhaseManager:
         a = assess_frontier(state)
 
         # Shared opening doctrine.
-        min_opening_planets = int(getattr(persona, "opening_min_planets", 4))
-        contact_threshold = float(getattr(persona, "frontier_contact_threshold", 0.18))
+        min_opening_planets = int(getattr(persona, "opening_min_planets", 8))
+        midgame_planets = int(getattr(persona, "midgame_planets", 12))
         saturation_threshold = float(getattr(persona, "expansion_saturation_threshold", 0.55))
 
-        if (
-            a.owned_planets < min_opening_planets
-            and not a.has_contact
-            and a.frontier_pressure < contact_threshold
-        ):
+        if a.owned_planets < min_opening_planets:
             phase = StrategicPhase.EARLY_EXPANSION
-            reason = "Opening doctrine: aggressively explore and claim viable worlds before borders harden."
+            reason = (
+                "Opening doctrine: claim worlds before the border hardens. "
+                "Hostile contact does not end early expansion."
+            )
         elif (
-            not a.has_contact
-            and a.frontier_pressure < contact_threshold
+            a.owned_planets < midgame_planets
+            and a.hostile_worlds > 0
             and a.expansion_saturation < saturation_threshold
         ):
-            phase = StrategicPhase.EARLY_EXPANSION
-            reason = "Substantial open frontier remains; continued exploration/expansion has the best macro return."
-        elif a.has_contact and a.expansion_saturation < saturation_threshold:
-            # Contact is not the same as the end of expansion.  It is a
-            # distinct transition in which scouts, colonists, and a modest
-            # defensive screen all matter.  The old controller defined this
-            # phase but could never select it, so a single sighting jumped
-            # straight to the persona's late-game posture.
             phase = StrategicPhase.FRONTIER_CONTACT
             reason = (
-                "Foreign contact has hardened part of the frontier while viable "
-                "space remains; keep expanding with border intelligence and a "
-                "defensive screen."
+                f"{a.hostile_worlds} owned world(s) have a hostile fleet or colony nearby. "
+                "Hold those worlds and keep planting everywhere else."
             )
         else:
-            style = getattr(persona, "transition_style", "consolidate")
-            if style == "attack":
-                phase = StrategicPhase.OPPORTUNISTIC_WAR
-                reason = "Expansion frontier is constrained; persona shifts toward selective conquest of favorable targets."
-            elif style == "fortify":
-                phase = StrategicPhase.FORTIFICATION
-                reason = "Expansion frontier is constrained; persona prioritizes border defense and strengthening acquired territory."
-            elif style == "technology":
-                phase = StrategicPhase.TECH_ACCELERATION
-                reason = "Expansion frontier is constrained; persona converts territorial base into a technology advantage."
-            elif style == "industry":
-                phase = StrategicPhase.INDUSTRIAL_BUILDOUT
-                reason = "Expansion frontier is constrained; persona converts territorial base into industrial capacity."
-            else:
-                phase = StrategicPhase.CONSOLIDATION
-                reason = "Expansion frontier is constrained; persona balances development, defense, and selective expansion."
+            phase = StrategicPhase.MIDGAME
+            reason = (
+                "Early expansion is over. Industrialize worlds that are short of their "
+                "factory cap, put research on mature quiet worlds, build ships where a "
+                "yard can support the empire, and hold the line where a hostile is close."
+            )
 
-        policy = self._policy_for(phase, persona)
+        policy = self._policy_for(phase, a)
         return PhaseDecision(phase=phase, assessment=a, policy=policy, reason=reason)
 
-    def _policy_for(self, phase: StrategicPhase, persona: Any) -> PhasePolicy:
+    def _policy_for(self, phase: StrategicPhase, assessment: FrontierAssessment) -> PhasePolicy:
         # Base multipliers are intentionally strong enough that phase changes
         # materially affect downstream planners.
         table = {
-            StrategicPhase.EARLY_EXPANSION: (1.75, 1.80, 0.85, 0.50, 0.45, 0.90),
-            StrategicPhase.FRONTIER_CONTACT: (1.10, 1.00, 1.00, 1.05, 0.85, 1.00),
+            StrategicPhase.EARLY_EXPANSION: (2.05, 2.30, 0.75, 0.30, 0.35, 0.70),
+            StrategicPhase.FRONTIER_CONTACT: (1.35, 1.70, 0.95, 1.05, 0.70, 0.85),
+            StrategicPhase.MIDGAME: (0.70, 0.55, 1.45, 1.20, 1.10, 1.25),
             StrategicPhase.CONSOLIDATION: (0.65, 0.60, 1.45, 1.30, 0.60, 1.10),
             StrategicPhase.OPPORTUNISTIC_WAR: (0.45, 0.55, 0.95, 1.05, 1.85, 1.00),
             StrategicPhase.FORTIFICATION: (0.45, 0.40, 1.30, 1.90, 0.45, 1.00),
@@ -313,6 +390,8 @@ class StrategicPhaseManager:
             StrategicPhase.INDUSTRIAL_BUILDOUT: (0.45, 0.45, 1.95, 1.10, 0.50, 1.05),
         }
         e, x, d, f, a, r = table[phase]
+        if phase == StrategicPhase.FRONTIER_CONTACT and assessment.hostile_pressure >= 0.5:
+            x, f = 1.15, 1.55
         return PhasePolicy(
             phase=phase,
             explore_weight=e,

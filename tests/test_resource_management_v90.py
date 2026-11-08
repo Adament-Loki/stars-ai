@@ -75,12 +75,23 @@ def test_core_infrastructure_precedes_optional_work_and_preserves_germanium():
     add_economic_orders(state,orders)
 
     queue=next(order.payload["queue"] for order in orders.orders if order.kind=="set_planet_queue")
-    assert [item["item"] for item in queue[:2]] == ["mine","factory"]
+    assert [item["item"] for item in queue[:2]] == ["factory","mine"]
     assert queue[0]["quantity"]==25
     assert queue[1]["quantity"]==25
     economy=next(order.payload["economy"] for order in orders.orders if order.kind=="set_planet_queue")
     assert economy["economic_core"] is True
     assert economy["mineral_reserve"]["germanium"] >= 320
+
+
+def test_low_germanium_builds_mines_before_factories():
+    world=_core(minerals=(200,200,20),factories=10,mines=4)
+    state=_state(world)
+    orders=OrderSet(state.game_name,state.year,state.player_id)
+
+    add_economic_orders(state,orders)
+
+    queue=next(order.payload["queue"] for order in orders.orders if order.kind=="set_planet_queue")
+    assert queue[0]["item"]=="mine"
 
 
 def test_mature_mineral_secure_core_builds_factories_before_more_mines():
@@ -95,6 +106,19 @@ def test_mature_mineral_secure_core_builds_factories_before_more_mines():
     assert not any(item["item"]=="mine" for item in queue)
 
 
+def test_saturated_factory_buffer_waits_behind_ships_and_mines():
+    ordered=_prioritize_economic_infrastructure([
+        {"item":"ship_design","role":"freighter","quantity":1,"strategic_priority":100},
+        {"item":"mine","quantity":10,"after_factory_saturation":True},
+        {"item":"factory","quantity":5,"overflow_buffer":True},
+        {"item":"max_terraform","quantity":1,"after_factory_saturation":True},
+    ])
+
+    assert [item["item"] for item in ordered]==[
+        "ship_design","mine","factory","max_terraform",
+    ]
+
+
 def test_mines_and_factories_precede_an_unfunded_ship_queue_even_in_a_sprint():
     queue=[
         {"item":"ship_design","design_name":"Opening Scout","quantity":6},
@@ -106,7 +130,7 @@ def test_mines_and_factories_precede_an_unfunded_ship_queue_even_in_a_sprint():
     ordered=_prioritize_economic_infrastructure(queue)
 
     assert [item["item"] for item in ordered]==[
-        "mine","factory","ship_design","starbase_design",
+        "factory","mine","ship_design","starbase_design",
     ]
 
 
@@ -123,7 +147,7 @@ def test_opening_queue_places_colonization_ahead_of_preserved_scout_work():
     )
 
     assert [(item["item"],item.get("role")) for item in ordered]==[
-        ("ship_design","colony"),("mine",None),("factory",None),("ship_design","scout"),
+        ("ship_design","colony"),("factory",None),("mine",None),("ship_design","scout"),
     ]
 
 

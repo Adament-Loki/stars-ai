@@ -39,11 +39,17 @@ def test_low_weapons_contact_builds_only_a_two_ship_escort_screen():
     assert "Low-tech escort doctrine" in combat[0].reason
 
 
-def test_fortification_phase_builds_a_real_defensive_force_even_at_low_tech():
+def test_midgame_hold_line_builds_a_real_defensive_force_even_at_low_tech():
     s=state()
     s.tech.weapons=3
-    for planet in s.planets:
-        planet.observed=True
+    for index in range(1, 12):
+        s.planets.append(Planet(
+            500+index, f"Owned {index}", Position(index*40, 500), owner=1, observed=True,
+            habitability=80, population=40_000, factories=2,
+        ))
+    s.planets.append(Planet(80, "Border", Position(0, 80), owner=1, observed=True, habitability=70, population=80_000))
+    s.planets.append(Planet(999, "Enemy", Position(40, 80), owner=2, observed=True, habitability=70))
+    s.fleets.append(Fleet(99, "Enemy Raider", 2, Position(40, 80), role="combat", combat_power=20))
     s.native['design_profiles'].append({
         'design_number':6,'name':'Early Escort','role':'combat','dry_mass':40,
         'fuel_capacity':80,'engine_id':3,'ram_scoop':False,
@@ -52,9 +58,10 @@ def test_fortification_phase_builds_a_real_defensive_force_even_at_low_tech():
 
     combat=[request for request in plan_objective_ship_builds(s,plan) if request.role=='combat']
 
-    assert plan.phase=='fortification'
+    assert plan.phase=='midgame'
+    assert plan.planet_actions[80]=='hold_line'
     assert combat and combat[0].quantity >= 4
-    assert 'phase=fortification requires a standing combat force' in combat[0].reason
+    assert 'phase=midgame requires a standing combat force' in combat[0].reason
 
 
 def test_weapon_generation_change_does_not_duplicate_a_full_existing_combat_force():

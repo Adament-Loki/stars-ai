@@ -26,6 +26,7 @@ from .starsapi_items import (
     prt_id as race_prt_id,
     stock_hulls as race_stock_hulls,
 )
+from .diplomacy import allied_player_ids, world_faces_hostile
 from .territorial_defense import assess_territorial_defense, hostile_colonies_inside_claimed_area
 from .population_invasion import population_capture_targets, is_recently_lost_world
 from .capability_execution import (
@@ -587,7 +588,10 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
             (immediate_hull, immediate_variant, "Modernized", 176)
         )
 
-    if selected_hull is not None and selected_variant is not None:
+    quiet_allied_border = bool(allied_player_ids(state)) and not any(
+        world_faces_hostile(state, planet) for planet in owned
+    )
+    if selected_hull is not None and selected_variant is not None and not quiet_allied_border:
         proposals.append(DesignProposal(
             role="starbase", name=f"{label} {selected_hull.name} Defense", is_starbase=True,
             desired_hull_id=selected_hull.hull_id, desired_hull_name=selected_hull.name, desired_engine=None,

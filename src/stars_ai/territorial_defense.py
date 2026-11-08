@@ -14,6 +14,7 @@ import math
 from typing import Any
 
 from .util import distance
+from .turn_state import mapping as turn_mapping
 
 
 # A captured border world remains an emergency after the one turn in which the
@@ -381,7 +382,7 @@ def _recent_loss_events(state: Any) -> list[dict[str, int]]:
                 else:
                     add(item, year)
 
-    persistent = native.get("persistent_intel", {}) or {}
+    persistent = turn_mapping(state, "persistent_intel")
     for planet_id in persistent.get("lost_owned_planet_ids", []) or []:
         add(planet_id, year)
     for planet in getattr(state, "planets", []) or []:

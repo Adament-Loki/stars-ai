@@ -74,6 +74,7 @@
   "print_observer_each_turn": true,
   "cleanup_output_on_start": true,
   "console_player_logs": [],
+  "allied_groups": [[1, 2, 3, 4]],
   "allied_pairs": [],
   "x_template_dir": null,
   "ai_state_dir": null,

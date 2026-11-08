@@ -29,6 +29,7 @@ from .reporting import (
     build_native_decision_report,
     build_turn_report_model,
 )
+from .turn_state import mapping as turn_mapping, sequence as turn_sequence
 
 
 def _persona(name: str):
@@ -87,6 +88,12 @@ def plan_native_ai_turn(
     requested_friends = _configured_friend_ids(player_id, friend_player_ids)
     actual_relations = list(state.race.native.get("player_relations", []))
     state.native["actual_player_relations"] = list(actual_relations)
+    state.native["configured_allies"] = list(requested_friends)
+    if requested_friends:
+        from .ally_intel import load_ally_states, share_ally_observations
+        ally_states, ally_notes = load_ally_states(Path(m_path), Path(xy_path), requested_friends)
+        summary = share_ally_observations(state, ally_states)
+        summary["notes"] = ally_notes
 
     # This remains before strategy because a configured ally must not be
     # selected as a military target while the native Friend order is pending.
@@ -179,11 +186,11 @@ def _write_trace(
         "orders": planned.decision.orders.to_dict(),
         "fleet_intents": planned.decision.context.legacy_fleet_intents,
         "x_lifecycle": native_result.native_audit,
-        "persistent_intel": state.native.get("persistent_intel", {}),
-        "strategic_watchdog": state.native.get("strategic_watchdog", {}),
+        "persistent_intel": turn_mapping(state, "persistent_intel"),
+        "strategic_watchdog": turn_mapping(state, "strategic_watchdog"),
         "probe_route_diagnostics": state.native.get("probe_route_diagnostics", []),
-        "movement_progress_diagnostics": state.native.get("movement_progress_diagnostics", []),
-        "command_outcomes": state.native.get("command_outcomes", []),
+        "movement_progress_diagnostics": turn_sequence(state, "movement_progress_diagnostics"),
+        "command_outcomes": turn_sequence(state, "command_outcomes"),
         "pending_command_expectations": dict(memory.action_expectations),
         "capability_execution": memory.capability_execution_payload(),
         "waypoint_diagnostics": native_result.waypoint_diagnostics,

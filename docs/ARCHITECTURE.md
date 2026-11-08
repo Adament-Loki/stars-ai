@@ -6,6 +6,7 @@
 src/stars_ai/
   ai/             Turn facade, typed AI state, planner pipeline, state store
   autohost/       Hosted-game configuration, bridge contracts, lifecycle
+  core/           GameState/Order contracts, legacy agent, memory, personas
   native/         Stars! adapters/codecs, X writer, package native resources
   strategy/       Planner-domain entry functions retained for compatibility
   rules/          Rules-engine helpers
@@ -20,6 +21,8 @@ playtests/
   seed/           Native seed games used by runtime/playtest workflows
   runs/           Checked-in forensic playtest evidence
 ```
+
+The package-root modules `models.py`, `agent.py`, `memory.py`, `memory_services.py`, and `persona.py` re-export `core` so existing imports keep working.
 
 ## Turn execution boundaries
 

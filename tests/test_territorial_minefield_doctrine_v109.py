@@ -123,7 +123,8 @@ def test_outmatched_patrol_reinforces_the_threatened_world_instead_of_generic_ho
         and order.payload.get("defensive_fallback") is True
     )
     assert fallback.payload["mission"] == "defend"
-    assert fallback.payload["destination_planet_id"] == 1
+    assert fallback.payload["destination_planet_id"] == 0
+    assert "fall back" in fallback.reason
     patrol_intent = next(intent for intent in intents if intent["fleet_id"] == 1)
     assert patrol_intent["action"] == "MOVE"
 

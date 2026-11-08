@@ -3,6 +3,7 @@
 from __future__ import annotations
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
+from ..invasion import empire_ready_to_press_border, plan_invasion, weak_undefended_colony, worth_securing
 from ..territorial_defense import assess_territorial_defense
 from ..util import distance
 from ..warp_policy import mission_warp
@@ -271,39 +272,43 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
                         )
                     handled_intruder_ids.add(int(violation.fleet_id))
                 else:
-                    # Even an outmatched force is more useful at the exposed
-                    # world than scattered across generic HOLD orders.  It
-                    # reinforces the starbase and planetary defenses, can
-                    # combine with arrivals next turn, and denies the enemy a
-                    # sequence of undefended captures.  This is deliberately
-                    # a planet-defense waypoint, not an unsafe attempt to
-                    # intercept a visibly superior fleet.
-                    for defender in group:
-                        orders.add(
-                            "move_fleet",
-                            {
-                                "fleet_id": defender.id,
-                                "destination_planet_id": anchor.id,
-                                "warp": mission_warp(defender, anchor.position, "defend"),
-                                "mission": "defend",
-                                "territorial_group_defense": True,
-                                "defensive_fallback": True,
-                                "violator_fleet_id": violation.fleet_id,
-                                "violator_owner": violation.owner,
-                            },
-                            (
-                                f"outmatched but active defense: concentrate at {anchor.name} against "
-                                f"{violation.fleet_name}; combined readiness={group_power:.1f} is below "
-                                f"the {required_ratio:.2f}x intercept threshold, so hold the world rather "
-                                "than leave the fleet on generic reserve."
-                            ),
-                            priority=int(120 + 20 * violation.severity),
-                        )
+                    # Stacking an outmatched fleet on the threatened world
+                    # destroyed Player 4's combat force three times in the
+                    # second 100-turn run. Planetary defenses hold that world.
+                    # The ships fall back to another colony.
+                    owned_worlds=[
+                        planet for planet in state.planets
+                        if planet.owner==state.player_id and int(planet.id)!=int(anchor.id)
+                    ]
+                    refuge=min(
+                        owned_worlds,
+                        key=lambda planet: distance(anchor.position, planet.position),
+                    ) if owned_worlds else None
+                    if refuge is not None:
+                        for defender in group:
+                            orders.add(
+                                "move_fleet",
+                                {
+                                    "fleet_id": defender.id,
+                                    "destination_planet_id": refuge.id,
+                                    "warp": mission_warp(defender, refuge.position, "defend"),
+                                    "mission": "defend",
+                                    "territorial_group_defense": True,
+                                    "defensive_fallback": True,
+                                    "violator_fleet_id": violation.fleet_id,
+                                    "violator_owner": violation.owner,
+                                },
+                                (
+                                    f"outmatched; fall back to {refuge.name} instead of stacking at "
+                                    f"{anchor.name} against {violation.fleet_name}. Combined readiness="
+                                    f"{group_power:.1f} is below the {required_ratio:.2f}x intercept threshold."
+                                ),
+                                priority=int(120 + 20 * violation.severity),
+                            )
                     handled_intruder_ids.add(int(violation.fleet_id))
                     orders.notes.append(
                         f"TERRITORIAL PATROL: available group cannot safely challenge {violation.fleet_name} "
-                        f"at {required_ratio:.2f}x; staged {len(group)} fleet(s) at {anchor.name} for "
-                        "planetary defense and reinforce/minefield response."
+                        f"at {required_ratio:.2f}x; fell back from {anchor.name} rather than losing the stack."
                     )
 
         if (
@@ -403,3 +408,162 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
                 f"{plan.persona_name + ': ' if plan else ''}threat near {planet.name}; {fleet.name} below "
                 f"the {required_ratio:.2f}x intercept threshold and is reinforcing the planet instead."
             )
+
+    _add_weak_colony_assault(state, orders, plan, available_patrols, required_ratio)
+    _add_border_pressure(state, orders, plan, available_patrols, required_ratio)
+
+
+def _add_weak_colony_assault(state, orders, plan, available_patrols, required_ratio: float) -> None:
+    """Send one idle combat fleet to a small undefended non-allied colony.
+
+    Defense assignments consume patrols first. Allies and helpful partners are
+    never targets. At most one world is approached per turn.
+    """
+
+    if not available_patrols:
+        return
+    candidates = []
+    for planet in state.planets:
+        owner = getattr(planet, "owner", None)
+        if owner is None or int(owner) == int(state.player_id) or not bool(getattr(planet, "observed", False)):
+            continue
+        if plan is not None:
+            view = (plan.diplomacy or {}).get(int(owner), {})
+            attitude = str(view.get("attitude", "neutral") or "neutral").lower()
+            if attitude in {"helpful", "allied"}:
+                continue
+        if not worth_securing(planet) or not weak_undefended_colony(state, planet):
+            continue
+        nearest = min(
+            (distance(planet.position, owned.position) for owned in state.planets if owned.owner == state.player_id),
+            default=9999.0,
+        )
+        if nearest > 180.0:
+            continue
+        local_enemy = sum(
+            max(1.0, float(fleet.combat_power or 0.0))
+            for fleet in state.fleets
+            if int(fleet.owner) == int(owner)
+            and abs(float(fleet.position.x) - float(planet.position.x)) <= 1.0
+            and abs(float(fleet.position.y) - float(planet.position.y)) <= 1.0
+        )
+        candidates.append((nearest, local_enemy, planet))
+    if not candidates:
+        return
+    candidates.sort(key=lambda row: (row[0], row[1], int(row[2].id)))
+    _, local_enemy, planet = candidates[0]
+    patrol = available_patrols[0]
+    patrol_power = _defensive_power(patrol)
+    if local_enemy > 0.0 and patrol_power < local_enemy * required_ratio:
+        return
+    assessed = plan_invasion(
+        planet,
+        our_local_strength=patrol_power,
+        enemy_local_strength=max(1.0, local_enemy),
+        transport_capacity=0,
+    )
+    if assessed.action not in {"CAPTURE", "NEUTRALIZE"}:
+        return
+    available_patrols.pop(0)
+    orders.add(
+        "move_fleet",
+        {
+            "fleet_id": patrol.id,
+            "destination_planet_id": int(planet.id),
+            "warp": mission_warp(patrol, planet.position, "attack"),
+            "mission": "attack",
+            "invasion_action": assessed.action,
+            "target_owner": int(planet.owner),
+        },
+        (
+            f"approach undefended colony {planet.name} (P{planet.owner}) for {assessed.action.lower()}; "
+            f"population={int(planet.population or 0):,}, defenses={int(planet.defenses or 0)}."
+        ),
+        priority=88,
+    )
+    state.native["invasion_targets"] = [{
+        "planet_id": int(planet.id),
+        "owner": int(planet.owner),
+        "action": assessed.action,
+        "fleet_id": int(patrol.id),
+    }]
+
+
+def _add_border_pressure(state, orders, plan, available_patrols, required_ratio: float) -> None:
+    """After saturation, take a high-value border world or break a lesser one.
+
+    Securing a world costs colonists and a garrison, so only a high-value
+    colony is captured. Any other enemy world on the border is attacked and
+    then left; the fleet is free to move on.
+    """
+
+    if not empire_ready_to_press_border(state, plan) or not available_patrols:
+        return
+    owned = [planet for planet in state.planets if planet.owner == state.player_id]
+    if not owned:
+        return
+    raids = [int(planet_id) for planet_id in (state.native.get("raid_only_planet_ids") or [])]
+    captures = []
+    ranked = []
+    for planet in state.planets:
+        owner = getattr(planet, "owner", None)
+        if owner is None or int(owner) == int(state.player_id) or not bool(getattr(planet, "observed", False)):
+            continue
+        if plan is not None:
+            view = (plan.diplomacy or {}).get(int(owner), {})
+            if str(view.get("attitude", "neutral") or "neutral").lower() in {"helpful", "allied"}:
+                continue
+        nearest = min(distance(planet.position, world.position) for world in owned)
+        if nearest > 180.0:
+            continue
+        ranked.append((0 if worth_securing(planet) else 1, nearest, int(planet.id), planet))
+    ranked.sort()
+    for _priority, _nearest, _planet_id, planet in ranked:
+        if not available_patrols:
+            break
+        owner = int(planet.owner)
+        local_enemy = sum(
+            max(1.0, float(fleet.combat_power or 0.0))
+            for fleet in state.fleets
+            if int(fleet.owner) == owner
+            and abs(float(fleet.position.x) - float(planet.position.x)) <= 1.0
+            and abs(float(fleet.position.y) - float(planet.position.y)) <= 1.0
+        )
+        patrol = available_patrols[0]
+        patrol_power = _defensive_power(patrol)
+        if local_enemy > 0.0 and patrol_power < local_enemy * required_ratio:
+            continue
+        secure = worth_securing(planet)
+        if int(planet.defenses or 0) > 30 and not secure:
+            continue
+        available_patrols.pop(0)
+        action = "CAPTURE" if secure else "RAID"
+        orders.add(
+            "move_fleet",
+            {
+                "fleet_id": patrol.id,
+                "destination_planet_id": int(planet.id),
+                "warp": mission_warp(patrol, planet.position, "attack"),
+                "mission": "attack",
+                "invasion_action": action,
+                "target_owner": owner,
+                "secure_after_attack": secure,
+            },
+            (
+                f"capture high-value border world {planet.name}; habitability={int(planet.habitability or 0)}%."
+                if secure else
+                f"raid {planet.name} and move on; destroy the enemy hold without securing a low-value world."
+            ),
+            priority=86 if secure else 80,
+        )
+        if secure:
+            captures.append(int(planet.id))
+        else:
+            raids.append(int(planet.id))
+        if len(captures) + sum(1 for item in raids if item == int(planet.id)) >= 1 and not secure:
+            break
+        if secure:
+            break
+    state.native["raid_only_planet_ids"] = list(dict.fromkeys(raids))
+    if captures:
+        state.native["capture_planet_ids"] = captures

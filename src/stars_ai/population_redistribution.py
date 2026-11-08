@@ -46,7 +46,11 @@ from .logistics_capacity import (
 )
 from .models import OrderSet
 from .native.population_transport import MAX_SMALL_POPULATION_LOAD_KT
-from .planet_economy import decode_race_economy, projected_population_growth
+from .planet_economy import (
+    decode_race_economy,
+    may_receive_homeworld_population,
+    projected_population_growth,
+)
 from .util import distance
 from .warp_policy import mission_warp
 
@@ -219,7 +223,10 @@ def plan_population_redistribution(
         if parent_id is None or need < COLONISTS_PER_KT:
             continue
         p = planets.get(int(hub.planet_id))
-        if p is None or (p.habitability is not None and int(p.habitability) <= 0):
+        parent = planets.get(int(parent_id))
+        if p is None or parent is None or (p.habitability is not None and int(p.habitability) <= 0):
+            continue
+        if not may_receive_homeworld_population(parent, p, state.race):
             continue
         receivers.append((_receiver_score(state, p, hub), p, need, hub, int(parent_id)))
     receivers.sort(key=lambda row: (-row[0], row[3].ring, row[1].id))

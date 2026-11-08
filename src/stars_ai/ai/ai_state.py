@@ -114,6 +114,9 @@ class PersistentHistoryState:
     goal_progress: dict[str, float] = field(default_factory=dict)
     kpi_history: list[dict[str, Any]] = field(default_factory=list)
     territorial_exposure_history: dict[str, Any] = field(default_factory=dict)
+    resource_state: dict[str, Any] = field(default_factory=dict)
+    resource_history: list[dict[str, Any]] = field(default_factory=list)
+    border_operations: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -174,6 +177,9 @@ class PersistentAIState:
                 goal_progress=deepcopy(memory.goal_progress),
                 kpi_history=deepcopy(memory.kpi_history),
                 territorial_exposure_history=deepcopy(memory.territorial_exposure_history),
+                resource_state=deepcopy(memory.resource_state),
+                resource_history=deepcopy(memory.resource_history),
+                border_operations=deepcopy(memory.border_operations),
             ),
             legacy_extra_fields=deepcopy(
                 getattr(memory, "_legacy_extra_fields", {})
@@ -211,6 +217,9 @@ class PersistentAIState:
         memory.goal_progress = deepcopy(self.history.goal_progress)
         memory.kpi_history = deepcopy(self.history.kpi_history)
         memory.territorial_exposure_history = deepcopy(self.history.territorial_exposure_history)
+        memory.resource_state = deepcopy(self.history.resource_state)
+        memory.resource_history = deepcopy(self.history.resource_history)
+        memory.border_operations = deepcopy(self.history.border_operations)
         memory._legacy_extra_fields = deepcopy(self.legacy_extra_fields)
 
     def to_agent_memory(self) -> AgentMemory:
@@ -364,6 +373,12 @@ class TurnAIState:
     territorial_defense: TerritorialDefenseState | None = None
     command_outcomes: list[CommandOutcomeState] = field(default_factory=list)
     movement_progress_diagnostics: list[MovementProgressState] = field(default_factory=list)
+    # Reconciliation and exploration values that were historically written to
+    # ``GameState.native`` before planners read them.  They are turn-only AI
+    # interpretation, not Stars!-decoded metadata.
+    persistent_intel: dict[str, Any] = field(default_factory=dict)
+    capability_execution_diagnostics: dict[str, Any] = field(default_factory=dict)
+    recent_scan_target_ids: list[int] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     blocked_actions: list[BlockedActionState] = field(default_factory=list)
     safety_diagnostics: list[SafetyDiagnosticState] = field(default_factory=list)
@@ -388,6 +403,8 @@ class TurnAIState:
         state.movement_progress_diagnostics = _movement_from_payload(
             values.get("movement_progress_diagnostics")
         )
+        state.persistent_intel = _mapping_payload(values.get("persistent_intel"))
+        state.recent_scan_target_ids = _integer_sequence(values.get("recent_scan_targets"))
         state.warnings = [
             outcome.message
             for outcome in state.command_outcomes
@@ -395,6 +412,7 @@ class TurnAIState:
         ]
         capability_diagnostics = values.get("capability_execution_diagnostics") or {}
         if isinstance(capability_diagnostics, dict):
+            state.capability_execution_diagnostics = _mapping_payload(capability_diagnostics)
             state.blocked_actions = [
                 BlockedActionState(
                     action_id=str(capability_id),
@@ -411,6 +429,70 @@ class TurnAIState:
         )
         return state
 
+    def set_legacy_payload(self, key: str, value: object) -> bool:
+        """Accept one established scratch payload without retaining native state.
+
+        The name reflects the temporary compatibility surface, not ownership:
+        callers use the historical key while this object remains its sole
+        authoritative storage for facade-driven turns.
+        """
+
+        if key == "strategic_phase":
+            self.strategic_phase = _strategic_phase_from_payload(value)
+        elif key == "strategic_watchdog":
+            self.strategic_watchdog = _watchdog_from_payload(value)
+        elif key == "research_strategy":
+            self.research_decision = _research_from_payload(value)
+        elif key == "territorial_defense":
+            self.territorial_defense = _territorial_from_payload(value)
+        elif key == "command_outcomes":
+            self.command_outcomes = _command_outcomes_from_payload(value)
+            self.warnings = [
+                outcome.message
+                for outcome in self.command_outcomes
+                if outcome.status in {"WARNING", "UNVERIFIED"}
+            ]
+        elif key == "movement_progress_diagnostics":
+            self.movement_progress_diagnostics = _movement_from_payload(value)
+        elif key == "persistent_intel":
+            self.persistent_intel = _mapping_payload(value)
+        elif key == "capability_execution_diagnostics":
+            self.capability_execution_diagnostics = _mapping_payload(value)
+            self.blocked_actions = [
+                BlockedActionState(action_id=str(capability_id), status="BLOCKED_NATIVE")
+                for capability_id in self.capability_execution_diagnostics.get(
+                    "blocked_capability_ids", []
+                ) or []
+            ]
+        elif key == "recent_scan_targets":
+            self.recent_scan_target_ids = _integer_sequence(value)
+        else:
+            return False
+        return True
+
+    def legacy_payload(self, key: str) -> Any | None:
+        """Expose an equivalent detached payload for incremental consumers."""
+
+        if key == "strategic_phase":
+            return _strategic_phase_payload(self.strategic_phase)
+        if key == "strategic_watchdog":
+            return _watchdog_payload(self.strategic_watchdog)
+        if key == "research_strategy":
+            return _research_payload(self.research_decision)
+        if key == "territorial_defense":
+            return _territorial_payload(self.territorial_defense)
+        if key == "command_outcomes":
+            return [_command_outcome_payload(item) for item in self.command_outcomes]
+        if key == "movement_progress_diagnostics":
+            return [_movement_payload(item) for item in self.movement_progress_diagnostics]
+        if key == "persistent_intel":
+            return deepcopy(self.persistent_intel)
+        if key == "capability_execution_diagnostics":
+            return deepcopy(self.capability_execution_diagnostics)
+        if key == "recent_scan_targets":
+            return list(self.recent_scan_target_ids)
+        return None
+
 
 @dataclass(slots=True)
 class AIState:
@@ -425,6 +507,107 @@ class AIState:
         """Build state for a facade call without changing either legacy input."""
 
         return cls(game=game, persistent=PersistentAIState.from_agent_memory(memory))
+
+
+def _mapping_payload(value: object) -> dict[str, Any]:
+    return deepcopy(value) if isinstance(value, dict) else {}
+
+
+def _integer_sequence(value: object) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    return [_as_int(item) for item in value]
+
+
+def _strategic_phase_payload(value: StrategicPhaseState | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return {
+        **deepcopy(value.assessment and {"assessment": value.assessment} or {"assessment": {}}),
+        "phase": value.phase,
+        "reason": value.reason,
+    }
+
+
+def _watchdog_payload(value: StrategicWatchdogState | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return {
+        **deepcopy(value.details),
+        "year": value.year,
+        "turn": value.turn,
+        "total_planets": value.total_planets,
+        "explored_count": value.explored_count,
+        "explored_percent": value.explored_percent,
+        "new_colonies": value.new_colonies,
+        "owned_planets": value.owned_planets,
+        "exploration_pressure": value.exploration_pressure,
+        "colonization_pressure": value.colonization_pressure,
+        "milestone": deepcopy(value.milestone),
+        "notes": list(value.notes),
+    }
+
+
+def _research_payload(value: ResearchDecisionState | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return {
+        **deepcopy(value.details),
+        "capability_id": value.capability_id,
+        "capability_name": value.capability_name,
+        "category": value.category,
+        "posture": value.posture,
+        "current_field": value.current_field,
+        "field": value.current_field,
+        "next_field": value.next_field,
+        "allocation_percent": value.allocation_percent,
+        "estimated_turns": value.estimated_turns,
+        "reason": value.reason,
+        "commitment": value.commitment,
+        "execution_status": value.execution_status,
+        "expected_resources": value.expected_resources,
+        "sprint_executable": value.sprint_executable,
+        "sprint_blocked_reason": value.sprint_blocked_reason,
+        "execution_failure_reason": value.execution_failure_reason,
+        "requirements": deepcopy(value.requirements),
+        "remaining_requirements": deepcopy(value.remaining_requirements),
+        "contributor_planet_ids": list(value.contributor_planet_ids),
+        "protected_production_planet_ids": list(value.protected_production_planet_ids),
+    }
+
+
+def _territorial_payload(value: TerritorialDefenseState | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return {
+        **deepcopy(value.details),
+        "violations": deepcopy(value.violations),
+        "uncovered_minefield_anchor_ids": list(value.uncovered_minefield_anchor_ids),
+        "desired_patrols": value.desired_patrols,
+        "desired_minelayers": value.desired_minelayers,
+        "reason": value.reason,
+        "exposure": deepcopy(value.exposure),
+        "source_escalation": deepcopy(value.source_escalation),
+    }
+
+
+def _command_outcome_payload(value: CommandOutcomeState) -> dict[str, Any]:
+    return {
+        **deepcopy(value.details),
+        "status": value.status,
+        "message": value.message,
+        **({"action_id": value.action_id} if value.action_id is not None else {}),
+    }
+
+
+def _movement_payload(value: MovementProgressState) -> dict[str, Any]:
+    return {
+        **deepcopy(value.details),
+        "fleet_id": value.fleet_id,
+        "destination_planet_id": value.destination_planet_id,
+        "actual_progress": value.actual_progress,
+        "flag": value.flag,
+    }
 
 
 def _payload(value: object) -> dict[str, Any] | None:

@@ -68,7 +68,8 @@ def test_opening_large_freighter_research_stays_background_until_turn_10():
     decision = plan_research(_state(), _plan(_state()))
     assert decision.capability_id == "hull:2"
     assert decision.current_field == "construction"
-    assert decision.estimated_turns == 5
+    assert decision.estimated_turns > 5
+    assert "resources" in decision.reason
     assert decision.posture == "EXPANSION_FIRST"
     assert decision.allocation_percent == 15
     assert decision.contributor_planet_ids == ()
@@ -156,12 +157,10 @@ def test_sprints_are_available_from_turn_10():
     state=_state(year=2410)
     decision=plan_research(state,_plan(state))
     assert decision.capability_id=="hull:2"
-    # The only potential contributors are a protected custom-build homeworld
-    # and an ungraduated P1 import hub.  A named sprint without a contributor
-    # is now explicitly deferred instead of falsely reported as active.
+    # Construction 8 is several years of resources, so it stays a background
+    # goal instead of a five-year sprint with no cleared contributor.
     assert decision.posture=="EXPANSION_FIRST"
-    assert decision.commitment=="DEFERRED"
-    assert decision.execution_status=="DEFERRED"
+    assert decision.commitment=="ROUTINE"
     assert decision.allocation_percent==15
 
 

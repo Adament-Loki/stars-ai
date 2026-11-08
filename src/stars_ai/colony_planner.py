@@ -2,7 +2,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, asdict
 import math
-from .models import GameState
+from .diplomacy import allied_player_ids
+from .models import GameState, Position
 from .util import distance
 from .empire_geometry import distance_from_homeworld
 from .terraforming import evaluate_terraforming
@@ -106,9 +107,11 @@ def colonization_policy(state:GameState, plan=None) -> ColonizationPolicy:
     elif turn<=40:
         values=("midgame_expansion",35,25,70,.55,.24,.08)
     elif turn<=55:
-        values=("resource_expansion",20,10,60,.80,.22,.07)
+        # A 9% world with a perfect mineral report outscored real habitat in
+        # the 100-turn run and was still under 50,000 people at year 2500.
+        values=("resource_expansion",35,30,90,.45,.22,.07)
     else:
-        values=("late_resource_expansion",1,1,0,1.05,.20,.06)
+        values=("late_resource_expansion",30,25,90,.40,.20,.06)
 
     stage,floor,resource_floor,mineral,weight,travel,support=values
     # Persona selectivity remains a small score-reference modifier after the
@@ -233,6 +236,32 @@ class ColonyCandidate:
 
 
 
+def _allied_frontier_bonus(state:GameState, planet, owned:list) -> float:
+    """Prefer claims that extend away from allies, and discount the shared pocket.
+
+    A world closer to an ally than to us, and still inside the team's current
+    reach, is space the alliance already borders. A world beyond our farthest
+    owned world from the allied center marks new territory.
+    """
+
+    allies = allied_player_ids(state)
+    allied = [world for world in state.planets if world.owner in allies]
+    if not allies or not allied or not owned:
+        return 0.0
+    center_x = sum(world.position.x for world in allied) / len(allied)
+    center_y = sum(world.position.y for world in allied) / len(allied)
+    center = Position(center_x, center_y)
+    reach = max(distance(world.position, center) for world in owned)
+    extension = distance(planet.position, center) - reach
+    nearest_ally = min(distance(planet.position, world.position) for world in allied)
+    nearest_us = min(distance(planet.position, world.position) for world in owned)
+    if nearest_ally + 15.0 < nearest_us and extension < 0.0:
+        return -18.0
+    if extension > 0.0:
+        return min(16.0, extension * 0.08)
+    return 0.0
+
+
 def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCandidate]:
     owned=[p for p in state.planets if p.owner==state.player_id]
     universal=bool((state.race.native or {}).get("universal_hab",False))
@@ -256,6 +285,8 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
 
     for p in state.planets:
         if p.owner is not None or not p.observed:
+            continue
+        if int(p.id) in {int(planet_id) for planet_id in (state.native.get("raid_only_planet_ids") or [])}:
             continue
         native=p.native or {}
 
@@ -307,6 +338,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
         else:
             home_penalty=home_distance*.05
             home_bonus=max(0.0,120.0-home_distance)*.04
+        direction_bonus=_allied_frontier_bonus(state, p, owned)
 
         layer1_bonus=0.0
         if turn<=30 and layer1_needed>0 and 65.0<=home_distance<=190.0:
@@ -355,6 +387,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             known_bonus=8.0 if mineral_known else 0.0
             score=(
                 mineral_bonus+known_bonus+cluster_bonus+home_bonus+layer1_bonus+p2_bonus
+                +direction_bonus
                 -travel_penalty-support_penalty-home_penalty-population_penalty-stale_penalty
             )
             explanation=(
@@ -369,7 +402,8 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"Layer-1 hub program bonus={layer1_bonus:.1f} (need {layer1_needed} more of target 5); "
                 f"P2 relay bonus={p2_bonus:.1f} (parent={getattr(p2_parent,'planet_id',None)}, "
                 f"distance={p2_parent_distance}); "
-                f"remembered intel age={intel_age}"
+                f"remembered intel age={intel_age}; "
+                f"allied-frontier direction={direction_bonus:.1f}"
             )
             hab=100
         else:
@@ -381,19 +415,26 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 12.0+max(0.0,hab-float(policy.normal_habitability_floor or 0))*.75
                 if selection_basis=="racial_habitability" else 0.0
             )
-            mineral_bonus=mineral_avg*policy.mineral_weight
+            mineral_bonus=min(20.0, mineral_avg*policy.mineral_weight)
+            low_current_penalty=max(0.0, 40.0-float(current_hab))*0.55
             speculation_penalty=(
                 max(0,hab-tech_hab)*.25
                 +float(potential.tech_steps)*.35
             )
+            from .planet_economy import decode_race_economy, population_resource_value
+            resource_bonus = population_resource_value(
+                decode_race_economy(state.race),
+                float(current_hab),
+            ) * 0.8
             score=(
                 hab+quality_bonus+mineral_bonus+cluster_bonus+home_bonus+layer1_bonus+p2_bonus
+                +direction_bonus+resource_bonus
                 -travel_penalty-support_penalty-home_penalty-population_penalty
-                -speculation_penalty-stale_penalty
+                -speculation_penalty-stale_penalty-low_current_penalty
             )
             explanation=(
                 f"race-adjusted hab current={current_hab}%, current-tech terraform={tech_hab}%, "
-                f"eventual terraform={eventual_hab}%, planning value={hab:.1f}; "
+                f"eventual terraform={eventual_hab}%, planning value={hab:.1f}; resource growth={resource_bonus:.1f}; "
                 f"terraform steps now={potential.tech_steps}, speculation cost={speculation_penalty:.1f}; "
                 f"{policy.stage} normal floor={policy.normal_habitability_floor}% "
                 f"(selection={selection_basis}, quality bonus={quality_bonus:.1f}); "
@@ -407,7 +448,8 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 f"Layer-1 hub program bonus={layer1_bonus:.1f} (need {layer1_needed} more of target 5); "
                 f"P2 relay bonus={p2_bonus:.1f} (parent={getattr(p2_parent,'planet_id',None)}, "
                 f"distance={p2_parent_distance}); "
-                f"remembered intel age={intel_age}"
+                f"remembered intel age={intel_age}; "
+                f"allied-frontier direction={direction_bonus:.1f}"
             )
             hab=int(potential.planning_habitability)
 

@@ -1104,105 +1104,145 @@ def _run_host_serialized(cfg: WindowsAutoHostConfig, hst: Path, tracked_outputs:
         creationflags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)
 
     started=time.time()
+    dialog_watcher=_start_stars_dialog_watcher(cfg, turn_dir, audit_tag)
     try:
-        cp=subprocess.run(
-            cmd,
-            cwd=str(hst.parent),
-            capture_output=True,
-            text=True,
-            timeout=cfg.host_timeout_seconds,
-            creationflags=creationflags,
-        )
-    except subprocess.TimeoutExpired as exc:
-        stdout=exc.stdout or ""
-        stderr=exc.stderr or ""
-        if isinstance(stdout,bytes):
-            stdout=stdout.decode(errors="replace")
-        if isinstance(stderr,bytes):
-            stderr=stderr.decode(errors="replace")
-        (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(stdout,encoding="utf-8")
-        (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(stderr,encoding="utf-8")
-        after=_file_signature(tracked_outputs)
-        pids=_stars_processes_running(cfg.stars_exe)
-        files_changed=after!=before
-        if pids and not files_changed:
-            condition="likely modal/error condition: Stars! is still present and tracked game files did not change"
-        elif pids:
-            condition="slow hosting or a child process still running: Stars! remains present after file activity"
-        elif files_changed:
-            condition="slow hosting/launcher return: tracked files changed but the launch exceeded its deadline"
-        else:
-            condition="host launch exceeded its deadline without observable output or a detectable Stars! process"
-        diagnostic={
-            "timeout_seconds":cfg.host_timeout_seconds,
-            "elapsed_seconds":round(time.time()-started,3),
-            "command":cmd,
-            "working_directory":str(hst.parent),
-            "stars_process_ids":pids,
-            "tracked_files_changed":files_changed,
-            "tracked_before":before,
-            "tracked_after":after,
-            "assessment":condition,
-        }
-        diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
-        diagnostic_path.write_text(json.dumps(diagnostic,indent=2),encoding="utf-8")
-        raise RuntimeError(
-            f"Stars! host timed out after {cfg.host_timeout_seconds}s; {condition}. "
-            f"See {diagnostic_path}"
-        ) from exc
-    (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(cp.stdout or "",encoding="utf-8")
-    (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(cp.stderr or "",encoding="utf-8")
-
-    if cfg.prevent_parallel_stars:
-        # Some legacy launchers return before the actual GUI/host child exits.
-        process_exited=_wait_until_no_stars_process(
-            cfg.stars_exe,
-            timeout_seconds=cfg.host_timeout_seconds,
-            poll_seconds=cfg.host_poll_seconds,
-        )
-        if not process_exited:
+        try:
+            # Popen, rather than run, so the dialog watcher can claim this
+            # process id before Stars! paints a message box. On current
+            # Windows that process is otvdmw.exe, not stars.exe.
+            host_proc=subprocess.Popen(
+                cmd,
+                cwd=str(hst.parent),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=creationflags,
+            )
+            if dialog_watcher is not None:
+                dialog_watcher.watch_pid(host_proc.pid)
+            try:
+                stdout, stderr = host_proc.communicate(timeout=cfg.host_timeout_seconds)
+            except subprocess.TimeoutExpired:
+                host_proc.kill()
+                stdout, stderr = host_proc.communicate()
+                raise subprocess.TimeoutExpired(
+                    cmd,
+                    cfg.host_timeout_seconds,
+                    output=stdout,
+                    stderr=stderr,
+                )
+            cp=subprocess.CompletedProcess(cmd, int(host_proc.returncode or 0), stdout or "", stderr or "")
+        except subprocess.TimeoutExpired as exc:
+            stdout=exc.stdout or ""
+            stderr=exc.stderr or ""
+            if isinstance(stdout,bytes):
+                stdout=stdout.decode(errors="replace")
+            if isinstance(stderr,bytes):
+                stderr=stderr.decode(errors="replace")
+            (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(stdout,encoding="utf-8")
+            (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(stderr,encoding="utf-8")
+            after=_file_signature(tracked_outputs)
             pids=_stars_processes_running(cfg.stars_exe)
-            diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
-            diagnostic_path.write_text(json.dumps({
+            files_changed=after!=before
+            if pids and not files_changed:
+                condition="likely modal/error condition: Stars! is still present and tracked game files did not change"
+            elif pids:
+                condition="slow hosting or a child process still running: Stars! remains present after file activity"
+            elif files_changed:
+                condition="slow hosting/launcher return: tracked files changed but the launch exceeded its deadline"
+            else:
+                condition="host launch exceeded its deadline without observable output or a detectable Stars! process"
+            diagnostic={
                 "timeout_seconds":cfg.host_timeout_seconds,
-                "phase":"waiting_for_Stars_process_exit",
+                "elapsed_seconds":round(time.time()-started,3),
                 "command":cmd,
                 "working_directory":str(hst.parent),
                 "stars_process_ids":pids,
+                "tracked_files_changed":files_changed,
                 "tracked_before":before,
-                "tracked_current":_file_signature(tracked_outputs),
-                "assessment":"slow hosting or likely modal/error condition; Stars! remained running",
-            },indent=2),encoding="utf-8")
+                "tracked_after":after,
+                "assessment":condition,
+            }
+            diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+            diagnostic_path.write_text(json.dumps(diagnostic,indent=2),encoding="utf-8")
             raise RuntimeError(
-                f"Stars! remained running for {cfg.host_timeout_seconds}s after launch return; "
-                f"possible modal/error condition. See {diagnostic_path}"
-            )
+                f"Stars! host timed out after {cfg.host_timeout_seconds}s; {condition}. "
+                f"See {diagnostic_path}"
+            ) from exc
+        (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(cp.stdout or "",encoding="utf-8")
+        (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(cp.stderr or "",encoding="utf-8")
 
-    settled=_wait_for_files_to_change_and_settle(
-        tracked_outputs,before,
-        timeout_seconds=cfg.host_timeout_seconds,
-        poll_seconds=cfg.host_poll_seconds,
-        settle_seconds=cfg.host_settle_seconds,
+        if cfg.prevent_parallel_stars:
+            # Some legacy launchers return before the actual GUI/host child exits.
+            process_exited=_wait_until_no_stars_process(
+                cfg.stars_exe,
+                timeout_seconds=cfg.host_timeout_seconds,
+                poll_seconds=cfg.host_poll_seconds,
+            )
+            if not process_exited:
+                pids=_stars_processes_running(cfg.stars_exe)
+                diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+                diagnostic_path.write_text(json.dumps({
+                    "timeout_seconds":cfg.host_timeout_seconds,
+                    "phase":"waiting_for_Stars_process_exit",
+                    "command":cmd,
+                    "working_directory":str(hst.parent),
+                    "stars_process_ids":pids,
+                    "tracked_before":before,
+                    "tracked_current":_file_signature(tracked_outputs),
+                    "assessment":"slow hosting or likely modal/error condition; Stars! remained running",
+                },indent=2),encoding="utf-8")
+                raise RuntimeError(
+                    f"Stars! remained running for {cfg.host_timeout_seconds}s after launch return; "
+                    f"possible modal/error condition. See {diagnostic_path}"
+                )
+
+        settled=_wait_for_files_to_change_and_settle(
+            tracked_outputs,before,
+            timeout_seconds=cfg.host_timeout_seconds,
+            poll_seconds=cfg.host_poll_seconds,
+            settle_seconds=cfg.host_settle_seconds,
+        )
+        if not settled:
+            after=_file_signature(tracked_outputs)
+            diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+            diagnostic_path.write_text(json.dumps({
+                "timeout_seconds":cfg.host_timeout_seconds,
+                "phase":"waiting_for_generated_files_to_change_and_settle",
+                "command":cmd,
+                "working_directory":str(hst.parent),
+                "stars_process_ids":_stars_processes_running(cfg.stars_exe),
+                "tracked_files_changed":after!=before,
+                "tracked_before":before,
+                "tracked_current":after,
+                "assessment":(
+                    "tracked files changed but did not settle; hosting may still be slow"
+                    if after!=before else
+                    "tracked files never changed; likely modal/error condition or rejected order files"
+                ),
+            },indent=2),encoding="utf-8")
+        return cp, settled
+    finally:
+        _stop_stars_dialog_watcher(dialog_watcher)
+
+
+def _start_stars_dialog_watcher(cfg: WindowsAutoHostConfig, turn_dir: Path, audit_tag: str):
+    """Watch the configured Stars! executable for blocking message boxes."""
+
+    if os.name != "nt" or not cfg.dismiss_stars_dialogs:
+        return None
+    from .stars_dialog_watcher import StarsDialogWatcher
+    watcher=StarsDialogWatcher(
+        cfg.stars_exe,
+        log_path=turn_dir/f"{audit_tag}-dismissed-dialogs.jsonl",
     )
-    if not settled:
-        after=_file_signature(tracked_outputs)
-        diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
-        diagnostic_path.write_text(json.dumps({
-            "timeout_seconds":cfg.host_timeout_seconds,
-            "phase":"waiting_for_generated_files_to_change_and_settle",
-            "command":cmd,
-            "working_directory":str(hst.parent),
-            "stars_process_ids":_stars_processes_running(cfg.stars_exe),
-            "tracked_files_changed":after!=before,
-            "tracked_before":before,
-            "tracked_current":after,
-            "assessment":(
-                "tracked files changed but did not settle; hosting may still be slow"
-                if after!=before else
-                "tracked files never changed; likely modal/error condition or rejected order files"
-            ),
-        },indent=2),encoding="utf-8")
-    return cp, settled
+    watcher.start()
+    return watcher
+
+
+def _stop_stars_dialog_watcher(watcher) -> None:
+    if watcher is not None:
+        watcher.stop()
 
 
 def _sha256(path: Path) -> str:

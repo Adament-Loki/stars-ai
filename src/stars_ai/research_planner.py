@@ -11,17 +11,22 @@ from .expansion_research import expansion_research_demands
 from .colony_planner import colony_planet_is_eligible
 from .models import GameState
 from .persona import StrategicPlan
-from .planet_economy import decode_race_economy, estimated_operating_resources
+from .planet_economy import decode_race_economy, estimated_operating_resources, projected_population_growth
 from .research_capabilities import ResearchCapability, stock_capability_catalog
+from .research_cost import field_cost_label, field_cost_percent, research_turns, resources_to_requirements
 from .starsapi_items import (
     BEAM,
+    ELECTRICAL,
     TORPEDO,
     MINING_ROBOT,
     component_spec,
+    prt_id,
+    lrts,
     proven_available_components,
     stock_component_database,
 )
 from .terraforming import evaluate_terraforming
+from .turn_state import mapping as turn_mapping
 from .util import distance
 
 
@@ -98,8 +103,21 @@ class ResearchDecision:
         return asdict(self) | {"field": self.current_field}
 
 
+def _cost_setting_phrase(state: GameState, requirements: dict) -> str:
+    """Name the racial price of each field this goal still has to buy."""
+    parts = []
+    for field in FIELDS:
+        if field not in (requirements or {}):
+            continue
+        if int(requirements[field]) <= int(getattr(state.tech, field, 0) or 0):
+            continue
+        percent = field_cost_percent(state.race, field)
+        parts.append(f"{field} {field_cost_label(percent)}")
+    return ", ".join(parts) if parts else "no unpaid levels"
+
+
 def _watchdog(state: GameState) -> dict[str, Any]:
-    return dict((state.native or {}).get("strategic_watchdog") or {})
+    return turn_mapping(state, "strategic_watchdog")
 
 
 def _competitive_tech_pressure(state: GameState) -> dict[str, Any]:
@@ -191,6 +209,134 @@ def _terraform_value(state: GameState, capability: ResearchCapability) -> tuple[
         gain += int(after) - int(before)
         improved += 1
     return min(3.0, gain / 35.0), improved
+
+
+def _terraform_growth(state: GameState, capability: ResearchCapability) -> tuple[int, int, int]:
+    """Extra yearly colonists, and how many of the improved worlds are weak.
+
+    A low-habitability world is one under 50%. The growth delta uses the same
+    crowding model as the population planner, with habitability raised to the
+    level this research step makes available.
+    """
+    future = _tech_after(state, capability.requirements)
+    extra = low = improved = 0
+    for planet in state.planets:
+        if planet.owner != state.player_id or not planet.observed:
+            continue
+        before = evaluate_terraforming(state, planet)
+        after = evaluate_terraforming(future, planet)
+        current_hab = before.current_habitability
+        tech_hab = after.tech_habitability
+        if current_hab is None or tech_hab is None or int(tech_hab) <= int(current_hab):
+            continue
+        improved += 1
+        if int(planet.habitability or current_hab) < 50:
+            low += 1
+        grown = replace(planet, habitability=int(tech_hab))
+        extra += max(0, projected_population_growth(grown, state.race) - projected_population_growth(planet, state.race))
+    return extra, low, improved
+
+
+def _ar_energy_demand(state: GameState) -> ResearchDemand | None:
+    """Energy is Alternate Reality's factory. Each level raises the resource term."""
+    if not decode_race_economy(state.race).alternate_reality:
+        return None
+    current = int(state.tech.energy or 0)
+    if current >= 26:
+        return None
+    target = current + 1
+    ratio = (target + 1) / max(1, current + 1)
+    capability = ResearchCapability(
+        capability_id=f"race:ar_energy:{target}",
+        name=f"Energy {target} resource multiplier",
+        category="economy",
+        requirements={"energy": target},
+        post_unlock_action=(
+            "Re-estimate empire resources. Alternate Reality production is the "
+            "population term times (Energy + 1) / 10."
+        ),
+        source="Alternate Reality energy resource rule",
+        tags=("race_resource", "growth_unlock"),
+        unlocks=(f"Energy {target}",),
+    )
+    return ResearchDemand(
+        capability,
+        min(3.0, 1.4 + ratio),
+        min(3.0, 0.8 + ratio),
+        1.0,
+        min(3.0, ratio),
+        False,
+        (
+            f"Alternate Reality resources scale with Energy. Level {current} uses "
+            f"multiplier {(current + 1) / 10:.1f}; level {target} uses {(target + 1) / 10:.1f}."
+        ),
+    )
+
+
+def _component_is_legal(state: GameState, spec) -> bool:
+    if spec.required_prt is not None and prt_id(state) != int(spec.required_prt):
+        return False
+    if spec.required_lrt is not None and str(spec.required_lrt).upper() not in lrts(state):
+        return False
+    if spec.is_mystery_trader_item:
+        return False
+    return True
+
+
+def _battle_computer_demand(state: GameState, designs: list[dict]) -> ResearchDemand | None:
+    """A short Electronics detour when the next battle computer is nearly funded."""
+    combat = any(str(design.get("role", "")).casefold() == "combat" for design in designs)
+    if not combat:
+        return None
+    best = None
+    for (category, item_id), _raw in stock_component_database().components.items():
+        if int(category) != ELECTRICAL:
+            continue
+        spec = component_spec(category, item_id)
+        if "battle" not in spec.name.casefold() or not _component_is_legal(state, spec):
+            continue
+        requirements = {
+            field: int(level)
+            for field, level in zip(FIELDS, spec.tech_required)
+            if int(level) > 0
+        }
+        if not requirements or all(
+            int(getattr(state.tech, field, 0) or 0) >= level for field, level in requirements.items()
+        ):
+            continue
+        cost = resources_to_requirements(state.race, state.tech, requirements)
+        if best is None or cost < best[0]:
+            best = (cost, spec, requirements)
+    if best is None:
+        return None
+    _cost, spec, requirements = best
+    turns, cost, _budget = research_turns(state, requirements)
+    if turns > 3:
+        return None
+    capability = ResearchCapability(
+        capability_id=f"component:battle_computer:{spec.item_id}",
+        name=spec.name,
+        category="military",
+        requirements=requirements,
+        post_unlock_action=f"Refit combat designs with {spec.name} before spending the next year on a same-gun hull.",
+        source="stock electrical component; short Electronics unlock",
+        tags=("military", "short_unlock"),
+        unlocks=(spec.name,),
+        enables_roles=("combat",),
+        requires_production_plan=True,
+    )
+    return ResearchDemand(
+        capability,
+        2.2,
+        2.0,
+        1.0,
+        2.4,
+        False,
+        (
+            f"{spec.name} is {turns} funded year(s) away ({cost:,} resources). "
+            "Take the Electronics detour, then return to the longer weapon or hull goal."
+        ),
+    )
 
 
 def _goal_capabilities(state: GameState, plan: StrategicPlan | None) -> list[ResearchCapability]:
@@ -516,6 +662,9 @@ def _build_demands(
     remote_mining_demand=_remote_miner_research_demand(state,designs)
     if remote_mining_demand is not None:
         demands.append(remote_mining_demand)
+    energy_demand = _ar_energy_demand(state)
+    if energy_demand is not None:
+        demands.append(energy_demand)
 
     for capability in catalog:
         if capability.unlocked(state.tech):
@@ -589,14 +738,33 @@ def _build_demands(
             value, improved = _terraform_value(state, capability)
             if improved == 0 or value <= 0:
                 continue
+            extra, low_worlds, growth_worlds = _terraform_growth(state, capability)
+            growth = low_worlds >= 3 and extra >= 1_000
+            if growth:
+                capability = replace(capability, tags=tuple(capability.tags) + ("growth_unlock",))
+                need = min(3.0, 1.15 + low_worlds * 0.3)
+                urgency = 1.8
+                value = max(value, min(3.0, extra / 12_000))
+            else:
+                need = max(1.0, colonization_pressure)
+                urgency = 1.25 if expansion_debt else 1.0
+            explanation = (
+                f"This exact breakpoint improves {improved} owned or attainable colony world(s); "
+                f"aggregate habitability gain={round(value * 35)}."
+            )
+            if growth:
+                explanation += (
+                    f" {low_worlds} of those worlds are under 50% habitability; "
+                    f"the step adds about {extra:,} colonists/year of growth."
+                )
             demands.append(ResearchDemand(
                 capability,
-                max(1.0, colonization_pressure),
-                1.25 if expansion_debt else 1.0,
+                need,
+                urgency,
                 1.0,
                 value,
                 False,
-                f"This exact breakpoint improves {improved} owned or attainable colony world(s); aggregate habitability gain={round(value * 35)}.",
+                explanation,
             ))
 
     demands.extend(expansion_demands)
@@ -655,6 +823,9 @@ def _build_demands(
             ),
         ))
 
+    computer = _battle_computer_demand(state, designs)
+    if computer is not None:
+        demands.append(computer)
     demands.extend(_external_demands(state))
     return demands
 
@@ -809,18 +980,30 @@ def _score(
         + 24.0 * demand.urgency
         + 18.0 * demand.value
     ) * demand.utilization * min(1.6, field_factor)
-    score -= 5.0 * sum(remaining.values())
+    turns, _cost, _budget = research_turns(state, demand.capability.requirements)
+    # A long level climb is not a one-year project. Short, useful unlocks keep
+    # a modest advantage without letting a one-level vanity goal outrank a hull.
+    score -= min(18.0, 0.45 * turns)
 
     if demand.military_emergency:
         score += 100.0
     elif "explicit_goal" in demand.capability.tags:
         score += 160.0
+    elif "race_resource" in demand.capability.tags:
+        # Alternate Reality's Energy level is the resource term other races get
+        # from factories. It stays ahead of a generic hull while the empire is
+        # still opening.
+        score *= 1.7
     elif opening_network_debt:
         # Before ~T30 the default research problem is expansion infrastructure:
         # range, freighter throughput, legal frontier bases, and useful gates.
         # Terraforming can still matter, but normally after mobility/logistics.
         if ONION_NETWORK_TAG in demand.capability.tags:
             score *= 1.75
+        elif "growth_unlock" in demand.capability.tags:
+            # Many weak worlds gaining a real growth step outrank a routine
+            # terraforming nibble, including during the opening.
+            score *= 1.2
         elif demand.capability.category == "terraforming":
             score *= 0.55
         elif demand.capability.category in EXPANSION_CATEGORIES:
@@ -838,6 +1021,10 @@ def _score(
         else:
             score *= 1.35 if demand.capability.category in EXPANSION_CATEGORIES else 0.25
 
+    if "short_unlock" in demand.capability.tags and turns <= 3:
+        # A battle computer, shield, or similar fitting that is only a couple
+        # of funded years away is a detour, not a new research program.
+        score += 14.0 * max(0.5, demand.value)
     if not demand.capability.executable:
         score *= 0.78
     requires_production=(
@@ -879,6 +1066,7 @@ def _contributors(
     sprint: bool,
     expansion_debt: bool,
     military_emergency: bool,
+    planet_actions: dict | None = None,
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
     owned = [p for p in state.planets if p.owner == state.player_id]
     existing = (state.native or {}).get("production_by_planet", {}) or {}
@@ -894,6 +1082,8 @@ def _contributors(
         and not bool(getattr(hub,"graduated",False))
     }
     protected: set[int] = set()
+    actions = {int(key): value for key, value in (planet_actions or {}).items()}
+    tech_ids = {planet_id for planet_id, role in actions.items() if role == "tech"}
     candidates = []
     for planet in owned:
         queue = existing.get(str(planet.id), existing.get(planet.id, [])) or []
@@ -908,6 +1098,7 @@ def _contributors(
             custom
             or fragile
             or int(planet.id) in growth_hub_ids
+            or actions.get(int(planet.id)) in {"ships", "hold_line", "industrialize"}
             # A real military emergency can reserve a shipyard.  Expansion
             # debt alone must not make every mature home/core world ineligible:
             # that was the systemic zero-contributor sprint failure.
@@ -915,10 +1106,16 @@ def _contributors(
         ):
             protected.add(int(planet.id))
             continue
-        resources = int(estimated_operating_resources(planet, economy)["estimated_resources"])
+        resources = int(estimated_operating_resources(
+            planet, economy, energy_tech=int(state.tech.energy or 0),
+        )["estimated_resources"])
         candidates.append((resources, int(planet.population or 0), int(planet.id)))
     if not sprint or not candidates:
         return (), tuple(sorted(protected))
+    if tech_ids:
+        tech_candidates = [row for row in candidates if row[2] in tech_ids]
+        if tech_candidates:
+            candidates = tech_candidates
     candidates.sort(reverse=True)
     count = max(1, min(3, math.ceil(len(owned) / 3)))
     selected = tuple(pid for resources, _, pid in candidates[:count] if resources > 0)
@@ -1062,7 +1259,9 @@ def plan_research(
             hysteresis_note = " Incumbent retained because the challenger was less than 25% stronger."
 
     remaining = chosen.capability.remaining(state.tech)
-    estimated_turns = max(1, sum(remaining.values()))
+    estimated_turns, resource_cost, yearly_budget = research_turns(state, chosen.capability.requirements)
+    if yearly_budget <= 0:
+        estimated_turns = max(1, sum(remaining.values()) or 1)
     previous = dict(getattr(memory, "research_state", {}) or {}) if memory is not None else {}
     recently_unlocked: list[str] = []
     previous_req = dict(previous.get("requirements") or {})
@@ -1125,9 +1324,13 @@ def plan_research(
         posture = ResearchPosture.TARGETED
 
     current_field, next_field = _field_sequence(chosen.capability, state, plan)
-    contributors, protected = _contributors(state, sprint, expansion_debt, emergency)
+    contributors, protected = _contributors(
+        state, sprint, expansion_debt, emergency, getattr(plan, "planet_actions", {}) or {},
+    )
     contributor_resources={
-        int(planet.id):int(estimated_operating_resources(planet,decode_race_economy(state.race))["estimated_resources"])
+        int(planet.id):int(estimated_operating_resources(
+            planet, decode_race_economy(state.race), energy_tech=int(state.tech.energy or 0),
+        )["estimated_resources"])
         for planet in state.planets
         if int(planet.id) in contributors
     }
@@ -1156,7 +1359,10 @@ def plan_research(
     expected_resources=sum(contributor_resources.values()) if sprint else 0
     reason = (
         f"{posture.value}: pursue {chosen.capability.name}; score={chosen_score:.1f}, "
-        f"remaining={remaining}, horizon~{estimated_turns} turn(s), utilization={chosen.utilization:.2f}. "
+        f"remaining={remaining}, cumulative cost={resource_cost:,} resources "
+        f"({_cost_setting_phrase(state, chosen.capability.requirements)}), "
+        f"budget≈{yearly_budget:,}/year, horizon~{estimated_turns} turn(s), "
+        f"utilization={chosen.utilization:.2f}. "
         f"{chosen.explanation} Post-unlock: {chosen.capability.post_unlock_action}"
         f"{hysteresis_note}"
     )
@@ -1185,6 +1391,30 @@ def plan_research(
     if sprint_blocked_reason:
         reason += f" SPRINT DEFERRED: {sprint_blocked_reason}"
 
+    state.native["research_goals"] = [
+        {
+            "capability_id": demand.capability.capability_id,
+            "name": demand.capability.name,
+            "tier": (
+                "race_resource" if "race_resource" in demand.capability.tags
+                else "growth" if "growth_unlock" in demand.capability.tags
+                else "short_unlock" if "short_unlock" in demand.capability.tags
+                else "fleet" if demand.capability.category in {"military", "logistics", "expansion"}
+                else "general"
+            ),
+            "requirements": dict(demand.capability.requirements),
+            "resource_cost": resources_to_requirements(
+                state.race, state.tech, demand.capability.requirements,
+            ),
+            "field_costs": {
+                field: field_cost_label(field_cost_percent(state.race, field))
+                for field in demand.capability.requirements
+            },
+            "turns": research_turns(state, demand.capability.requirements)[0],
+            "score": goal_score,
+        }
+        for demand, goal_score in candidates[:6]
+    ]
     decision = ResearchDecision(
         capability_id=chosen.capability.capability_id,
         capability_name=chosen.capability.name,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from ..diplomacy import allied_player_ids
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
 from ..util import distance
@@ -18,6 +19,7 @@ from ..exploration_router import (
 )
 from ..scout_policy import enemy_contact_summary, custom_scout_missions
 from ..planetary_scanners import deployed_planetary_sensor_network
+from ..turn_state import mapping as turn_mapping, sequence as turn_sequence
 
 
 MAX_QUEUED_SCOUT_WAYPOINTS=7
@@ -218,6 +220,34 @@ def _record_scout_productivity_invariant(
     })
 
 
+def _outward_unknown(state, candidates, probe):
+    """One unknown world on the far side of the allied cluster.
+
+    Home-ring clearance still runs first. After that, a single scout starts
+    toward the open edge instead of lingering beside allied worlds.
+    """
+
+    allies = allied_player_ids(state)
+    allied = [planet for planet in state.planets if planet.owner in allies]
+    if not allied:
+        return None
+    center_x = sum(planet.position.x for planet in allied) / len(allied)
+    center_y = sum(planet.position.y for planet in allied) / len(allied)
+    reachable = [
+        planet for planet in candidates
+        if mission_reachable(probe, planet.position, "scan")
+    ]
+    if not reachable:
+        return None
+    return max(
+        reachable,
+        key=lambda planet: (
+            math.hypot(planet.position.x - center_x, planet.position.y - center_y),
+            -int(planet.id),
+        ),
+    )
+
+
 def add_exploration_orders(
     state: GameState,
     orders: OrderSet,
@@ -259,18 +289,12 @@ def add_exploration_orders(
     if not probes:
         return
 
-    pressure=float(
-        ((state.native or {}).get("strategic_watchdog") or {}).get(
-            "exploration_pressure",1.0
-        )
-    )
+    pressure=float(turn_mapping(state, "strategic_watchdog").get("exploration_pressure", 1.0))
     scout_weight=(
         (plan.objective("scout")*plan.mission("scan")) if plan else 1.0
     )*pressure
 
-    recent_targets={
-        int(x) for x in (state.native or {}).get("recent_scan_targets",[])
-    }
+    recent_targets={int(x) for x in turn_sequence(state, "recent_scan_targets")}
 
     if memory is not None:
         memory.prune_scout_routes(state)
@@ -474,6 +498,7 @@ def add_exploration_orders(
     } | pending_scout_splits
 
     route_diags=[]
+    outward_scout_assigned=False
 
     for probe in probes:
         fid=int(probe.id)
@@ -613,12 +638,16 @@ def add_exploration_orders(
                     sector=scout_sector(state,probe),
                 )
             else:
+                outward=None if outward_scout_assigned else _outward_unknown(state, candidates, probe)
+                if outward is not None:
+                    outward_scout_assigned=True
                 route=build_probe_route(
                     state,probe,candidates,
                     reserved=assigned,
                     pressure=pressure,
                     max_stops=active_route_limit,
                     sector=scout_sector(state,probe),
+                    first_planet_id=None if outward is None else int(outward.id),
                 )
             if route is not None:
                 route_ids=list(route.planet_ids)
@@ -870,11 +899,7 @@ def deconflict_recon_orders(state: GameState, orders: OrderSet) -> None:
             o.payload["warp"]=1
             o.reason += " Recon deconfliction found no unique fuel-safe unknown target; native writer should skip this duplicate move."
             continue
-        pressure=float(
-            ((state.native or {}).get("strategic_watchdog") or {}).get(
-                "exploration_pressure",1.0
-            )
-        )
+        pressure=float(turn_mapping(state, "strategic_watchdog").get("exploration_pressure", 1.0))
         route=build_probe_route(
             state,f,alternatives,
             reserved=used,

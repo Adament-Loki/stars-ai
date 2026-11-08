@@ -15,6 +15,7 @@ from ..models import OrderSet
 from ..persona import BalancedPersona, StrategicPlan
 from ..research_planner import ResearchDecision, plan_research
 from ..strategic_watchdog import evaluate_strategic_watchdog
+from ..turn_state import publish as publish_turn_state
 from .ai_state import AIState, PersistentAIState, TurnAIState, TurnInput
 from .context import TurnContext
 from .decision_journal import DecisionJournal
@@ -97,6 +98,10 @@ class StarsAI:
         memory = turn_input.memory or AgentMemory()
         persona = turn_input.persona or BalancedPersona()
         ai_state = AIState.from_agent_memory(turn_input.state, memory)
+        # Domain functions still receive ``GameState`` during the incremental
+        # migration.  Keep the typed current-turn state reachable without
+        # serializing it or using ``GameState.native`` as an AI scratch map.
+        setattr(turn_input.state, "_turn_ai_state", ai_state.turn)
         context = TurnContext(
             turn_input=turn_input,
             state=turn_input.state,
@@ -121,27 +126,36 @@ class StarsAI:
         """Run legacy observation, action, route, and movement reconciliation."""
 
         work.intel_diagnostics = work.memory.reconcile_state(work.state)
-        work.state.native["persistent_intel"] = dict(work.intel_diagnostics)
+        publish_turn_state(work.state, "persistent_intel", work.intel_diagnostics)
         capability_diagnostics = work.memory.reconcile_capability_execution(work.state)
-        work.state.native["capability_execution_diagnostics"] = capability_diagnostics
+        publish_turn_state(
+            work.state,
+            "capability_execution_diagnostics",
+            capability_diagnostics,
+        )
+        work.memory.prepare_empire_resources(work.state)
         work.memory.prepare_territorial_exposure(
             work.state,
             work.intel_diagnostics.get("lost_owned_planet_ids", []),
         )
         work.memory.sync_scout_routes_from_native(work.state)
         work.command_outcomes = work.memory.evaluate_action_outcomes(work.state)
-        work.state.native["command_outcomes"] = work.command_outcomes
+        publish_turn_state(work.state, "command_outcomes", work.command_outcomes)
         work.movement_diagnostics = work.memory.update_movement_progress(work.state)
-        work.state.native["movement_progress_diagnostics"] = work.movement_diagnostics
-        work.state.native["recent_scan_targets"] = sorted(
-            work.memory.recent_scan_target_ids(work.state.year, cooldown_years=3)
+        publish_turn_state(
+            work.state,
+            "movement_progress_diagnostics",
+            work.movement_diagnostics,
         )
+        publish_turn_state(work.state, "recent_scan_targets", sorted(
+            work.memory.recent_scan_target_ids(work.state.year, cooldown_years=3)
+        ))
 
     def _evaluate_strategy(self, work: _TurnWork) -> None:
         """Evaluate the watchdog, then select the same persona plan as before."""
 
         watchdog = evaluate_strategic_watchdog(work.state, work.memory)
-        work.state.native["strategic_watchdog"] = dict(watchdog)
+        publish_turn_state(work.state, "strategic_watchdog", watchdog)
 
         work.plan = work.persona.build_plan(work.state)
         work.context.strategic_plan = work.plan
@@ -157,11 +171,11 @@ class StarsAI:
             },
         )
         work.orders.notes.append(f"Persona: {work.plan.persona_name}")
-        work.state.native["strategic_phase"] = {
+        publish_turn_state(work.state, "strategic_phase", {
             "phase": work.plan.phase,
             "reason": work.plan.phase_reason,
             "assessment": dict(work.plan.phase_assessment),
-        }
+        })
         work.orders.notes.append(f"PHASE: {work.plan.phase} — {work.plan.phase_reason}")
         work.orders.notes.append(
             f"PERSISTENT INTEL: current M observed={work.intel_diagnostics['current_m_observed']}, "
@@ -190,7 +204,11 @@ class StarsAI:
             priority=work.research_decision.allocation_percent,
             evidence=work.research_decision.to_payload(),
         )
-        work.state.native["research_strategy"] = work.research_decision.to_payload()
+        publish_turn_state(
+            work.state,
+            "research_strategy",
+            work.research_decision.to_payload(),
+        )
         work.orders.notes.append(f"RESEARCH PLAN: {work.research_decision.reason}")
         for unlocked in work.research_decision.recently_unlocked:
             work.orders.notes.append(
@@ -257,9 +275,10 @@ class StarsAI:
         # Non-native adapters commit semantic intent directly. The native writer
         # snapshots this state, rolls it back, and reapplies emitted routes only.
         work.memory.record_scan_orders(work.orders, work.state.year)
+        work.memory.commit_empire_resources(work.state)
         work.memory.commit_territorial_exposure(work.state)
         watchdog = evaluate_strategic_watchdog(work.state, work.memory)
-        work.state.native["strategic_watchdog"] = dict(watchdog)
+        publish_turn_state(work.state, "strategic_watchdog", watchdog)
         work.memory.append_kpi(watchdog)
 
         work.memory.last_year = work.state.year
@@ -288,7 +307,16 @@ class StarsAI:
             )
 
         work.ai_state.persistent = PersistentAIState.from_agent_memory(work.memory)
-        work.ai_state.turn = TurnAIState.from_legacy_native(
-            work.state.native,
+        # Planner implementations still publish a few legacy-named values.
+        # Pull the Phase 10 strategic values into typed state at the boundary
+        # and remove them from the observed/native map before returning.
+        for key in (
+            "territorial_defense",
+            "research_strategy",
+        ):
+            if key in work.state.native:
+                publish_turn_state(work.state, key, work.state.native.pop(key))
+        work.ai_state.turn.fleet_intents = TurnAIState.from_legacy_native(
+            None,
             fleet_intents=work.legacy_fleet_intents,
-        )
+        ).fleet_intents
