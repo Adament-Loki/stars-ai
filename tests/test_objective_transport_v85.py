@@ -4,7 +4,7 @@ from stars_ai.objective_production import _pick, plan_objective_ship_builds
 
 
 def _state(bulk=False):
-    home=Planet(0,"Home",Position(0,0),owner=1,habitability=100,population=120000,
+    home=Planet(0,"Home",Position(0,0),owner=1,habitability=100,population=320_000,
         ironium=1600 if bulk else 300,boranium=1000 if bulk else 220,germanium=900 if bulk else 220,
         native={"is_homeworld":True,"starbase_capabilities":{"can_build_ships":True,"can_refuel":True}})
     child=Planet(1,"Child",Position(130,0),owner=1,habitability=80,population=50000,

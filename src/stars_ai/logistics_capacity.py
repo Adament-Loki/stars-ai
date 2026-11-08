@@ -21,7 +21,7 @@ import math
 from typing import Any
 
 from .expansion_network import evaluate_expansion_network
-from .planet_economy import planet_population_capacity, projected_population_growth
+from .planet_economy import breeder_export_floor, projected_population_growth
 from .starbase_planner import plan_support_base_material_demands
 from .util import distance
 
@@ -33,6 +33,7 @@ HOMEWORLD_POST_EXPORT_FLOOR = 80_000
 OPENING_HUB_HOLD_FRACTION = 0.25
 LATE_HUB_HOLD_FRACTION = 0.33
 POPULATION_PLANNING_WARP = 7
+POPULATION_DELIVERY_HORIZON_COLONISTS = 200_000
 
 # Production deliberately keeps the opening population fleet compact. Aggressive
 # round-trip micro is preferred to solving every backlog with more hulls.
@@ -75,6 +76,12 @@ class LogisticsCapacitySnapshot:
     desired_population_freighters: int
     live_freighter_count: int
     population_committed_freighters: int
+    downstream_population_backlog: int
+    exportable_population: int
+    protected_population_floor: int
+    available_freighter_capacity_kt: int
+    active_population_transport_capacity_kt: int
+    desired_population_transport_capacity_kt: int
     industrial_freighters_available: int
     bulk_shipyard_deficit_kt: int
     bulk_donor_surplus_kt: int
@@ -86,6 +93,97 @@ class LogisticsCapacitySnapshot:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _freighter_capacity(fleet: Any) -> int:
+    native = getattr(fleet, "native", {}) or {}
+    return max(0, int(
+        getattr(fleet, "cargo_capacity", 0)
+        or native.get("cargo_capacity", 0)
+        or 0
+    ))
+
+
+def _freighter_population_cargo(fleet: Any) -> int:
+    cargo = (getattr(fleet, "native", {}) or {}).get("cargo", {}) or {}
+    return max(
+        int(getattr(fleet, "cargo_population", 0) or 0),
+        int(cargo.get("population", 0) or 0) * 100,
+    )
+
+
+def _freighter_cargo_mass(fleet: Any) -> int:
+    cargo = (getattr(fleet, "native", {}) or {}).get("cargo", {}) or {}
+    return sum(max(0, int(cargo.get(kind, 0) or 0)) for kind in (
+        "ironium", "boranium", "germanium", "population",
+    ))
+
+
+def population_transport_throughput(
+    state: Any,
+    snapshot: LogisticsCapacitySnapshot | None = None,
+    *,
+    assigned_population_fleet_ids: tuple[int, ...] | list[int] | set[int] = (),
+) -> dict[str, Any]:
+    """Return the explicit capacity contract for population transport.
+
+    ``active`` means a hold is carrying population, is remembered as being on
+    a population leg, or was assigned to the population shuttle this planning
+    pass.  Empty holds at owned worlds are separately *staged* capacity: they
+    can be reserved from mineral work immediately, but must not be counted a
+    second time after the scheduler assigns them.  The shortfall is therefore
+    the missing capacity after both active and staged usable hulls are counted.
+    """
+    snapshot = snapshot or evaluate_logistics_capacity(state)
+    assigned = {int(fleet_id) for fleet_id in assigned_population_fleet_ids}
+    active_ids: set[int] = set()
+    staged_ids: set[int] = set()
+    active_kt = 0
+    staged_kt = 0
+    for fleet in getattr(state, "fleets", []) or []:
+        if fleet.owner != state.player_id or str(fleet.role) != "freighter":
+            continue
+        capacity = _freighter_capacity(fleet)
+        if capacity <= 0:
+            continue
+        fleet_id = int(fleet.id)
+        native = getattr(fleet, "native", {}) or {}
+        mission = str(
+            native.get("transport_mission_class", native.get("mission_class", ""))
+            or ""
+        ).lower()
+        active = bool(
+            fleet_id in assigned
+            or _freighter_population_cargo(fleet) > 0
+            or mission in {"population", "population_export", "return_for_population_export"}
+        )
+        if active:
+            active_ids.add(fleet_id)
+            active_kt += capacity
+        elif fleet.destination_planet_id is None and _freighter_cargo_mass(fleet) == 0:
+            staged_ids.add(fleet_id)
+            staged_kt += capacity
+
+    desired_kt = int(snapshot.desired_population_transport_capacity_kt)
+    deployable_kt = active_kt + staged_kt
+    return {
+        "backlog_colonists": int(snapshot.downstream_population_backlog),
+        "exportable_population": int(snapshot.exportable_population),
+        "protected_source_floor": int(snapshot.protected_population_floor),
+        "active_population_transport_kt": int(active_kt),
+        "round_trip_turns": float(snapshot.average_population_round_trip_turns),
+        "desired_transport_kt": desired_kt,
+        "transport_shortfall": max(0, desired_kt - deployable_kt),
+        "staged_population_transport_kt": int(staged_kt),
+        "deployable_population_transport_kt": int(deployable_kt),
+        "active_freighter_ids": sorted(active_ids),
+        "staged_freighter_ids": sorted(staged_ids),
+        "policy": (
+            "exporter -> colony -> unload -> return -> reload; preserve the "
+            "source floor and reserve staged freight before mineral work when "
+            "population throughput is short."
+        ),
+    }
 
 
 def population_export_floor(state: Any, hub, network=None) -> int:
@@ -102,12 +200,7 @@ def population_export_floor(state: Any, hub, network=None) -> int:
     planet = next((p for p in state.planets if int(p.id) == int(hub.planet_id)), None)
     if planet is None:
         return HOMEWORLD_POST_EXPORT_FLOOR
-    if network.homeworld_id is not None and int(hub.planet_id) == int(network.homeworld_id):
-        return HOMEWORLD_POST_EXPORT_FLOOR
-    cap = max(1, int(planet_population_capacity(planet, state.race)))
-    fraction = OPENING_HUB_HOLD_FRACTION if int(network.turn) <= 30 else LATE_HUB_HOLD_FRACTION
-    late_absolute = 100_000 if int(network.turn) > 30 else HOMEWORLD_POST_EXPORT_FLOOR
-    return max(late_absolute, int(math.ceil(cap * fraction)))
+    return breeder_export_floor(planet, state.race)
 
 
 def _children_by_parent(network) -> dict[int, list]:
@@ -236,6 +329,29 @@ def _live_freighter_commitment(state: Any) -> tuple[int,int]:
     return int(live),int(population_committed)
 
 
+def _population_transport_capacity(state: Any) -> tuple[int,int]:
+    """Return (available empty hold, currently active population hold) in kT.
+
+    A hull carrying colonists or flying a remembered population leg is active
+    throughput.  Empty capacity is reported separately so production can see
+    whether it should stage existing ships or actually commission another.
+    """
+    available=0
+    active=0
+    for fleet in getattr(state,"fleets",[]) or []:
+        if fleet.owner != state.player_id or str(fleet.role) != "freighter":
+            continue
+        native=getattr(fleet,"native",{}) or {}
+        capacity=_freighter_capacity(fleet)
+        population=_freighter_population_cargo(fleet)
+        mission=str(native.get("transport_mission_class",native.get("mission_class","")) or "").lower()
+        if population>0 or mission in {"population","population_export","return_for_population_export"}:
+            active+=capacity
+        elif fleet.destination_planet_id is None and _freighter_cargo_mass(fleet) == 0:
+            available+=capacity
+    return int(available),int(active)
+
+
 def _bulk_industrial_demand(state: Any, network) -> tuple[int, int, int, int]:
     """Return (deficit, donor surplus, transferable, active shipyard builds) in kT.
 
@@ -317,6 +433,15 @@ def evaluate_logistics_capacity(state: Any) -> LogisticsCapacitySnapshot:
     pulse_rate = sum(float(x.sustainable_pulses_per_turn) for x in statuses)
     cycle = _round_trip_turns(state, network, statuses)
     desired_pop = int(math.ceil(pulse_rate * cycle - 1e-9)) if pulse_rate > 0 else 0
+    population_backlog=sum(int(status.downstream_backlog or 0) for status in statuses)
+    # A huge accumulated import debt needs a concrete throughput objective,
+    # not merely a source-growth estimate.  One compact/medium hold should
+    # remove roughly 200k colonists over the planning horizon; the existing
+    # turn-based fleet cap still keeps this an incremental program.
+    backlog_freighters=int(math.ceil(
+        population_backlog / float(POPULATION_DELIVERY_HORIZON_COLONISTS)
+    )) if population_backlog else 0
+    desired_pop=max(desired_pop,backlog_freighters)
     # If there is actual downstream work and a source is ready/near-ready, keep
     # at least one suitable transport in circulation.
     if lanes and statuses and desired_pop == 0:
@@ -325,6 +450,12 @@ def evaluate_logistics_capacity(state: Any) -> LogisticsCapacitySnapshot:
     cap = OPENING_POPULATION_FREIGHTER_CAP if turn <= 20 else T30_POPULATION_FREIGHTER_CAP if turn <= 30 else LATE_POPULATION_FREIGHTER_CAP
     desired_pop = min(cap, max(0, desired_pop))
     live_freighters,population_committed=_live_freighter_commitment(state)
+    available_capacity,active_population_capacity=_population_transport_capacity(state)
+    desired_population_capacity=max(
+        0,
+        int(math.ceil(population_backlog / float(POPULATION_DELIVERY_HORIZON_COLONISTS)))
+        * POPULATION_PULSE_KT,
+    )
 
     bulk_deficit, donor_surplus, transferable, active_builds = _bulk_industrial_demand(state, network)
     large_value = bool(
@@ -351,6 +482,12 @@ def evaluate_logistics_capacity(state: Any) -> LogisticsCapacitySnapshot:
         desired_population_freighters=int(desired_pop),
         live_freighter_count=int(live_freighters),
         population_committed_freighters=int(population_committed),
+        downstream_population_backlog=int(population_backlog),
+        exportable_population=sum(int(status.exportable_population) for status in statuses),
+        protected_population_floor=sum(int(status.protected_floor) for status in statuses),
+        available_freighter_capacity_kt=int(available_capacity),
+        active_population_transport_capacity_kt=int(active_population_capacity),
+        desired_population_transport_capacity_kt=int(desired_population_capacity),
         industrial_freighters_available=max(0,int(live_freighters)-int(population_committed)),
         bulk_shipyard_deficit_kt=int(bulk_deficit),
         bulk_donor_surplus_kt=int(donor_surplus),

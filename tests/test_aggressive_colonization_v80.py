@@ -300,7 +300,7 @@ def test_t25_milestone_and_colony_force_match_aggressive_expansion_goal():
     assert "milestone needs 7 more colonies" in reason
 
 
-def test_colony_force_never_exceeds_active_need_plus_three_hulls():
+def test_colony_force_respects_the_configured_pipeline_cap():
     home = _world(0, "Home", 0, owner=1, pop=1_000_000)
     viable = [_world(i, f"P{i}", i * 10) for i in range(1, 31)]
     committed = Fleet(
@@ -315,14 +315,15 @@ def test_colony_force_never_exceeds_active_need_plus_three_hulls():
             "milestone": {"deadline_turn": 10, "new_colonies_optimal": 2},
         },
     )
+    state.native["colony_pipeline_cap"] = 6
 
     desired, reason = _desired_colony_force(state, viable, None)
 
-    # One committed target plus the two milestone/source-backed targets is the
-    # active program.  The policy permits only three uncommitted hulls beyond
-    # it, regardless of the homeworld's very large population surplus.
-    assert desired <= 6
-    assert "pipeline ceiling=need+3" in reason
+    # Every remaining claim has a sustainable source packet, so the pipeline
+    # expands to the explicit cap rather than being artificially throttled by
+    # the milestone's short-term settlement count.
+    assert desired == 6
+    assert "cap=6" in reason
 
 
 def test_duplicate_active_claims_do_not_satisfy_pipeline_or_block_queue_top_up():
@@ -401,7 +402,9 @@ def test_colony_launch_replaces_deep_scout_backlog_at_a_serial_shipyard():
     orders = OrderSet("g", state.year, 1)
     add_economic_orders(state, orders)
     queue = next(o.payload["queue"] for o in orders.orders if o.kind == "set_planet_queue")
-    assert queue[0]["item"] == "ship_design"
-    assert queue[0]["role"] == "colony"
-    assert queue[0]["quantity"] == 2
+    # With no Ironium on the source, the new colony program is not yet
+    # executable: the calculated runway-recovery mine tranche goes first.
+    assert queue[0]["item"] == "mine"
+    colony_item=next(item for item in queue if item.get("role") == "colony")
+    assert colony_item["quantity"] == 2
     assert not any(item.get("role") == "scout" for item in queue)

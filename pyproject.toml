@@ -18,4 +18,4 @@ stars-native-inspect = "stars_ai.native.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-stars_ai = ["*.mod"]
+stars_ai = ["native/resources/**/*.mod", "native/resources/**/*.md"]

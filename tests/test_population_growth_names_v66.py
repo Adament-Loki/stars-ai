@@ -37,6 +37,12 @@ def test_he_has_half_nominal_population_capacity():
     assert theoretical_max_population(r)==500_000
 
 
+def test_habitability_scales_the_crowding_capacity():
+    p=Planet(0,"Half",Position(0,0),habitability=50,population=200_000)
+    assert planet_population_capacity(p,joat())==600_000
+    assert population_capacity_fraction(p,joat())==0.34
+
+
 def test_red_planet_special_capacity():
     p=Planet(0,"Red",Position(0,0),habitability=-5,population=10_000)
     assert planet_population_capacity(p,joat())==25_000

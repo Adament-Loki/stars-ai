@@ -21,10 +21,11 @@ Native design creation is a tightly controlled live-game path; see **Native safe
 src/stars_ai/              Application package
   adapters/                JSON and native-state adapters
   autohost/                Native host configuration and order-file bridge contracts
-  native/                  Native Stars! records, history merger, and X writer
+  native/                  Native Stars! records, resources, history merger, and X writer
   strategy/                Economy, exploration, military, research, diplomacy
   rules/                   Conservative rules-engine helpers
 tests/                     Regression and native-format tests
+  TestResource/            Immutable test inputs and golden references
 examples/                  JSON turn and manifest examples
 scripts/                   Maintenance helpers
 run-example.ps1            Create a venv, install, and run the JSON example
@@ -40,11 +41,11 @@ move can break an import path, a command-line entry point, or an archived
 replay at exactly the wrong time. Documentation-only changes can continue
 safely during that period.
 
-After the playtest, the target layout is:
+The contract slice now lives in `core/`, with compatibility shims at the old import paths. The remaining target layout is:
 
 ```text
 src/stars_ai/
-  core/                  GameState/Order contracts, agent, memory, personas
+  core/                  GameState/Order contracts, agent, memory, personas (moved; old imports remain as shims)
   planning/
     expansion/           colony scoring, networks, planet promotion, scouting
     economy/             production, logistics, cargo, population movement
@@ -75,9 +76,9 @@ single large file. The first consolidation slices are intentionally narrow:
   `decision_trace`, and trace helpers become observability.
 
 Compatibility import shims will be left in place for one release after each
-move. The dated `*.pre-*.bak` files are migration evidence, not runtime code;
-after their tests and binary comparisons are captured, they should move out of
-`src/` into a dated archive or be removed from the repository.
+move. Obsolete dated `*.pre-*.bak` files have been removed from `src/`; Git
+preserves their history. Deliberate reverse-engineering patch artifacts remain
+separate from runtime source until their research value is reviewed.
 
 ### Documentation standard
 
@@ -126,17 +127,17 @@ stars-ai host-turn --manifest .\examples\game-manifest.json
 Inspect a native player turn or an existing order file:
 
 ```powershell
-stars-ai inspect-stars --mfile .\sandbox\GAME.m1 --xy .\sandbox\GAME.xy --out .\out\state.json
-stars-ai inspect-orders --xfile .\sandbox\GAME.x1 --xy .\sandbox\GAME.xy --out .\out\orders.json
+stars-ai inspect-stars --mfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.m1 --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy --out .\out\state.json
+stars-ai inspect-orders --xfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.x1 --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy --out .\out\orders.json
 ```
 
 Generate normalized AI orders from native state:
 
 ```powershell
 stars-ai play-native `
-  --mfile .\sandbox\GAME.m1 `
-  --xy .\sandbox\GAME.xy `
-  --xfile .\sandbox\GAME.x1 `
+  --mfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.m1 `
+  --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy `
+  --xfile .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.x1 `
   --player 1 `
   --out .\out\player1-orders.json `
   --state-out .\out\player1-state.json `
@@ -146,7 +147,7 @@ stars-ai play-native `
 For a lower-level native state inspection:
 
 ```powershell
-python -m stars_ai.native.cli .\sandbox\GAME.m1 --xy .\sandbox\GAME.xy --x .\sandbox\GAME.x1 --full --json-out .\out\native-state.json
+python -m stars_ai.native.cli .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.m1 --xy .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.xy --x .\tests\TestResource\sandboxes\sandbox-native-reference\GAME.x1 --full --json-out .\out\native-state.json
 ```
 
 ## Native autoplay
@@ -166,7 +167,7 @@ Use `-Noop` to validate staging and host invocation while reusing existing X fil
 .\run-autoplay.ps1 -Config .\autoplay-config.json -Noop
 ```
 
-The default controller validates the seed and live files, keeps known-good X templates, snapshots native data, merges each player's new `.m#` knowledge into `.h#`, validates that history merge, writes archive manifests and hashes, and stops on unsafe or unverified conditions. `play_on: true` continues a validated live game instead of restaging the seed.
+The default controller validates the seed and live files, keeps known-good X templates, snapshots native data, merges each player's new `.m#` knowledge into `.h#`, validates that history merge, writes archive manifests and hashes, and stops on unsafe or unverified conditions. While Stars! is hosting, it also dismisses small message boxes owned by that executable or by the ``otvdmw.exe`` wrapper Windows uses to launch it (OK, Yes, Continue, or Close). The usual “host file is in use” prompt is answered Yes. Dialogs with a text field, and Cancel or No, are left alone. `play_on: true` continues a validated live game instead of restaging the seed.
 
 Do not use a valuable game for initial native-order or Type27 design-creation experiments. Start with a disposable seed and retain the generated archive.
 
@@ -174,8 +175,9 @@ Do not use a valuable game for initial native-order or Type27 design-creation ex
 
 `run-autoplay.ps1 -Config` and `python -m stars_ai.autoplay_cli --config` load the
 top-level object in `autoplay-config.json` directly into the native autoplay
-configuration. Unknown fields are rejected; omitted fields use the defaults in
-the application. Start from [autoplay-config.example.json](autoplay-config.example.json).
+configuration. Paths are resolved relative to the configuration JSON, unknown
+fields are rejected, and omitted fields use the defaults in the application.
+Start from [autoplay-config.example.json](autoplay-config.example.json).
 
 The controller always runs the live game beside `stars_exe`; there is no
 `live_dir` setting. `seed_dir` is the immutable source when starting a new run,
@@ -200,12 +202,14 @@ and `output_dir` holds reports, logs, archives, and copied native snapshots.
 | `host_poll_seconds` | number; `0.5` | Poll interval while waiting for the host process or generated files. |
 | `host_settle_seconds` | number; `1.5` | Required quiet period after native file changes before they are treated as complete. |
 | `prevent_parallel_stars` | boolean; `true` | Refuses to launch while another matching Stars! process is running, and waits for the launched process to exit. |
+| `dismiss_stars_dialogs` | boolean; `true` | Closes Stars! message boxes owned by `stars_exe` during each host launch. Set false to leave those dialogs for a person. |
 | `use_seed_as_live` | deprecated boolean; `false` | Retained for old configuration compatibility only. It does not select the live directory; the controller always uses the directory beside `stars_exe`. |
 | `pre_host_audit` | boolean; `true` | Reads every generated `.x#` before launch and blocks hosting if its header, player, game identity, or order blocks are invalid. |
 | `print_observer_each_turn` | boolean; `true` | Prints a concise omniscient observer status after every completed host turn. Full chronological output is always written to `RUNNING_GAME_REPORT.md`. |
 | `cleanup_output_on_start` | boolean; `true` | Removes prior run output at `output_dir` before staging. Persistent AI memory and X templates are preserved because they default outside that directory. |
 | `console_player_logs` | integer array or `null`; `null` | Selects detailed AI decision logs to echo: `null` means all configured AI players, `[1,2]` limits detail to those players, and `[]` suppresses player detail and prints the observer’s full per-turn section instead. |
-| `allied_pairs` | two-integer arrays; `[]` | Reciprocal Friend relationships supplied to AI strategy, for example `[[1,2]]` for P1 and P2. They affect AI planning; they do not serialize diplomacy orders. |
+| `allied_groups` | arrays of player ids; `[]` | Seats in each group are mutual allies. `[[1,2,3,4]]` makes those four AI seats one alliance. Each seat writes one Stars! Type 38 block: one byte per player in seat order, `0` neutral, `1` friend, `2` enemy. They also share current sightings before planning. |
+| `allied_pairs` | two-integer arrays; `[]` | Extra reciprocal Friend pairs, added to every pair implied by `allied_groups`. Example `[[1,2]]`. |
 | `personas` | object of player-ID strings to names | Assigns the strategy persona for each AI player and labels it in decision/observer reports, for example `{"1":"Balanced","2":"Expansionist"}`. |
 | `x_template_dir` | path or `null`; `null` | Permanent known-good `.x#` templates. `null` creates a sibling directory beside `seed_dir`, safely outside both the seed and disposable output directory. |
 | `ai_state_dir` | path or `null`; `null` | Persistent per-player strategic memory. `null` creates a sibling directory beside `seed_dir`, so learned state survives output cleanup and play-on runs. |
@@ -281,4 +285,7 @@ See `AI-Status.md` for the exact confidence boundary and the recommended next va
 
 The main command entry point is `src/stars_ai/cli.py`; the native autoplay entry point is `src/stars_ai/autoplay_cli.py`. Strategy code consumes the stable `GameState` model rather than native records directly. The native adapter and writer form the boundary between strategy and Stars! binary files.
 
-Generated files belong under `out/`, `playtests/`, `sandbox/`, or a separately configured game/output location. Avoid modifying a live game before the configuration and seed validation steps have completed.
+Generated files belong under `out/`, `tmp/`, `playtests/runs/`, or a separately
+configured game/output location. Test fixtures belong under
+`tests/TestResource/` and must be copied before mutation. Avoid modifying a
+live game before the configuration and seed validation steps have completed.

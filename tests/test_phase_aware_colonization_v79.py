@@ -92,7 +92,7 @@ def test_midgame_broadens_to_less_habitable_worlds():
     assert next(x for x in ranked if x.planet_name=="Rich Twenty Five").selection_basis=="exceptional_resources"
 
 
-def test_late_resource_expansion_can_prefer_rich_low_hab_world():
+def test_late_resource_expansion_keeps_a_livable_world_ahead_of_a_rich_rock():
     state=_state(2460,[
         _world(1,"Poor Thirty",30,minerals=[10,10,10]),
         _world(2,"Rich Ten",10,x=32,minerals=[95,90,85]),
@@ -102,8 +102,9 @@ def test_late_resource_expansion_can_prefer_rich_low_hab_world():
     ranked=score_colony_candidates(state,state.fleets[0])
 
     assert policy.stage=="late_resource_expansion"
-    assert policy.normal_habitability_floor==1
-    assert ranked[0].planet_name=="Rich Ten"
+    assert policy.normal_habitability_floor==30
+    assert [candidate.planet_name for candidate in ranked][0]=="Poor Thirty"
+    assert {candidate.planet_name for candidate in ranked}=={"Poor Thirty","Rich Ten"}
 
 
 def test_colony_ship_demand_uses_same_viability_policy_at_every_phase():

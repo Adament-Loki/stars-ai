@@ -123,6 +123,11 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
     """Every owned fleet has a purpose; cargo ships never scout merely to move."""
     intents=[]
     assigned_targets={int(o.payload["destination_planet_id"]) for o in orders.orders if "destination_planet_id" in o.payload}
+    colony_repurpose_by_fleet={
+        int(item["fleet_id"]):item
+        for item in ((state.native or {}).get("colony_repurpose_intents",[]) or [])
+        if item.get("fleet_id") is not None
+    }
 
     for fleet in [f for f in state.fleets if f.owner==state.player_id]:
         existing=_existing_fleet_order(orders,fleet.id)
@@ -145,6 +150,7 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
             }.get(existing.kind)
             if action is None:
                 if mission=="return_for_colonists": action="RETURN FOR COLONISTS"
+                elif mission=="return_for_colony_repurpose": action="RETURN FOR COLONY REPURPOSE"
                 elif mission=="return_for_population_export": action="RETURN TO EXPORT HUB"
                 elif mission=="reposition_for_remote_mining": action="REPOSITION FOR REMOTE MINING"
                 elif mission=="remote_mine": action="REMOTE MINE"
@@ -165,6 +171,18 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
             intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"CONTINUE INTERCEPT","reason":f"Fleet already has active target-fleet waypoint {existing_fleet_target}; preserve the current interception order.","destination_planet_id":None}); continue
 
         if fleet.role=="colony":
+            repurpose=colony_repurpose_by_fleet.get(int(fleet.id))
+            if repurpose is not None:
+                intents.append({
+                    "fleet_id":fleet.id,
+                    "fleet_name":fleet.name,
+                    "role":fleet.role,
+                    "action":"COLONY RESERVE / REPURPOSE",
+                    "reason":str(repurpose.get("reason") or "No valid colony claim remains; reserve this hull for reassignment."),
+                    "destination_planet_id":repurpose.get("destination_planet_id"),
+                    "colony_candidates":[],
+                })
+                continue
             # A colony target claimed by an in-flight colony fleet is not a
             # missed launch opportunity for another hull.  Keep it out of the
             # actionable ranking and label the wait plainly below; otherwise
@@ -270,7 +288,7 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                         "fleet_id":fleet.id,"destination_planet_id":target.id,
                         "warp":0,"mission":"remote_mine",
                         "target_mineral_score":mineral_score,
-                        "native_reference":"sandbox/GAME.x2 Type5 current-waypoint task=3",
+                        "native_reference":"native client capture: Type5 current-waypoint task=3",
                     },f"Set Remote Mining task at {target.name}; concentration sum={mineral_score}. Client reference uses stationary WaypointChangeTask task 3.",priority=82)
                     assigned_targets.add(target.id)
                     intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"REMOTE MINE","reason":f"At observed mining target {target.name}; set native Remote Mining waypoint task.","destination_planet_id":target.id})

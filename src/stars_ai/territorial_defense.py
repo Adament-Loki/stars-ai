@@ -14,6 +14,15 @@ import math
 from typing import Any
 
 from .util import distance
+from .turn_state import mapping as turn_mapping
+
+
+# A captured border world remains an emergency after the one turn in which the
+# ownership change first appears in an M file.  The loss shock decays across
+# five planning cycles so the empire can complete defensive work already put
+# into serial queues instead of whipsawing back to factories on the next turn.
+RECENT_LOSS_EMERGENCY_TURNS = 5
+EXPOSURE_PRESSURE_DECAY = 0.72
 
 
 @dataclass(frozen=True)
@@ -58,6 +67,48 @@ class SourceWorldEscalation:
 
 
 @dataclass(frozen=True)
+class EmpireExposure:
+    """Empire-wide defensive demand, including a deliberately decaying shock.
+
+    Individual violations still drive immediate intercept orders.  This
+    snapshot answers the separate production question: how much reserve must
+    the whole empire retain while several border failures compound.
+    """
+
+    border_worlds: int
+    enemy_contacts_near_border: int
+    uncovered_minefield_anchors: int
+    enemy_power_inside_claim: float
+    recent_planet_losses: int
+    owned_planet_count: int
+    raw_pressure: float
+    sustained_pressure: float
+    pressure_multiplier: float
+    loss_emergency_multiplier: float
+    loss_emergency_turns_remaining: int
+    combat_reserve_target: int
+    minelayer_force_target: int
+    defensive_base_priority: int
+    counter_capture_transport_target: int
+    counter_capture_priority: int
+    border_world_ids: tuple[int, ...]
+
+    @property
+    def emergency_active(self) -> bool:
+        return bool(
+            self.recent_planet_losses
+            or self.enemy_contacts_near_border >= 6
+            or self.uncovered_minefield_anchors >= 2
+            or self.sustained_pressure >= 2.5
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        out = asdict(self)
+        out["emergency_active"] = self.emergency_active
+        return out
+
+
+@dataclass(frozen=True)
 class TerritorialDefenseAssessment:
     """Serializable doctrine result consumed by military and production code."""
 
@@ -66,6 +117,7 @@ class TerritorialDefenseAssessment:
     uncovered_minefield_anchor_ids: tuple[int, ...]
     desired_patrols: int
     desired_minelayers: int
+    exposure: EmpireExposure
     reason: str
     source_escalation: SourceWorldEscalation
 
@@ -84,6 +136,7 @@ class TerritorialDefenseAssessment:
             "uncovered_minefield_anchor_ids": list(self.uncovered_minefield_anchor_ids),
             "desired_patrols": self.desired_patrols,
             "desired_minelayers": self.desired_minelayers,
+            "exposure": self.exposure.to_dict(),
             "reason": self.reason,
             "source_escalation": self.source_escalation.to_dict(),
         }
@@ -287,6 +340,190 @@ def hostile_colonies_inside_claimed_area(state: Any, plan: Any = None) -> tuple[
     return tuple(sorted(out,key=lambda planet:int(planet.id)))
 
 
+def _recent_loss_events(state: Any) -> list[dict[str, int]]:
+    """Collect current and persisted ownership losses without double-counting.
+
+    The agent seeds ``territorial_exposure_history`` from durable memory.  The
+    direct state inputs below keep this function useful for diagnostics and
+    unit callers that have not gone through the full agent lifecycle.
+    """
+    native = getattr(state, "native", {}) or {}
+    year = int(getattr(state, "year", 0) or 0)
+    events: dict[int, int] = {}
+
+    def add(planet_id: Any, lost_year: Any = None) -> None:
+        try:
+            planet_id = int(planet_id)
+        except (TypeError, ValueError):
+            return
+        try:
+            event_year = int(lost_year) if lost_year is not None else year
+        except (TypeError, ValueError):
+            event_year = year
+        if 0 <= year - event_year < RECENT_LOSS_EMERGENCY_TURNS:
+            events[planet_id] = max(event_year, events.get(planet_id, event_year))
+
+    history = native.get("territorial_exposure_history", {}) or {}
+    for event in history.get("loss_events", []) or []:
+        if isinstance(event, dict):
+            add(event.get("planet_id"), event.get("lost_year"))
+
+    for key in ("recent_planet_losses", "lost_owned_planet_ids"):
+        raw = native.get(key, []) or []
+        if isinstance(raw, int):
+            # A count-only integration lacks identities; retain it with stable
+            # synthetic ids so it still creates the documented emergency.
+            for index in range(max(0, raw)):
+                add(-(index + 1), year)
+        else:
+            for item in raw:
+                if isinstance(item, dict):
+                    add(item.get("planet_id", item.get("id")), item.get("lost_year", item.get("year")))
+                else:
+                    add(item, year)
+
+    persistent = turn_mapping(state, "persistent_intel")
+    for planet_id in persistent.get("lost_owned_planet_ids", []) or []:
+        add(planet_id, year)
+    for planet in getattr(state, "planets", []) or []:
+        if bool((getattr(planet, "native", {}) or {}).get("recently_lost_by_player")):
+            add(getattr(planet, "id", None), year)
+    return [
+        {"planet_id": planet_id, "lost_year": lost_year}
+        for planet_id, lost_year in sorted(events.items())
+    ]
+
+
+def _empire_exposure(
+    state: Any,
+    plan: Any,
+    *,
+    owned: list[Any],
+    radius: float,
+    violations: list[TerritorialViolation],
+    edge_anchor_ids: list[int],
+    uncovered_anchor_ids: tuple[int, ...],
+    base_minelayer_target: int,
+) -> EmpireExposure:
+    """Turn local observations into a durable, bounded force requirement."""
+    warning_radius = radius * 1.35
+    border_ids = {
+        int(violation.anchor_planet_id) for violation in violations
+    } | {int(anchor_id) for anchor_id in edge_anchor_ids} | {
+        int(anchor_id) for anchor_id in uncovered_anchor_ids
+    }
+    contact_ids: set[int] = set()
+    for fleet in getattr(state, "fleets", []) or []:
+        owner = int(getattr(fleet, "owner", -1) or -1)
+        if owner <= 0 or owner == int(getattr(state, "player_id", -1)):
+            continue
+        if _friendly_owner(state, plan, owner) or _fleet_classification(fleet) is None:
+            continue
+        anchor = min(owned, key=lambda planet: distance(fleet.position, planet.position))
+        if float(distance(fleet.position, anchor.position)) <= warning_radius:
+            contact_ids.add(int(getattr(fleet, "id", -1)))
+            border_ids.add(int(anchor.id))
+    for planet in getattr(state, "planets", []) or []:
+        owner = getattr(planet, "owner", None)
+        if owner is None or int(owner) == int(getattr(state, "player_id", -1)):
+            continue
+        if not bool(getattr(planet, "observed", False)) or _friendly_owner(state, plan, int(owner)):
+            continue
+        anchor = min(owned, key=lambda world: distance(planet.position, world.position))
+        if float(distance(planet.position, anchor.position)) <= warning_radius:
+            border_ids.add(int(anchor.id))
+
+    violating_ids = {int(violation.fleet_id) for violation in violations}
+    enemy_power = sum(
+        max(0.0, float(getattr(fleet, "combat_power", 0.0) or 0.0))
+        for fleet in getattr(state, "fleets", []) or []
+        if int(getattr(fleet, "id", -1)) in violating_ids
+    )
+    loss_events = _recent_loss_events(state)
+    year = int(getattr(state, "year", 0) or 0)
+    loss_turns_remaining = max(
+        (max(0, RECENT_LOSS_EMERGENCY_TURNS - (year - int(event["lost_year"]))) for event in loss_events),
+        default=0,
+    )
+    recent_losses = len(loss_events)
+    raw_pressure = (
+        0.13 * len(border_ids)
+        + 0.20 * len(contact_ids)
+        + 0.40 * len(uncovered_anchor_ids)
+        + 0.30 * min(10.0, enemy_power / 100.0)
+        + 1.25 * recent_losses
+    )
+    history = (getattr(state, "native", {}) or {}).get("territorial_exposure_history", {}) or {}
+    try:
+        prior_pressure = max(0.0, float(history.get("pressure_reserve", 0.0) or 0.0))
+        prior_year = int(history.get("year", year) or year)
+    except (TypeError, ValueError):
+        prior_pressure, prior_year = 0.0, year
+    elapsed = max(0, year - prior_year)
+    decayed_prior = prior_pressure * (EXPOSURE_PRESSURE_DECAY ** elapsed)
+    sustained = max(raw_pressure, decayed_prior)
+    pressure_multiplier = 1.0 + min(1.0, sustained * 0.12)
+    loss_multiplier = 1.0 + (0.80 * loss_turns_remaining / RECENT_LOSS_EMERGENCY_TURNS)
+    if raw_pressure <= 0.0 and sustained < 0.20 and not recent_losses:
+        combat_target = 0
+        base_priority = 0
+    else:
+        reserve = (
+            max(4, math.ceil(len(owned) * 0.35))
+            + math.ceil(len(contact_ids) * 1.5)
+            + 2 * len(uncovered_anchor_ids)
+            + math.ceil(enemy_power / 125.0)
+            + 4 * recent_losses
+            # Persisted pressure reserves a tapering screen while completed
+            # hulls/mines arrive; it is not allowed to hold the full crisis
+            # target once contacts and losses are gone.
+            + math.ceil(sustained * 2.0)
+        )
+        combat_target = min(36, int(math.ceil(reserve * loss_multiplier)))
+        base_priority = min(
+            240,
+            int(165 + 12 * sustained + 22 * recent_losses + 8 * len(uncovered_anchor_ids)),
+        )
+    minelayer_target = base_minelayer_target
+    if uncovered_anchor_ids:
+        minelayer_target = max(
+            base_minelayer_target,
+            min(
+                8,
+                int(math.ceil(len(uncovered_anchor_ids) * 1.25))
+                + int(math.ceil(len(contact_ids) / 6.0))
+                + recent_losses,
+            ),
+        )
+    counter_capture_target = min(
+        3,
+        max(recent_losses, 1 if len(contact_ids) >= 8 or sustained >= 2.5 else 0),
+    )
+    counter_capture_priority = min(
+        235,
+        int(178 + 15 * recent_losses + 8 * min(4.0, sustained)),
+    ) if counter_capture_target else 0
+    return EmpireExposure(
+        border_worlds=len(border_ids),
+        enemy_contacts_near_border=len(contact_ids),
+        uncovered_minefield_anchors=len(uncovered_anchor_ids),
+        enemy_power_inside_claim=round(enemy_power, 1),
+        recent_planet_losses=recent_losses,
+        owned_planet_count=len(owned),
+        raw_pressure=round(raw_pressure, 3),
+        sustained_pressure=round(sustained, 3),
+        pressure_multiplier=round(pressure_multiplier, 3),
+        loss_emergency_multiplier=round(loss_multiplier, 3),
+        loss_emergency_turns_remaining=loss_turns_remaining,
+        combat_reserve_target=combat_target,
+        minelayer_force_target=minelayer_target,
+        defensive_base_priority=base_priority,
+        counter_capture_transport_target=counter_capture_target,
+        counter_capture_priority=counter_capture_priority,
+        border_world_ids=tuple(sorted(border_ids)),
+    )
+
+
 
 def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefenseAssessment:
     """Return patrol/minefield needs caused by meaningful border violations.
@@ -299,7 +536,14 @@ def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefen
     radius = _claim_radius(plan)
     if not owned:
         escalation=_source_world_escalation(state, plan, [])
-        return TerritorialDefenseAssessment(radius, (), (), 0, 0, "No owned worlds define territory.", escalation)
+        exposure=EmpireExposure(
+            0, 0, 0, 0.0, 0, 0, 0.0, 0.0, 1.0, 1.0, 0,
+            0, 0, 0, 0, 0, (),
+        )
+        return TerritorialDefenseAssessment(
+            radius, (), (), 0, 0, exposure,
+            "No owned worlds define territory.", escalation,
+        )
 
     violations: list[TerritorialViolation] = []
     for fleet in state.fleets:
@@ -380,19 +624,38 @@ def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefen
         min(4,max(1,math.ceil(len(uncovered)*0.75)))
         if uncovered else 0
     )
+    exposure=_empire_exposure(
+        state,
+        plan,
+        owned=owned,
+        radius=radius,
+        violations=violations,
+        edge_anchor_ids=edge_anchor_ids,
+        uncovered_anchor_ids=uncovered,
+        base_minelayer_target=desired_minelayers,
+    )
+    desired_minelayers=max(desired_minelayers, exposure.minelayer_force_target)
     reason=(
         f"{len(violations)} non-friendly armed/transport territorial violation(s) inside the "
         f"{radius:.0f}-ly claim zone; patrol objectives={patrols}, "
         f"proactive edge-pressure anchors={len(set(edge_anchor_ids))}, "
-        f"uncovered minefield anchors={len(uncovered)}."
+        f"uncovered minefield anchors={len(uncovered)}; empire exposure border worlds/contacts/"
+        f"inside-claim power/recent losses={exposure.border_worlds}/{exposure.enemy_contacts_near_border}/"
+        f"{exposure.enemy_power_inside_claim:.0f}/{exposure.recent_planet_losses}, "
+        f"sustained pressure={exposure.sustained_pressure:.2f}."
     )
     escalation=_source_world_escalation(state, plan, violations)
-    return TerritorialDefenseAssessment(
+    assessment=TerritorialDefenseAssessment(
         claim_radius_ly=round(radius, 2),
         violations=tuple(violations),
         uncovered_minefield_anchor_ids=uncovered,
         desired_patrols=patrols,
         desired_minelayers=desired_minelayers,
+        exposure=exposure,
         reason=reason,
         source_escalation=escalation,
     )
+    # All consumers see the same snapshot even if they invoke this assessment
+    # independently during the planning pass.
+    state.native["empire_exposure"]=exposure.to_dict()
+    return assessment

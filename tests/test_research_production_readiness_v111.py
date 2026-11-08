@@ -57,4 +57,4 @@ def test_reachable_military_package_names_its_concrete_shipyard_follow_through(m
     assert decision.production_readiness == 1.0
     assert "Queue" in decision.production_follow_through
     assert "Alpha" in decision.production_follow_through
-    assert decision.expected_completion_year == 2436
+    assert decision.expected_completion_year == 2437

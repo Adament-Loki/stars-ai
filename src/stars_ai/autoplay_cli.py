@@ -1,12 +1,11 @@
 
 from __future__ import annotations
-import argparse, json
-from pathlib import Path
+import argparse
 from .autohost import (
     ExternalCommandOrderBridge,
     IntegratedNativeOrderBridge,
     NoopOrderBridge,
-    WindowsAutoHostConfig,
+    load_windows_autohost_config,
 )
 from .windows_autohost import run_50_turn_game
 
@@ -18,7 +17,7 @@ def main():
     ap.add_argument("--external-writer", action="store_true", help="Use --writer-command instead of the integrated native writer.")
     args=ap.parse_args()
 
-    cfg=WindowsAutoHostConfig(**json.loads(Path(args.config).read_text(encoding="utf-8")))
+    cfg=load_windows_autohost_config(args.config)
     if args.noop:
         bridge=NoopOrderBridge()
     elif args.external_writer:

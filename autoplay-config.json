@@ -1,16 +1,15 @@
 {
-  "stars_exe": "C:\\Dev\\repos\\stars-ai\\sandbox\\starsjrc4.exe",
-  "seed_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\seed\\5Comps11Total",
-  "output_dir": "C:\\Dev\\repos\\stars-ai\\playtests\\runs\\latestdemo",
+  "stars_exe": "tests/TestResource/sandboxes/sandbox-native-reference/starsjrc4.exe",
+  "seed_dir": "playtests/seed/5Comps11Total",
+  "output_dir": "playtests/runs/latestdemo",
   "game_name": "GAME",
   "player_ids": [
     1,
     2,
     3,
-    4,
-    5
+    4
   ],
-  "turns": 100,
+  "turns": 200,
   "play_on": false,
   "checkpoints": [
     3,
@@ -33,7 +32,27 @@
     85,
     90,
     95,
-    100
+    100,
+    105,
+    110,
+    115,
+    120,
+    125,
+    130,
+    135,
+    140,
+    145,
+    150,
+    155,
+    160,
+    165,
+    170,
+    175,
+    180,
+    185,
+    190,
+    195,
+    200
   ],
   "host_password": null,
   "keep_every_turn": true,
@@ -45,8 +64,7 @@
     "1": "Balanced",
     "2": "Balanced",
     "3": "Balanced",
-    "4": "Balanced",
-    "5": "Balanced"
+    "4": "Balanced"
   },
   "host_poll_seconds": 0.5,
   "host_settle_seconds": 1.5,
@@ -56,6 +74,7 @@
   "print_observer_each_turn": true,
   "cleanup_output_on_start": true,
   "console_player_logs": [],
+  "allied_groups": [[1, 2, 3, 4]],
   "allied_pairs": [],
   "x_template_dir": null,
   "ai_state_dir": null,

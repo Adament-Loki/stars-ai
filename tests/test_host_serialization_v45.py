@@ -36,9 +36,19 @@ def test_host_timeout_writes_modal_vs_slow_diagnostic(tmp_path,monkeypatch):
         prevent_parallel_stars=False,
         host_timeout_seconds=1,
     )
-    def timeout(*args,**kwargs):
-        raise subprocess.TimeoutExpired(args[0] if args else "stars",1)
-    monkeypatch.setattr(subprocess,"run",timeout)
+    class TimeoutHost:
+        def __init__(self,*args,**kwargs):
+            self.pid=0
+            self.returncode=None
+            self._calls=0
+        def communicate(self,timeout=None):
+            self._calls+=1
+            if self._calls==1:
+                raise subprocess.TimeoutExpired("stars",timeout or 1)
+            return ("","")
+        def kill(self):
+            return None
+    monkeypatch.setattr(subprocess,"Popen",lambda *args,**kwargs: TimeoutHost())
     with pytest.raises(RuntimeError,match="host timed out"):
         _run_host_serialized(cfg,hst,[hst],tmp_path)
     diagnostic=json.loads((tmp_path/"current-HOST-TIMEOUT.json").read_text())

@@ -112,6 +112,9 @@ def population_capture_targets(state: Any) -> list[PopulationCaptureTarget]:
             continue
         if getattr(planet, "habitability", None) is not None and int(planet.habitability) <= 0:
             continue
+        from .invasion import worth_securing
+        if not is_recently_lost_world(planet) and not worth_securing(planet):
+            continue
         if is_alternate_reality_target(state, planet):
             continue
         population = observed_population_estimate(planet)

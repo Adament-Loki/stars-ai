@@ -6,6 +6,7 @@ from pathlib import Path
 import csv
 
 from .fuel_planner import has_ife
+from .native.resources import native_resource_path
 from .colony_planner import colony_planet_is_eligible
 from .ship_design_synth import (
     COLONY_SHIP_HULL_ID,
@@ -25,8 +26,16 @@ from .starsapi_items import (
     prt_id as race_prt_id,
     stock_hulls as race_stock_hulls,
 )
+from .diplomacy import allied_player_ids, world_faces_hostile
 from .territorial_defense import assess_territorial_defense, hostile_colonies_inside_claimed_area
 from .population_invasion import population_capture_targets, is_recently_lost_world
+from .capability_execution import (
+    BLOCKED_NATIVE,
+    capability_status,
+    design_capability_id,
+    design_is_blocked,
+    profile_is_blocked,
+)
 
 TECH_FIELDS=("energy","weapons","propulsion","construction","electronics","biotechnology")
 
@@ -269,12 +278,16 @@ class DesignProposal:
     native_status:str="PENDING_NATIVE_DESIGN_CREATION_VALIDATION"
 
     def to_payload(self):
-        return asdict(self)
+        payload=asdict(self)
+        payload["capability_id"]=design_capability_id(
+            self.role,is_starbase=self.is_starbase,purpose=self.purpose,
+        )
+        return payload
 
 
 @lru_cache(maxsize=1)
 def stock_hulls()->dict[int,HullOption]:
-    path=Path(__file__).with_name("data_hulls.mod")
+    path=native_resource_path("mod", "data_hulls.mod")
     out={}
     for parts in csv.reader(path.read_text(encoding="latin-1").splitlines()):
         if not parts or int(parts[0]) not in (15,16):
@@ -301,7 +314,10 @@ def _unlocked(state,h:HullOption)->bool:
 
 
 def _designs(state,role=None):
-    ds=list(state.native.get("design_profiles",[]))
+    ds=[
+        design for design in state.native.get("design_profiles",[])
+        if not profile_is_blocked(state,design,is_starbase=False)
+    ]
     if role is not None:
         ds=[d for d in ds if d.get("role")==role]
     return ds
@@ -486,6 +502,7 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
         bool((profile.get("capabilities") or {}).get("can_build_ships"))
         and bool((profile.get("capabilities") or {}).get("can_refuel"))
         for profile in (state.native or {}).get("starbase_profiles", []) or []
+        if not profile_is_blocked(state,profile,is_starbase=True)
     )
     support_hull=best_legal_starbase_hull(state,purpose="support")
     if not support_design_exists:
@@ -571,7 +588,10 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
             (immediate_hull, immediate_variant, "Modernized", 176)
         )
 
-    if selected_hull is not None and selected_variant is not None:
+    quiet_allied_border = bool(allied_player_ids(state)) and not any(
+        world_faces_hostile(state, planet) for planet in owned
+    )
+    if selected_hull is not None and selected_variant is not None and not quiet_allied_border:
         proposals.append(DesignProposal(
             role="starbase", name=f"{label} {selected_hull.name} Defense", is_starbase=True,
             desired_hull_id=selected_hull.hull_id, desired_hull_name=selected_hull.name, desired_engine=None,
@@ -687,12 +707,40 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
         "combat_seed_required":bool(border_pressure and not combat),
         "hostile_colonies_in_claimed_area":[int(planet.id) for planet in hostile_colonies],
         "bomber_design_required":bool(hostile_colonies and not bombers),
+        "minelayer_design_required":bool(territorial.needs_minefield and not minelayers),
         "desired_minelayers":int(territorial.desired_minelayers),
         "minefield_anchor_ids":list(territorial.uncovered_minefield_anchor_ids),
+        "combat_execution_status":capability_status(state,design_capability_id("combat")),
+        "bomber_execution_status":capability_status(state,design_capability_id("bomber")),
+        "minelayer_execution_status":capability_status(state,design_capability_id("minelayer")),
     }
 
     proposals.sort(key=lambda x:x.priority,reverse=True)
-    return proposals[:4]
+    blocked=[]
+    available=[]
+    for proposal in proposals:
+        capability_id=design_capability_id(
+            proposal.role,is_starbase=proposal.is_starbase,purpose=proposal.purpose,
+        )
+        if design_is_blocked(
+            state,proposal.role,is_starbase=proposal.is_starbase,purpose=proposal.purpose,
+        ):
+            blocked.append({
+                "capability_id":capability_id,
+                "role":proposal.role,
+                "purpose":proposal.purpose,
+                "priority":int(proposal.priority),
+                "status":BLOCKED_NATIVE,
+                "reason":proposal.reason,
+            })
+        else:
+            available.append(proposal)
+    state.native["blocked_native_design_capabilities"]=blocked
+    state.native["open_design_capability_demand"]=blocked
+    state.native["proactive_force_capability_demand"]["blocked_native_capabilities"]=[
+        item["capability_id"] for item in blocked
+    ]
+    return available[:4]
 
 
 def add_design_development_orders(state,orders,plan=None):
@@ -720,6 +768,18 @@ def add_design_development_orders(state,orders,plan=None):
     if cleanup is not None and emergency_starbase:
         cleanup=None
     native_plan=None if cleanup is not None else plan_native_ship_design(state,plan)
+    if native_plan is not None and design_is_blocked(
+        state,native_plan.role,is_starbase=native_plan.encoded.is_starbase,
+    ):
+        state.native.setdefault("open_design_capability_demand",[]).append({
+            "capability_id":design_capability_id(
+                native_plan.role,is_starbase=native_plan.encoded.is_starbase,
+            ),
+            "role":native_plan.role,
+            "status":BLOCKED_NATIVE,
+            "reason":"Native candidate suppressed because its prior Type-27 creation was blocked.",
+        })
+        native_plan=None
     prioritize_starbase=bool(
         top_proposal is not None
         and bool(top_proposal.is_starbase)

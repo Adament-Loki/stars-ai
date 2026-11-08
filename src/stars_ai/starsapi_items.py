@@ -22,6 +22,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
+from .native.resources import native_resource_path
+
 
 # DesignBlock / Items.java category masks.
 EMPTY=0x0000; ENGINE=0x0001; SCANNER=0x0002; SHIELD=0x0004; ARMOR=0x0008
@@ -138,7 +140,7 @@ def stock_component_database():
     # Delayed import avoids the standard-hull/legality import cycle during
     # native-state startup.
     from .standard_mod import parse_mod_file
-    return parse_mod_file(Path(__file__).with_name("data_unedited.mod"))
+    return parse_mod_file(native_resource_path("mod", "data_unedited.mod"))
 
 
 # The official Stars! help describes the trait gates below; UNEDITED.MOD holds
@@ -235,7 +237,7 @@ def _component_trait_maps():
     for key,spec in db.components.items():
         if int(spec.category)!=SCANNER:
             continue
-        row=next((line for line in Path(__file__).with_name("data_unedited.mod").read_text(encoding="latin-1").splitlines() if f'"{spec.name}"' in line),"")
+        row=next((line for line in native_resource_path("mod", "data_unedited.mod").read_text(encoding="latin-1").splitlines() if f'"{spec.name}"' in line),"")
         parts=next(iter(csv.reader([row])),[])
         if len(parts)>17 and int(parts[17] or 0)>0:
             forbidden_lrt.setdefault((int(key[0]),int(key[1])),"NAS")
@@ -348,7 +350,7 @@ def _raw(nums:list[int], idx:int)->int:
 
 @lru_cache(maxsize=1)
 def stock_hulls()->dict[int,HullSpec]:
-    path=Path(__file__).with_name("data_hulls.mod")
+    path=native_resource_path("mod", "data_hulls.mod")
     out={}
     for parts in csv.reader(path.read_text(encoding="latin-1").splitlines()):
         if len(parts)<4 or int(parts[0]) not in (15,16): continue

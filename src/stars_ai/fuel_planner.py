@@ -6,6 +6,7 @@ from pathlib import Path
 import csv
 from .util import distance
 from .population_units import COLONY_LOAD_KT
+from .turn_state import mapping as turn_mapping
 
 from .starsapi_items import (
     ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO, BOMB, MINING_ROBOT,
@@ -280,7 +281,7 @@ def apply_fuel_safety(state,orders):
     ]
     planets={p.id:p for p in state.planets}
     fleets={f.id:f for f in state.fleets if f.owner==state.player_id}
-    watchdog=(state.native or {}).get('strategic_watchdog') or {}
+    watchdog=turn_mapping(state, "strategic_watchdog")
     recon_pressure=float(watchdog.get('exploration_pressure',1.0))
     kept=[]; extras=[]
 

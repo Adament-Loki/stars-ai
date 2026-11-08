@@ -28,12 +28,14 @@ from .native.history_merge import (
 from .autohost import (
     ExternalCommandOrderBridge,
     HistorySyncError,
+    HostedTurnLifecycle,
     IntegratedNativeOrderBridge,
     LiveGameValidationError,
     NativeOrderBridge,
     NoopOrderBridge,
     SeedValidationError,
     TurnExecution,
+    TurnArchiver,
     ValidatedLiveGame,
     ValidatedSeedGame,
     WindowsAutoHostConfig,
@@ -42,7 +44,6 @@ from .native_observer import (
     read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn,
     build_human_report, build_running_game_report, build_turn_status_report,
 )
-from .turn_archive import archive_turn_phase, archive_approved_next_turn_actions
 
 def _persistent_x_template_root(cfg: WindowsAutoHostConfig, seed: Path) -> Path:
     if cfg.x_template_dir:
@@ -1103,105 +1104,145 @@ def _run_host_serialized(cfg: WindowsAutoHostConfig, hst: Path, tracked_outputs:
         creationflags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)
 
     started=time.time()
+    dialog_watcher=_start_stars_dialog_watcher(cfg, turn_dir, audit_tag)
     try:
-        cp=subprocess.run(
-            cmd,
-            cwd=str(hst.parent),
-            capture_output=True,
-            text=True,
-            timeout=cfg.host_timeout_seconds,
-            creationflags=creationflags,
-        )
-    except subprocess.TimeoutExpired as exc:
-        stdout=exc.stdout or ""
-        stderr=exc.stderr or ""
-        if isinstance(stdout,bytes):
-            stdout=stdout.decode(errors="replace")
-        if isinstance(stderr,bytes):
-            stderr=stderr.decode(errors="replace")
-        (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(stdout,encoding="utf-8")
-        (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(stderr,encoding="utf-8")
-        after=_file_signature(tracked_outputs)
-        pids=_stars_processes_running(cfg.stars_exe)
-        files_changed=after!=before
-        if pids and not files_changed:
-            condition="likely modal/error condition: Stars! is still present and tracked game files did not change"
-        elif pids:
-            condition="slow hosting or a child process still running: Stars! remains present after file activity"
-        elif files_changed:
-            condition="slow hosting/launcher return: tracked files changed but the launch exceeded its deadline"
-        else:
-            condition="host launch exceeded its deadline without observable output or a detectable Stars! process"
-        diagnostic={
-            "timeout_seconds":cfg.host_timeout_seconds,
-            "elapsed_seconds":round(time.time()-started,3),
-            "command":cmd,
-            "working_directory":str(hst.parent),
-            "stars_process_ids":pids,
-            "tracked_files_changed":files_changed,
-            "tracked_before":before,
-            "tracked_after":after,
-            "assessment":condition,
-        }
-        diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
-        diagnostic_path.write_text(json.dumps(diagnostic,indent=2),encoding="utf-8")
-        raise RuntimeError(
-            f"Stars! host timed out after {cfg.host_timeout_seconds}s; {condition}. "
-            f"See {diagnostic_path}"
-        ) from exc
-    (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(cp.stdout or "",encoding="utf-8")
-    (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(cp.stderr or "",encoding="utf-8")
-
-    if cfg.prevent_parallel_stars:
-        # Some legacy launchers return before the actual GUI/host child exits.
-        process_exited=_wait_until_no_stars_process(
-            cfg.stars_exe,
-            timeout_seconds=cfg.host_timeout_seconds,
-            poll_seconds=cfg.host_poll_seconds,
-        )
-        if not process_exited:
+        try:
+            # Popen, rather than run, so the dialog watcher can claim this
+            # process id before Stars! paints a message box. On current
+            # Windows that process is otvdmw.exe, not stars.exe.
+            host_proc=subprocess.Popen(
+                cmd,
+                cwd=str(hst.parent),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=creationflags,
+            )
+            if dialog_watcher is not None:
+                dialog_watcher.watch_pid(host_proc.pid)
+            try:
+                stdout, stderr = host_proc.communicate(timeout=cfg.host_timeout_seconds)
+            except subprocess.TimeoutExpired:
+                host_proc.kill()
+                stdout, stderr = host_proc.communicate()
+                raise subprocess.TimeoutExpired(
+                    cmd,
+                    cfg.host_timeout_seconds,
+                    output=stdout,
+                    stderr=stderr,
+                )
+            cp=subprocess.CompletedProcess(cmd, int(host_proc.returncode or 0), stdout or "", stderr or "")
+        except subprocess.TimeoutExpired as exc:
+            stdout=exc.stdout or ""
+            stderr=exc.stderr or ""
+            if isinstance(stdout,bytes):
+                stdout=stdout.decode(errors="replace")
+            if isinstance(stderr,bytes):
+                stderr=stderr.decode(errors="replace")
+            (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(stdout,encoding="utf-8")
+            (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(stderr,encoding="utf-8")
+            after=_file_signature(tracked_outputs)
             pids=_stars_processes_running(cfg.stars_exe)
-            diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
-            diagnostic_path.write_text(json.dumps({
+            files_changed=after!=before
+            if pids and not files_changed:
+                condition="likely modal/error condition: Stars! is still present and tracked game files did not change"
+            elif pids:
+                condition="slow hosting or a child process still running: Stars! remains present after file activity"
+            elif files_changed:
+                condition="slow hosting/launcher return: tracked files changed but the launch exceeded its deadline"
+            else:
+                condition="host launch exceeded its deadline without observable output or a detectable Stars! process"
+            diagnostic={
                 "timeout_seconds":cfg.host_timeout_seconds,
-                "phase":"waiting_for_Stars_process_exit",
+                "elapsed_seconds":round(time.time()-started,3),
                 "command":cmd,
                 "working_directory":str(hst.parent),
                 "stars_process_ids":pids,
+                "tracked_files_changed":files_changed,
                 "tracked_before":before,
-                "tracked_current":_file_signature(tracked_outputs),
-                "assessment":"slow hosting or likely modal/error condition; Stars! remained running",
-            },indent=2),encoding="utf-8")
+                "tracked_after":after,
+                "assessment":condition,
+            }
+            diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+            diagnostic_path.write_text(json.dumps(diagnostic,indent=2),encoding="utf-8")
             raise RuntimeError(
-                f"Stars! remained running for {cfg.host_timeout_seconds}s after launch return; "
-                f"possible modal/error condition. See {diagnostic_path}"
-            )
+                f"Stars! host timed out after {cfg.host_timeout_seconds}s; {condition}. "
+                f"See {diagnostic_path}"
+            ) from exc
+        (turn_dir/f"{audit_tag}-host.stdout.txt").write_text(cp.stdout or "",encoding="utf-8")
+        (turn_dir/f"{audit_tag}-host.stderr.txt").write_text(cp.stderr or "",encoding="utf-8")
 
-    settled=_wait_for_files_to_change_and_settle(
-        tracked_outputs,before,
-        timeout_seconds=cfg.host_timeout_seconds,
-        poll_seconds=cfg.host_poll_seconds,
-        settle_seconds=cfg.host_settle_seconds,
+        if cfg.prevent_parallel_stars:
+            # Some legacy launchers return before the actual GUI/host child exits.
+            process_exited=_wait_until_no_stars_process(
+                cfg.stars_exe,
+                timeout_seconds=cfg.host_timeout_seconds,
+                poll_seconds=cfg.host_poll_seconds,
+            )
+            if not process_exited:
+                pids=_stars_processes_running(cfg.stars_exe)
+                diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+                diagnostic_path.write_text(json.dumps({
+                    "timeout_seconds":cfg.host_timeout_seconds,
+                    "phase":"waiting_for_Stars_process_exit",
+                    "command":cmd,
+                    "working_directory":str(hst.parent),
+                    "stars_process_ids":pids,
+                    "tracked_before":before,
+                    "tracked_current":_file_signature(tracked_outputs),
+                    "assessment":"slow hosting or likely modal/error condition; Stars! remained running",
+                },indent=2),encoding="utf-8")
+                raise RuntimeError(
+                    f"Stars! remained running for {cfg.host_timeout_seconds}s after launch return; "
+                    f"possible modal/error condition. See {diagnostic_path}"
+                )
+
+        settled=_wait_for_files_to_change_and_settle(
+            tracked_outputs,before,
+            timeout_seconds=cfg.host_timeout_seconds,
+            poll_seconds=cfg.host_poll_seconds,
+            settle_seconds=cfg.host_settle_seconds,
+        )
+        if not settled:
+            after=_file_signature(tracked_outputs)
+            diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
+            diagnostic_path.write_text(json.dumps({
+                "timeout_seconds":cfg.host_timeout_seconds,
+                "phase":"waiting_for_generated_files_to_change_and_settle",
+                "command":cmd,
+                "working_directory":str(hst.parent),
+                "stars_process_ids":_stars_processes_running(cfg.stars_exe),
+                "tracked_files_changed":after!=before,
+                "tracked_before":before,
+                "tracked_current":after,
+                "assessment":(
+                    "tracked files changed but did not settle; hosting may still be slow"
+                    if after!=before else
+                    "tracked files never changed; likely modal/error condition or rejected order files"
+                ),
+            },indent=2),encoding="utf-8")
+        return cp, settled
+    finally:
+        _stop_stars_dialog_watcher(dialog_watcher)
+
+
+def _start_stars_dialog_watcher(cfg: WindowsAutoHostConfig, turn_dir: Path, audit_tag: str):
+    """Watch the configured Stars! executable for blocking message boxes."""
+
+    if os.name != "nt" or not cfg.dismiss_stars_dialogs:
+        return None
+    from .stars_dialog_watcher import StarsDialogWatcher
+    watcher=StarsDialogWatcher(
+        cfg.stars_exe,
+        log_path=turn_dir/f"{audit_tag}-dismissed-dialogs.jsonl",
     )
-    if not settled:
-        after=_file_signature(tracked_outputs)
-        diagnostic_path=turn_dir/f"{audit_tag}-HOST-TIMEOUT.json"
-        diagnostic_path.write_text(json.dumps({
-            "timeout_seconds":cfg.host_timeout_seconds,
-            "phase":"waiting_for_generated_files_to_change_and_settle",
-            "command":cmd,
-            "working_directory":str(hst.parent),
-            "stars_process_ids":_stars_processes_running(cfg.stars_exe),
-            "tracked_files_changed":after!=before,
-            "tracked_before":before,
-            "tracked_current":after,
-            "assessment":(
-                "tracked files changed but did not settle; hosting may still be slow"
-                if after!=before else
-                "tracked files never changed; likely modal/error condition or rejected order files"
-            ),
-        },indent=2),encoding="utf-8")
-    return cp, settled
+    watcher.start()
+    return watcher
+
+
+def _stop_stars_dialog_watcher(watcher) -> None:
+    if watcher is not None:
+        watcher.stop()
 
 
 def _sha256(path: Path) -> str:
@@ -1461,6 +1502,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
     ai_state_root.mkdir(parents=True,exist_ok=True)
     if isinstance(order_bridge, IntegratedNativeOrderBridge):
         order_bridge.memory_root=ai_state_root
+        order_bridge.report_root=root
 
     observer_history = []
     last_checkpoint_observer = None
@@ -1479,6 +1521,21 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
         )
 
     executions: list[TurnExecution] = []
+    turn_lifecycle = HostedTurnLifecycle(order_bridge)
+    turn_archiver = (
+        TurnArchiver(
+            archive_root=logs_root / "turn-archive",
+            game_dir=game,
+            basename=validated.basename,
+            logs_root=logs_root,
+            templates_root=templates_root,
+            ai_state_root=ai_state_root,
+            config=cfg,
+            include_logs=cfg.turn_archive_include_logs,
+            json_index=cfg.turn_archive_json_index,
+        )
+        if cfg.turn_archive_enabled else None
+    )
 
     for turn in range(1, cfg.turns + 1):
         turn_tag = f"turn-{turn:03d}"
@@ -1488,20 +1545,16 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
 
         try:
             cfg._active_turn_tag = turn_tag
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                order_bridge.turn_tag = turn_tag
+            turn_lifecycle.activate(turn_tag)
 
             first_pre_m=_live_game_file(
                 game,validated.basename,f".m{cfg.player_ids[0]}"
             )
             year_before=_read_year(first_pre_m,xy)
-            if cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="00-pre-write",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            if turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="00-pre-write",
                     metadata={"execution_turn":turn,"native_year_before":year_before},
                 )
             # This is deliberately before deleting or generating any X file.
@@ -1510,8 +1563,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             _history_sync_barrier(
                 cfg,game,validated.basename,logs_root,turn
             )
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                order_bridge.discard_pending_memory()
+            turn_lifecycle.begin_staging()
 
             # Each player completes synchronously before the next begins.
             for player_id in cfg.player_ids:
@@ -1543,6 +1595,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     client_x_path=client_x_snapshot,
                 )
                 order_files.append(str(generated))
+                turn_lifecycle.record_order_file(generated)
                 shutil.copy2(
                     generated,
                     logs_root/f"{turn_tag}-player-{player_id:02d}-GENERATED.x{player_id}"
@@ -1558,13 +1611,10 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             if missing and cfg.stop_on_missing_x:
                 raise RuntimeError(f"Missing native order files for players: {missing}")
 
-            if cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="10-pre-host",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            if turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="10-pre-host",
                     metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files)},
                 )
 
@@ -1584,13 +1634,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             # into that prior cycle's archive so a user opening turn-010 can
             # see the actions chosen from turn 10's committed state without
             # needing to infer the one-cycle archive offset.
-            if cfg.turn_archive_enabled and turn > 1:
+            if turn_archiver is not None and turn > 1:
                 prior_turn_tag=f"turn-{turn - 1:03d}"
-                archive_approved_next_turn_actions(
-                    logs_root/"turn-archive", turn_tag=prior_turn_tag,
+                turn_archiver.capture_approved_actions(
+                    turn_tag=prior_turn_tag,
                     decision_turn_tag=turn_tag,
-                    game_dir=game, basename=validated.basename,
-                    logs_root=logs_root, json_index=cfg.turn_archive_json_index,
                     metadata={
                         "execution_turn":turn,
                         "state_turn_tag":prior_turn_tag,
@@ -1620,13 +1668,10 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             year_advanced=(year_before is None or year_after is None or year_after>year_before)
             x_consumed=bool(post_audit.get("all_consumed",False))
             host_success=cp.returncode==0 and settled and year_advanced and x_consumed
-            if cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="20-post-host-attempt",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            if turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="20-post-host-attempt",
                     metadata={
                         "execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,
                         "host_returncode":cp.returncode,"host_settled":bool(settled),
@@ -1670,18 +1715,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     ).get("ready",False)
                 )
             success=host_success and history_ready
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                if success:
-                    order_bridge.commit_pending_memory()
-                else:
-                    order_bridge.discard_pending_memory()
-            if success and cfg.turn_archive_enabled:
-                archive_turn_phase(
-                    logs_root/"turn-archive", turn_tag=turn_tag, phase="30-committed",
-                    game_dir=game, basename=validated.basename,
-                    logs_root=(logs_root if cfg.turn_archive_include_logs else None),
-                    templates_root=templates_root, ai_state_root=ai_state_root,
-                    config=cfg, json_index=cfg.turn_archive_json_index,
+            turn_lifecycle.settle_after_host(success)
+            if success and turn_archiver is not None:
+                turn_archiver.capture(
+                    turn_tag=turn_tag,
+                    phase="30-committed",
                     metadata={"execution_turn":turn,"native_year_before":year_before,"native_year_after":year_after,"success":True},
                 )
             msg=(
@@ -1768,14 +1806,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 break
 
         except Exception as exc:
-            if getattr(cfg,"turn_archive_enabled",False):
+            if turn_archiver is not None:
                 try:
-                    archive_turn_phase(
-                        logs_root/"turn-archive", turn_tag=turn_tag, phase="99-failure",
-                        game_dir=game, basename=validated.basename,
-                        logs_root=(logs_root if getattr(cfg,"turn_archive_include_logs",True) else None),
-                        templates_root=templates_root, ai_state_root=ai_state_root,
-                        config=cfg, json_index=cfg.turn_archive_json_index,
+                    turn_archiver.capture(
+                        turn_tag=turn_tag,
+                        phase="99-failure",
                         metadata={"execution_turn":turn,"native_year_before":year_before,"order_files":list(order_files),
                                   "exception_type":type(exc).__name__,"exception":str(exc)},
                     )
@@ -1783,8 +1818,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     (logs_root/f"{turn_tag}-TURN_ARCHIVE_ERROR.txt").write_text(
                         f"{type(archive_exc).__name__}: {archive_exc}",encoding="utf-8"
                     )
-            if isinstance(order_bridge, IntegratedNativeOrderBridge):
-                order_bridge.discard_pending_memory()
+            turn_lifecycle.rollback()
             e = TurnExecution(
                 turn, order_files, None, year_before, None, False, False,
                 f"{type(exc).__name__}: {exc}"

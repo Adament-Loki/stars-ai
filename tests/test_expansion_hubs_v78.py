@@ -13,7 +13,8 @@ from stars_ai.models import (
     Tech,
 )
 from stars_ai.native.orders import parse_production_change
-from stars_ai.native.x_writer import _build_decision_report, _production_block
+from stars_ai.native.x_writer import _production_block
+from stars_ai.reporting import build_native_decision_report
 from stars_ai.starbase_capabilities import starbase_capabilities
 from stars_ai.starbase_planner import plan_support_base_builds
 from stars_ai.strategy.economy import add_economic_orders
@@ -139,10 +140,10 @@ def test_25kt_colony_load_moves_2500_and_leaves_22500_on_source():
     assert colony.payload["source_population_reserve"] == 10_000
     assert colony.payload["minimum_launch_population"] == 12_500
 
-    report = _build_decision_report(
+    report = build_native_decision_report(
         state,
         orders,
-        SimpleNamespace(fleet_intents=[], memory=AgentMemory()),
+        [],
         [{"kind": colony.kind, "payload": colony.payload, "reason": colony.reason}],
         [],
         [],

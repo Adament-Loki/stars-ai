@@ -22,6 +22,9 @@ from .models import GameState, OrderSet
 
 _COMBAT_ROLES = frozenset({"combat", "bomber", "escort", "warship"})
 _CARGO_KEYS = ("ironium", "boranium", "germanium", "population")
+_SCOUT_ROUTINE_ORDER_KINDS = frozenset({
+    "move_fleet", "cancel_scout_route", "remote_mine", "lay_minefield",
+})
 
 
 def _number(value: Any) -> float:
@@ -61,11 +64,18 @@ def _scout_slots(state: GameState) -> set[int]:
             continue
         if str(profile.get("role", "") or "").casefold() != "scout":
             continue
+        # List-shaped profile tables are often sparse: their list position is
+        # not necessarily the native design slot.  Use the decoded design
+        # number first, otherwise a stack in (say) slot five is invisible to
+        # the splitter and can retain an ordinary scout route indefinitely.
+        slot_value = profile.get("design_number")
+        if slot_value is None:
+            slot_value = profile.get("design_slot", raw_slot)
         try:
-            slot = int(raw_slot)
+            slot = int(slot_value)
         except (TypeError, ValueError):
             try:
-                slot = int(profile.get("design_slot"))
+                slot = int(raw_slot)
             except (TypeError, ValueError):
                 continue
         if 0 <= slot < 16:
@@ -121,6 +131,122 @@ def _has_existing_order(orders: OrderSet, fleet_id: int) -> bool:
     return False
 
 
+def _is_emergency_fleet_recovery_order(order: Any, fleet_id: int) -> bool:
+    """Whether an order is a genuine recovery exception to scout splitting.
+
+    A normal scan/recon movement is never a reason to leave five scouts in one
+    fleet.  Actual fuel/range recovery is different: breaking that fleet apart
+    before it reaches safety can make every singleton unrecoverable.  Keep the
+    exception deliberately narrow and evidence-driven.
+    """
+    payload = getattr(order, "payload", {}) or {}
+    try:
+        applies = int(payload.get("fleet_id", -1)) == int(fleet_id)
+    except (TypeError, ValueError):
+        applies = False
+    if not applies:
+        return False
+    mission = str(payload.get("mission", "") or "").casefold()
+    return bool(
+        payload.get("emergency")
+        or payload.get("fleet_recovery")
+        or payload.get("colony_range_recovery")
+        or "recovery" in mission
+        or "rescue" in mission
+    )
+
+
+def enforce_scout_split_precedence(state: GameState, orders: OrderSet) -> list[dict[str, Any]]:
+    """Make a safe singleton split win over routine orders for its source fleet.
+
+    Type-24/23 creates fleet identities the current M file does not contain.
+    Therefore this turn emits only the split; ordinary routes are deliberately
+    reconsidered after host read-back, when every singleton can receive its
+    own target.  A narrow fuel/range recovery exception retains the recovery
+    and drops the split request instead.
+    """
+    # This is deliberately a hard barrier, rather than an ordering convention
+    # between planners.  A caller which only proposed an ordinary movement
+    # still gets a split request before that movement is considered.
+    _plan_scout_dispersion(state, orders)
+
+    split_by_fleet: dict[int, Any] = {}
+    for order in orders.orders:
+        if order.kind != "split_scout_fleet":
+            continue
+        try:
+            split_by_fleet[int((order.payload or {}).get("fleet_id", -1))] = order
+        except (TypeError, ValueError):
+            continue
+    if not split_by_fleet:
+        return []
+
+    decisions: list[dict[str, Any]] = []
+    removed: set[int] = set()
+    for fleet_id, split in sorted(split_by_fleet.items()):
+        emergencies = [
+            order for order in orders.orders
+            if order is not split and _is_emergency_fleet_recovery_order(order, fleet_id)
+        ]
+        if emergencies:
+            removed.add(id(split))
+            decisions.append({
+                "fleet_id": fleet_id,
+                "outcome": "recovery_wins",
+                "suppressed_order_kinds": [],
+                "reason": "A genuine fleet-recovery operation takes precedence over experimental scout splitting.",
+            })
+            continue
+        suppressed = []
+        for order in orders.orders:
+            if order is split or order.kind not in _SCOUT_ROUTINE_ORDER_KINDS:
+                continue
+            try:
+                applies = int((order.payload or {}).get("fleet_id", -1)) == fleet_id
+            except (TypeError, ValueError):
+                applies = False
+            if applies:
+                removed.add(id(order))
+                suppressed.append(order.kind)
+        decisions.append({
+            "fleet_id": fleet_id,
+            "outcome": "split_wins",
+            "suppressed_order_kinds": sorted(suppressed),
+            "reason": "Safe pure-scout stack is split before any routine route; singleton routing waits for next M-file read-back.",
+        })
+
+    if removed:
+        orders.orders = [order for order in orders.orders if id(order) not in removed]
+        # A recovery exception removes the semantic split as well.  Keep the
+        # early-planning marker truthful for diagnostics and for callers that
+        # inspect this state after the final barrier.
+        remaining_split_fleets=[]
+        for order in orders.orders:
+            if order.kind != "split_scout_fleet":
+                continue
+            try:
+                remaining_split_fleets.append(int((order.payload or {}).get("fleet_id", -1)))
+            except (TypeError, ValueError):
+                continue
+        state.native["pending_scout_split_fleet_ids"] = sorted(set(remaining_split_fleets))
+        diagnostics=(state.native or {}).get("scout_stack_diagnostics")
+        if isinstance(diagnostics, dict):
+            diagnostics["split_orders"] = len(state.native["pending_scout_split_fleet_ids"])
+    if decisions:
+        state.native["scout_split_precedence"] = decisions
+        for decision in decisions:
+            if decision["outcome"] == "split_wins":
+                orders.notes.append(
+                    f"SCOUT SPLIT PRECEDENCE: fleet {decision['fleet_id']} split wins; suppressed "
+                    f"{', '.join(decision['suppressed_order_kinds']) or 'no'} routine route(s)."
+                )
+            else:
+                orders.notes.append(
+                    f"SCOUT SPLIT PRECEDENCE: fleet {decision['fleet_id']} recovery wins; split deferred."
+                )
+    return decisions
+
+
 def _owned_anchor(state: GameState, fleet: Any):
     """Return the owned world occupied by a fleet, with a native-ID first rule."""
     native = getattr(fleet, "native", {}) or {}
@@ -168,6 +294,14 @@ def _plan_scout_dispersion(state: GameState, orders: OrderSet) -> list[dict[str,
     owned fleet; automatic native split requests are intentionally narrower.
     """
     scout_slots = _scout_slots(state)
+    existing_split_fleets: set[int] = set()
+    for order in orders.orders:
+        if order.kind != "split_scout_fleet":
+            continue
+        try:
+            existing_split_fleets.add(int((order.payload or {}).get("fleet_id", -1)))
+        except (TypeError, ValueError):
+            continue
     stacked: list[dict[str, Any]] = []
     decisions: list[dict[str, Any]] = []
     wasted_total = 0
@@ -196,11 +330,21 @@ def _plan_scout_dispersion(state: GameState, orders: OrderSet) -> list[dict[str,
             safe_to_split = (
                 diagnostic["pure_scout_stack"]
                 and not _has_cargo(fleet)
-                and not _has_existing_order(orders, int(fleet.id))
+                and not any(
+                    _is_emergency_fleet_recovery_order(order, int(fleet.id))
+                    for order in orders.orders
+                )
                 and _is_stationary_for_scout_split(fleet)
                 and 0 <= int(fleet.id) <= 0x1FF
             )
             if not safe_to_split:
+                continue
+
+            # A Type-24/23 transaction owns the source fleet.  Do not queue a
+            # second semantic split for it in this M-file, even if this helper
+            # is reached through both the early preflight and the final safety
+            # barrier.
+            if int(fleet.id) in existing_split_fleets:
                 continue
 
             payload = {
@@ -230,15 +374,18 @@ def _plan_scout_dispersion(state: GameState, orders: OrderSet) -> list[dict[str,
                 priority=140,
             )
             decisions.append(payload)
+            existing_split_fleets.add(int(fleet.id))
 
+    pending_split_fleets=sorted(existing_split_fleets)
+    state.native["pending_scout_split_fleet_ids"] = pending_split_fleets
     state.native["scout_stack_diagnostics"] = {
         "scout_slots": sorted(scout_slots),
         "stacked_fleet_count": len({item["fleet_id"] for item in stacked}),
         "wasted_survey_capacity": wasted_total,
         "stacked_fleets": stacked,
-        "split_orders": len(decisions),
+        "split_orders": len(pending_split_fleets),
     }
-    if stacked:
+    if stacked and decisions:
         orders.notes.append(
             f"SCOUT STACK DIAGNOSTIC: {wasted_total} wasted survey capacity across "
             f"{len({item['fleet_id'] for item in stacked})} stacked scout fleet(s); "
@@ -250,6 +397,18 @@ def _plan_scout_dispersion(state: GameState, orders: OrderSet) -> list[dict[str,
     # Stars! client capture/host replay before promoting native scout splitting
     # to VALIDATED.
     return decisions
+
+
+def prepare_scout_split_precedence(state: GameState, orders: OrderSet) -> list[dict[str, Any]]:
+    """Queue safe scout splits before planners can assign ordinary routes.
+
+    The final :func:`enforce_scout_split_precedence` call remains mandatory:
+    planners outside exploration may still add a source-fleet operation later
+    in the turn.  This early pass, however, publishes the pending source IDs
+    so normal recon planning never tries to route a fleet whose child IDs do
+    not exist until the host returns the next M file.
+    """
+    return _plan_scout_dispersion(state, orders)
 
 
 def _is_idle_local_combat_fleet(state: GameState, orders: OrderSet, fleet: Any) -> bool:
@@ -292,7 +451,7 @@ def add_tactical_fleet_management(
     plan: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Split safe scout stacks, then merge safe co-located armed fleets."""
-    scout_splits = _plan_scout_dispersion(state, orders)
+    prepare_scout_split_precedence(state, orders)
     policy = _battle_policy(state)
     groups: dict[int, list[Any]] = defaultdict(list)
     anchors: dict[int, Any] = {}
@@ -353,10 +512,13 @@ def add_tactical_fleet_management(
             "estimated_combined_offensive_value": round(total_value, 2),
         })
 
+    queued_scout_split_count=sum(
+        1 for order in orders.orders if order.kind=="split_scout_fleet"
+    )
     state.native["fleet_battle_management"] = {
         "mode": "concentrate_idle_armed_fleets",
         "type37_merge_capability": "PARTIAL",
-        "scout_singleton_splits": len(scout_splits),
+        "scout_singleton_splits": queued_scout_split_count,
         "merges": decisions,
         "battle_policy": policy,
         "safeguards": [

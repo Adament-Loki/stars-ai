@@ -10,6 +10,7 @@ from typing import Any, Iterable
 import math
 
 from .starsapi_items import BEAM, ELECTRICAL, ENGINE, MECHANICAL, TORPEDO, stock_hulls
+from .native.resources import native_resource_path
 
 
 class WeaponDoctrine(str, Enum):
@@ -245,7 +246,7 @@ def _slot_strength(slot: Any, item_db: Any | None = None) -> tuple[float, float,
 @lru_cache(maxsize=1)
 def _stock_weapon_stats() -> dict[tuple[int, int], _StockWeapon]:
     """Read actual stock weapon battle fields from the bundled UNEDITED.MOD."""
-    path = Path(__file__).with_name("data_unedited.mod")
+    path = native_resource_path("mod", "data_unedited.mod")
     result: dict[tuple[int, int], _StockWeapon] = {}
     for parts in csv.reader(path.read_text(encoding="latin-1").splitlines()):
         if len(parts) < 20 or parts[0] not in ("2", "3"):

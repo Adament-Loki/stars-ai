@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from .planet_economy import planet_population_capacity, theoretical_max_population
+from .native.resources import native_resource_path
 from .standard_mod import ComponentCategory, parse_mod_file
 from .util import distance
 
@@ -215,7 +216,7 @@ def _stock_hub_bootstrap_cost(
     gates. Therefore a gate accelerates empty-ship return/reposition legs; it
     does not extend loaded population/mineral transport range.
     """
-    mod_path = Path(__file__).with_name("data_hulls.mod")
+    mod_path = native_resource_path("mod", "data_hulls.mod")
     db = parse_mod_file(mod_path)
     base_id = 33 if improved_starbases else 34
 
@@ -612,6 +613,18 @@ def evaluate_expansion_network(
             parents = graduated_by_ring.get(ring - 1, [])
             if parents:
                 parent_exporter_id = int(min(parents, key=lambda q: distance(p.position, q.position)).id)
+        if (
+            parent_exporter_id is None
+            and not is_home
+            and not graduated
+            and int(getattr(p, "habitability", 0) or 0) >= 30
+            and frac < HUB_PARENT_READY_FRACTION
+        ):
+            # Worlds outside the five Layer-1 slots were never fed. In the
+            # 100-turn run, 20 of Player 1's 30 worlds were still under
+            # 50,000 colonists at year 2500.
+            donors = [q for q in parent_positions if int(q.id) != int(p.id)] or [home]
+            parent_exporter_id = int(min(donors, key=lambda q: distance(p.position, q.position)).id)
 
         # The HW exports only to still-pending designated Layer-1 hubs. A child
         # becomes an exporter as soon as it is a ~25% support hub, and retains

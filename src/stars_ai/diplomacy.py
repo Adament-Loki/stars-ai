@@ -8,6 +8,58 @@ from .models import GameState
 from .util import distance
 
 
+def allied_player_ids(state: Any) -> set[int]:
+    """Seats this player should treat as a shared border, not a threat.
+
+    Configured alliance groups and a Friend relation already stored in the
+    turn file both count. The seat itself is never included.
+    """
+
+    native = getattr(state, "native", {}) or {}
+    me = int(getattr(state, "player_id", 0) or 0)
+    allies: set[int] = set()
+    for seat in native.get("configured_allies") or []:
+        try:
+            allies.add(int(seat))
+        except (TypeError, ValueError):
+            continue
+    relations = list((getattr(getattr(state, "race", None), "native", {}) or {}).get("player_relations") or [])
+    for index, value in enumerate(relations):
+        try:
+            code = int(value or 0)
+        except (TypeError, ValueError):
+            continue
+        if code == 1:
+            allies.add(index + 1)
+    allies.discard(me)
+    return allies
+
+
+def world_faces_hostile(state: Any, planet: Any, radius: float = 120.0) -> bool:
+    """Whether a non-allied fleet or colony is close to this world.
+
+    An allied border with nothing hostile nearby does not justify weapons.
+    """
+
+    allies = allied_player_ids(state)
+    me = int(getattr(state, "player_id", 0) or 0)
+    for fleet in getattr(state, "fleets", []) or []:
+        owner = getattr(fleet, "owner", None)
+        if owner is None or int(owner) == me or int(owner) in allies:
+            continue
+        if distance(fleet.position, planet.position) <= radius:
+            return True
+    for other in getattr(state, "planets", []) or []:
+        owner = getattr(other, "owner", None)
+        if owner is None or int(owner) == me or int(owner) in allies:
+            continue
+        if not bool(getattr(other, "observed", False)):
+            continue
+        if distance(other.position, planet.position) <= radius:
+            return True
+    return False
+
+
 class PlayerAttitude(str, Enum):
     HOSTILE = "hostile"
     NEUTRAL = "neutral"
@@ -144,6 +196,40 @@ class DiplomacyPolicy:
         )
 
         ally_allowed = self.can_ally(player_id)
+        configured = {
+            int(seat)
+            for seat in ((getattr(state, "native", {}) or {}).get("configured_allies") or [])
+        }
+        if player_id in configured and ally_allowed:
+            attitude = PlayerAttitude.ALLIED
+            reason = (
+                "Configured co-operative ally. This seat shares its sightings "
+                "and is not a colonization or attack target."
+            )
+            conflict = ConflictAssessment(
+                player_id=player_id,
+                our_strength=round(our_strength, 3),
+                their_strength=round(their_strength, 3),
+                strength_ratio=round((our_strength + 1.0) / (their_strength + 1.0), 4),
+                border_pressure=round(border_pressure, 4),
+                strategic_reward=0.0,
+                strategic_risk=1.0,
+                conflict_value=-1.0,
+                recommended_action=DiplomaticAction.COOPERATE,
+                reason="Configured alliance overrides border threat.",
+            )
+            return PlayerDiplomacyView(
+                player_id=player_id,
+                is_human=False,
+                attitude=attitude,
+                trust=1.0,
+                threat=0.0,
+                usefulness=1.0,
+                can_ally=True,
+                native_relation=1,
+                conflict=conflict,
+                reason=reason,
+            )
         if threat >= self.hostile_threat_threshold or native_relation == 2:
             attitude = PlayerAttitude.HOSTILE
             reason = "Enemy relation or strategic threat is high."

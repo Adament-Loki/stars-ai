@@ -7,6 +7,7 @@ import csv
 import math
 
 from .colony_planner import colony_planet_is_eligible
+from .diplomacy import allied_player_ids, world_faces_hostile
 from .empire_geometry import distance_from_homeworld
 from .expansion_network import evaluate_expansion_network
 from .planet_economy import (
@@ -16,9 +17,11 @@ from .planet_economy import (
     working_mineral_reserve,
 )
 from .combat_doctrine import calculate_offensive_rating
+from .native.resources import native_resource_path
 from .starsapi_items import stock_component_database
 from .territorial_defense import assess_territorial_defense
 from .util import distance
+from .capability_execution import design_is_blocked, profile_is_blocked
 
 STARBASE_QUEUE_SLOT_OFFSET = 16
 STARBASE_DESIGN_LIMIT = 10
@@ -104,6 +107,7 @@ def _support_designs(state) -> dict[int, dict]:
     return {
         int(profile["design_number"]): profile
         for profile in (state.native or {}).get("starbase_profiles", []) or []
+        if not profile_is_blocked(state,profile,is_starbase=True)
         if bool((profile.get("capabilities") or {}).get("can_refuel"))
         and bool((profile.get("capabilities") or {}).get("can_build_ships"))
     }
@@ -140,6 +144,30 @@ def _preferred_support_design(state, *, prefer_defensive: bool = False) -> dict 
             0 if int(d.get("hull_id", -1)) == 34 else 1,
             int(d.get("hull_id", 999)),
             int(d.get("design_number", 999)),
+        ),
+    )
+
+
+def _cheapest_support_design(state) -> dict | None:
+    """The legal shipyard/refuel design with the smallest bill and fewest weapons.
+
+    Quiet allied-border worlds use this instead of an armed station. A hostile
+    border still uses the normal or defensive choice.
+    """
+
+    designs = list(_support_designs(state).values())
+    lrts = {str(item).upper() for item in ((state.race.native or {}).get("lrts", []) or [])}
+    has_isb = "ISB" in lrts
+    legal = [design for design in designs if has_isb or int(design.get("hull_id", -1)) not in (33, 35)]
+    if not legal:
+        return None
+    return min(
+        legal,
+        key=lambda design: (
+            int(support_base_design_cost(design).get("resources", 0) or 0),
+            _starbase_weapon_count(design),
+            int(design.get("hull_id", 999) or 999),
+            int(design.get("design_number", 999) or 999),
         ),
     )
 
@@ -223,7 +251,7 @@ def _defensive_design_for_world(state, planet, *, installed_slot: int | None) ->
     )
     current_strength = _starbase_defense_strength(installed)
     economy = decode_race_economy(state.race)
-    resources = max(1, int(estimated_operating_resources(planet, economy)["estimated_resources"]))
+    resources = max(1, int(estimated_operating_resources(planet, economy, energy_tech=int(state.tech.energy or 0))["estimated_resources"]))
     candidates = []
     for profile in profiles:
         slot = int(profile.get("design_number", -1) or -1)
@@ -326,7 +354,7 @@ def _candidate_score(state, planet, operational, plan, network) -> tuple[float, 
         if not other.observed and distance(planet.position, other.position) <= 120.0
     )
     economy = decode_race_economy(state.race)
-    resources = int(estimated_operating_resources(planet, economy)["estimated_resources"])
+    resources = int(estimated_operating_resources(planet, economy, energy_tech=int(state.tech.energy or 0))["estimated_resources"])
     industry = int(planet.factories or 0) + int(planet.mines or 0)
     home_distance = float(distance_from_homeworld(state, planet.position))
     hub = next((h for h in network.hubs if int(h.planet_id) == int(planet.id)), None)
@@ -399,11 +427,25 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
     this planner treats it exactly like any player-authored starbase design.
     """
     support_designs = _support_designs(state)
+    if not support_designs and design_is_blocked(
+        state,"starbase",is_starbase=True,purpose="support",
+    ):
+        state.native["starbase_capability_demand"]={
+            "capability_id":"design:starbase:support",
+            "status":"BLOCKED_NATIVE",
+            "design_available":False,
+            "policy":"Do not queue a support base until a legal native design is emitted and appears in an M-file read-back.",
+        }
     territorial = assess_territorial_defense(state, plan)
+    exposure = territorial.exposure
+    exposed_world_ids = set(exposure.border_world_ids)
     # Network expansion still selects the economical support design. Defensive
     # replacement work below evaluates each threatened world's production rate
     # and installed base rather than blindly selecting the largest hull.
-    preferred = _preferred_support_design(state)
+    preferred = _preferred_support_design(
+        state,
+        prefer_defensive=bool(exposure.defensive_base_priority >= 180),
+    )
     if preferred is None:
         return []
 
@@ -465,6 +507,8 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             native = planet.native or {}
             if not bool(native.get("has_starbase", native.get("starbase", False))):
                 continue
+            if allied_player_ids(state) and not world_faces_hostile(state, planet):
+                continue
             installed_slot = native.get("starbase_design")
             installed_slot = None if installed_slot is None else int(installed_slot)
             defensive_design, assessment = _defensive_design_for_world(
@@ -475,8 +519,12 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             # Worlds which are economic hubs or nearer observed hostiles are
             # represented by territorial defense; the readiness gain provides
             # the local cost/time comparison.
+            local_exposure_bonus=(
+                1.25 + 0.10 * float(exposure.sustained_pressure)
+                if int(planet.id) in exposed_world_ids else 0.0
+            )
             upgrades.append((
-                float(assessment["readiness_gain"]),
+                float(assessment["readiness_gain"]) + local_exposure_bonus,
                 int(planet.population or 0),
                 planet,
                 defensive_design,
@@ -485,13 +533,16 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
         if upgrades:
             _gain, _population, planet, defensive_design, assessment = max(upgrades)
             slot = int(defensive_design["design_number"])
-            emergency = bool(territorial.needs_response)
+            emergency = bool(territorial.needs_response or exposure.defensive_base_priority)
             out.append(SupportBaseBuild(
                 planet_id=int(planet.id),
                 design_slot=slot,
                 design_name=str(defensive_design.get("name") or defensive_design.get("hull_name") or f"Starbase #{slot + 1}"),
                 hull_name=str(defensive_design.get("hull_name") or "Defensive starbase"),
-                priority=190 if emergency else 160,
+                priority=max(
+                    190 if territorial.needs_response else 160,
+                    int(exposure.defensive_base_priority or 0),
+                ) if emergency else 160,
                 reason=(
                     f"{'defensive' if emergency else 'current-tech'} starbase refit at {planet.name}: retain the installed base as orbital cover "
                     f"while building this armed replacement. Protection score "
@@ -515,6 +566,16 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             ))
 
     deficit = max(0, int(target) - len(operational) - len(queued_planets))
+    # A dense border crisis may need a new defensive hub even after the normal
+    # economy-wide relay quota is met. Cap it at two starts so a response does
+    # not turn into an uncontrolled starbase spending program.
+    exposed_without_support=sum(
+        1 for planet in owned
+        if int(planet.id) in exposed_world_ids
+        and not bool(((planet.native or {}).get("starbase_capabilities") or {}).get("can_refuel"))
+    )
+    if exposure.defensive_base_priority and exposed_without_support:
+        deficit=max(deficit, min(MAX_NEW_SUPPORT_BASES_PER_TURN, exposed_without_support))
     # A distant Orbital Fort is not a shipyard/refuel hub.  Permit one upgrade
     # project even when the numerical support-base milestone is met, while the
     # material gate still prevents it from starving local development.
@@ -552,10 +613,15 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             # may occupy the production queue this turn.
             minimum_population = 20_000
         else:
-            minimum_population = 55_000 if has_base else 85_000
+            minimum_population = 45_000
         if int(planet.population or 0) < minimum_population:
             continue
         score, detail = _candidate_score(state, planet, operational, plan, network)
+        if int(planet.id) in exposed_world_ids:
+            score += 1.10 + 0.10 * float(exposure.sustained_pressure)
+            detail["territorial_exposure"] = True
+        else:
+            detail["territorial_exposure"] = False
         # Below target we may build an inner economic hub too, but outer/frontier
         # worlds get the score needed to win naturally.
         if score < 1.20:
@@ -574,19 +640,38 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             if detail["nearest_hub"] >= 900
             else f"nearest support hub={detail['nearest_hub']:.1f} ly"
         )
+        quiet_border = bool(allied_player_ids(state)) and not world_faces_hostile(state, planet)
+        build_slot = slot
+        build_name = design_name
+        build_hull = hull_name
+        if quiet_border:
+            cheap = _cheapest_support_design(state)
+            if cheap is not None:
+                build_slot = int(cheap.get("design_number", slot) or slot)
+                build_name = str(cheap.get("name") or cheap.get("hull_name") or design_name)
+                build_hull = str(cheap.get("hull_name") or hull_name)
         out.append(SupportBaseBuild(
             planet_id=int(planet.id),
-            design_slot=slot,
-            design_name=design_name,
-            hull_name=hull_name,
+            design_slot=build_slot,
+            design_name=build_name,
+            hull_name=build_hull,
             priority=(
-                152 if detail["layer1_pending"]
+                132 if quiet_border else max(
+                    152 if detail["layer1_pending"]
                 else 147 if detail["next_layer_child"]
                 else 145 if detail["outer"] or detail["network_gap"]
-                else 138
+                else 138,
+                    int(exposure.defensive_base_priority or 0)
+                    if detail["territorial_exposure"] else 0,
+                )
             ),
             reason=(
-                f"promote high-value ring hub {planet.name} to {design_name} ({hull_name}): "
+                (
+                    f"cheap unarmed support base at allied-border world {planet.name}: "
+                    f"{build_name} ({build_hull}) has the lowest bill because no hostile is nearby. "
+                    if quiet_border else
+                    f"promote high-value ring hub {planet.name} to {build_name} ({build_hull}): "
+                )
                 + ("restore remote refueling and ship-construction support; " if detail["is_fort"] else "")
                 + f"{nearest_text}; ring={detail['ring']}; home distance={detail['home_distance']:.1f} ly; "
                 f"nearby viable/unknown frontier={detail['viable']}/{detail['unknown']}; "
@@ -594,17 +679,71 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
                 f"estimated resources={detail['resources']}; hub score={score:.2f}; "
                 f"promotion=P{detail['promotion_tier']} rank={detail['promotion_rank']} "
                 f"value={detail['promotion_value']:.2f}; layer1_pending={detail['layer1_pending']}; "
-                f"next_layer_child={detail['next_layer_child']}. "
+                f"next_layer_child={detail['next_layer_child']}; territorial_exposure="
+                f"{detail['territorial_exposure']}. "
                 f"Support-base milestone={len(operational)} operational + {len(queued_planets)} queued / target {target}."
             ),
         ))
+    if not any("continue in-progress" not in build.reason for build in out):
+        outward = _outward_fuel_world(state, owned, operational, queued_planets)
+        if outward is not None:
+            out.append(SupportBaseBuild(
+                planet_id=int(outward.id),
+                design_slot=slot,
+                design_name=design_name,
+                hull_name=hull_name,
+                priority=146,
+                complete_percent=0,
+                reason=(
+                    f"place one refuel base on the outward frontier at {outward.name}; "
+                    f"population={int(outward.population or 0):,}. "
+                    "The shared allied side does not need this base."
+                ),
+            ))
     return out
+
+
+def _outward_fuel_world(state, owned, operational, queued_planets):
+    """The far owned world that should receive the single open-side fuel base.
+
+    Home and worlds that already refuel are skipped. Thirty thousand colonists
+    is enough to start the base; the normal support-base gate stays higher.
+    """
+
+    if len(owned) < 2:
+        return None
+    allies = allied_player_ids(state)
+    allied = [planet for planet in state.planets if planet.owner in allies]
+    if allied:
+        center_x = sum(planet.position.x for planet in allied) / len(allied)
+        center_y = sum(planet.position.y for planet in allied) / len(allied)
+    else:
+        home = next((planet for planet in owned if bool((planet.native or {}).get("is_homeworld"))), owned[0])
+        center_x = home.position.x
+        center_y = home.position.y
+    refuel_ids = {int(planet.id) for planet in operational}
+    choices = []
+    for planet in owned:
+        if int(planet.id) in queued_planets or int(planet.id) in refuel_ids:
+            continue
+        if bool(((planet.native or {}).get("starbase_capabilities") or {}).get("can_refuel")):
+            continue
+        if int(planet.population or 0) < 30_000:
+            continue
+        span = math.hypot(planet.position.x - center_x, planet.position.y - center_y)
+        if span < 70.0:
+            continue
+        choices.append((span, int(planet.id), planet))
+    if not choices:
+        return None
+    choices.sort(reverse=True)
+    return choices[0][2]
 
 
 @lru_cache(maxsize=1)
 def _stock_starbase_hull_costs() -> dict[int, dict[str, int]]:
     """Read stock hull costs from the same MOD data used for native designs."""
-    path = Path(__file__).with_name("data_hulls.mod")
+    path = native_resource_path("mod", "data_hulls.mod")
     costs: dict[int, dict[str, int]] = {}
     for row in csv.reader(path.read_text(encoding="latin-1").splitlines()):
         if not row or int(row[0]) != 16:

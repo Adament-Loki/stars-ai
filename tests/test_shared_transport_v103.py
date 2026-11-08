@@ -19,7 +19,7 @@ def _freighter(fid: int, planet_id: int = 0) -> Fleet:
 def _state(fleets=None) -> GameState:
     home = Planet(
         0, "Home", Position(0, 0), owner=1, habitability=100,
-        population=100_000, factories=40, mines=30,
+        population=270_000, factories=40, mines=30,
         ironium=700, boranium=600, germanium=500,
         native={"is_homeworld": True, "starbase_capabilities": {"can_build_ships": True, "can_refuel": True}},
     )
@@ -75,7 +75,7 @@ def test_shared_scheduler_fills_p1_population_transport_with_compatible_minerals
 
 def test_large_transport_uses_type2_population_capture_for_small_non_ar_colony():
     state=_state(fleets=[_large_freighter(3)])
-    state.planets[0].population=200_000
+    state.planets[0].population=360_000
     target=Planet(
         9,"Enemy Seed",Position(40,0),owner=2,habitability=75,population=20_000,
         observed=True,native={"owner_prt_id":4},
@@ -99,7 +99,7 @@ def test_large_transport_uses_type2_population_capture_for_small_non_ar_colony()
 
 def test_population_capture_excludes_known_alternate_reality_colony():
     state=_state(fleets=[_large_freighter(3)])
-    state.planets[0].population=200_000
+    state.planets[0].population=360_000
     state.planets.append(Planet(
         9,"AR Seed",Position(40,0),owner=2,habitability=75,population=20_000,
         observed=True,native={"owner_prt_id":8,"owner_prt_name":"Alternate Reality"},
@@ -117,7 +117,7 @@ def test_population_capture_excludes_known_alternate_reality_colony():
 
 def test_counter_capture_uses_conservative_lost_world_population_and_marks_the_operation():
     state=_state(fleets=[_large_freighter(3)])
-    state.planets[0].population=250_000
+    state.planets[0].population=360_000
     state.planets.append(Planet(
         9,"Lost Relay",Position(40,0),owner=2,habitability=75,population=0,
         observed=True,native={
@@ -354,3 +354,6 @@ def test_idle_freighter_at_nonexporter_returns_to_ready_homeworld_before_new_bui
     assert return_order.payload["fleet_id"] == 3
     assert return_order.payload["destination_planet_id"] == 0
     assert return_order.payload["mission"] == "return_for_population_export"
+    transport=next(row for row in state.native["population_transport"] if row["fleet_id"]==3)
+    assert transport["state"]=="returning"
+    assert transport["exporter_id"]==0

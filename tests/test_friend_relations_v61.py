@@ -1,18 +1,24 @@
 
-from stars_ai.native.x_writer import _player_relation_friend_block
+from stars_ai.native.x_writer import _player_relation_block
 from stars_ai.windows_autohost import IntegratedNativeOrderBridge, WindowsAutoHostConfig
 from stars_ai.models import GameState,RaceProfile,Tech,Planet,Fleet,Position,OrderSet
 from stars_ai.strategy.military import add_military_orders
 from stars_ai.persona import BalancedPersona
 
 def test_empirical_player2_to_player1_friend_payload():
-    b=_player_relation_friend_block(1)
+    b=_player_relation_block(2, 2, [], {1: "friend"})
     assert b.type_id==38
     assert b.data==bytes.fromhex("01 00")
 
-def test_friend_target_is_zero_based():
-    assert _player_relation_friend_block(2).data==bytes.fromhex("01 01")
-    assert _player_relation_friend_block(4).data==bytes.fromhex("01 03")
+def test_seven_player_friend_and_enemy_arrays_match_the_client():
+    friends=_player_relation_block(1, 7, [], {2: "friend", 3: "friend", 4: "friend"})
+    enemies=_player_relation_block(2, 7, [], {1: "enemy", 3: "enemy", 4: "enemy"})
+    assert friends.data==bytes.fromhex("00 01 01 01 00 00 00")
+    assert enemies.data==bytes.fromhex("02 00 02 02 00 00 00")
+
+def test_confirmed_friend_stays_set_when_another_friend_is_still_pending():
+    block=_player_relation_block(1, 7, [0, 1, 0, 0, 0, 0, 0], {3: "friend", 4: "friend"})
+    assert block.data==bytes.fromhex("00 01 01 01 00 00 00")
 
 def test_allied_pair_expands_reciprocally():
     b=IntegratedNativeOrderBridge({},None,[[1,2]])
