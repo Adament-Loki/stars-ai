@@ -20,7 +20,7 @@ class V4Assessment:
 
 def assess_turn_v4(state: Any, plan: Any | None=None) -> V4Assessment:
     doctrine=doctrine_for(state.race.primary_trait)
-    roles={p.id:classify_planet_role(p).role for p in state.planets if p.owner==state.player_id}
+    roles={p.id:classify_planet_role(p, state).role for p in state.planets if p.owner==state.player_id}
     transfers=optimize_population_transfers(state)
     bases=evaluate_base_network(state)
 

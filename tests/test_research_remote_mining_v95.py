@@ -16,11 +16,11 @@ def _state():
     )
 
 
-def test_remote_mining_target_requests_first_race_legal_robot_unlock():
+def test_remote_mining_target_requests_the_top_race_legal_robot():
     demands=_build_demands(_state(),None)
     miner=next(demand for demand in demands if demand.capability.capability_id.startswith("component:remote_miner:"))
-    assert miner.capability.name == "Robo-Mini-Miner"
-    assert miner.capability.requirements == {"construction":2,"electronics":1}
+    assert miner.capability.name == "Robo-Super-Miner"
+    assert miner.capability.requirements == {"construction":12,"electronics":6}
 
 
 def test_tiny_scout_contact_does_not_trigger_research_emergency():

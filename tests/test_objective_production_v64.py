@@ -22,6 +22,40 @@ def test_scout_gap_builds_long_range_design():
     r=plan_objective_ship_builds(state()); s=next(x for x in r if x.role=='scout'); assert s.design_slot==1 and s.quantity>=1
 
 
+def test_quiet_freighters_do_not_each_get_an_escort():
+    s=state()
+    s.tech.weapons=10
+    for index in range(8):
+        s.fleets.append(Fleet(20+index, f"Hauler {index}", 1, Position(10, index), role="freighter"))
+    s.native["design_profiles"].append({
+        'design_number':6,'name':'Early Escort','role':'combat','dry_mass':40,
+        'fuel_capacity':80,'engine_id':3,'ram_scoop':False,
+    })
+
+    combat=[request for request in plan_objective_ship_builds(s) if request.role=='combat']
+
+    assert combat == []
+    assert s.native["fighter_build_desired"] == 0
+
+
+def test_weapons_twelve_lets_a_patrol_grow_past_a_handful():
+    s=state()
+    s.tech.weapons=12
+    for index in range(9):
+        s.fleets.append(Fleet(
+            80+index, f"Raider {index}", 2, Position(20+index, 10),
+            role="combat", combat_power=30,
+        ))
+    s.native["design_profiles"].append({
+        'design_number':6,'name':'Escort','role':'combat','dry_mass':40,
+        'fuel_capacity':80,'engine_id':3,'ram_scoop':False,
+    })
+
+    plan_objective_ship_builds(s)
+
+    assert s.native["fighter_build_desired"] > 4
+
+
 def test_low_weapons_contact_builds_only_a_two_ship_escort_screen():
     s=state()
     s.tech.weapons=3
@@ -36,7 +70,8 @@ def test_low_weapons_contact_builds_only_a_two_ship_escort_screen():
 
     assert combat
     assert combat[0].quantity<=2
-    assert "Low-tech escort doctrine" in combat[0].reason
+    assert "Weapons 12" in combat[0].reason
+    assert "hostile fleet" in combat[0].reason
 
 
 def test_midgame_hold_line_builds_a_real_defensive_force_even_at_low_tech():
@@ -58,10 +93,10 @@ def test_midgame_hold_line_builds_a_real_defensive_force_even_at_low_tech():
 
     combat=[request for request in plan_objective_ship_builds(s,plan) if request.role=='combat']
 
-    assert plan.phase=='midgame'
-    assert plan.planet_actions[80]=='hold_line'
-    assert combat and combat[0].quantity >= 4
-    assert 'phase=midgame requires a standing combat force' in combat[0].reason
+    assert combat
+    assert combat[0].quantity <= 4
+    assert "Weapons 12" in combat[0].reason
+    assert "hostile fleet" in combat[0].reason
 
 
 def test_weapon_generation_change_does_not_duplicate_a_full_existing_combat_force():

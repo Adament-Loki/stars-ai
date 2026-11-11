@@ -60,9 +60,32 @@ class WindowsAutoHostConfig:
     # Reciprocal Friend relationships. Example [[1, 2]] => P1 <-> P2.
     # Pairs listed here are kept in addition to every pair implied by allied_groups.
     allied_pairs: list[list[int]] = field(default_factory=list)
+    # Seats a person plays. The AI does not write their orders. The staged
+    # host file is marked human, and generation waits for their submitted X file.
+    human_player_ids: list[int] = field(default_factory=list)
+    # None or 0 waits until the human submits. A positive value is the limit.
+    human_turn_timeout_seconds: int | None = None
+    # After the AI finishes a turn, open Stars! on the human's new .m file.
+    open_human_turn: bool = True
 
     def __post_init__(self) -> None:
+        self.human_player_ids = [int(seat) for seat in self.human_player_ids]
+        overlap = set(self.human_player_ids) & {int(seat) for seat in self.player_ids}
+        if overlap:
+            raise ValueError(
+                f"A seat cannot be both an AI player and a human: {sorted(overlap)}"
+            )
+        invalid = [seat for seat in self.human_player_ids if not 1 <= seat <= 16]
+        if invalid:
+            raise ValueError(f"Human player seats must be in 1..16; got {invalid}")
         self.allied_pairs = expand_alliances(self.allied_groups, self.allied_pairs)
+
+    def report_personas(self) -> dict[str, str]:
+        """Persona labels for reports. A human seat is not an AI persona."""
+        shown = {str(key): str(value) for key, value in self.personas.items()}
+        for seat in self.human_player_ids:
+            shown[str(int(seat))] = "Human"
+        return shown
     personas: dict[str, str] = field(default_factory=lambda: {
         "1": "Balanced", "2": "Expansionist", "3": "Balanced", "4": "Balanced",
     })

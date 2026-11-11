@@ -5,6 +5,7 @@ from stars_ai.adapters.stars_native import NativeBlock, parse_file_header
 from stars_ai.native.x_writer import (
     _copy_client_fleet_split_pairs,
     _encode_blocks,
+    _fleet_split_transfer_blocks as writer_blocks,
     _fresh_filehash_block,
 )
 
@@ -30,6 +31,39 @@ def _captured_split_x(tmp_path: Path) -> tuple[Path, object]:
         [_fresh_filehash_block([split, move_ships]), split, move_ships, NativeBlock(0, 0, b"")],
     ))
     return client_x, parse_file_header(header.data)
+
+
+def test_synthesized_split_matches_the_player_one_capture():
+    """The rejected codec put the new fleet first and used a positive count."""
+    class _State:
+        player_id = 1
+
+    split, move = writer_blocks(
+        _State(),
+        source_fleet_id=6,
+        destination_fleet_id=19,
+        design_slot=0,
+        ships=3,
+    )
+
+    assert split.data.hex(" ") == "06 00"
+    assert move.data.hex(" ") == "06 00 13 00 22 01 00 fd ff"
+
+
+def test_singleton_split_uses_a_negative_one_and_the_owner_tag():
+    class _State:
+        player_id = 3
+
+    split, move = writer_blocks(
+        _State(),
+        source_fleet_id=2,
+        destination_fleet_id=24,
+        design_slot=6,
+        ships=1,
+    )
+
+    assert split.data.hex(" ") == "02 04"
+    assert move.data.hex(" ") == "02 04 18 04 22 40 00 ff ff"
 
 
 def test_player_one_client_split_capture_is_preserved_verbatim(tmp_path):

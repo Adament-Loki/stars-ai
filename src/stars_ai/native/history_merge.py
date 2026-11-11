@@ -406,6 +406,15 @@ def _file_player_and_designs(
     ship_index = 0
     starbase_index = 0
     designs: dict[tuple[int, bool, int], _DesignInfo] = {}
+    file_owner = _m_file_owner(players) if from_m else None
+    scanned_ship_owners = [
+        owner for owner in ship_owners if file_owner is None or owner != file_owner
+    ]
+    scanned_base_owners = [
+        owner for owner in starbase_owners if file_owner is None or owner != file_owner
+    ]
+    scanned_ship_index = 0
+    scanned_base_index = 0
     for block in blocks:
         if block.type_id != 26:
             continue
@@ -413,23 +422,89 @@ def _file_player_and_designs(
             record = parse_design(block.data)
         except Exception as exc:
             raise HistoryMergeError(f"Cannot decode DESIGN block: {exc}") from exc
-        if record.is_starbase:
-            if starbase_index >= len(starbase_owners):
+        # A player's own M file carries full designs for that seat and partial
+        # designs for whoever was scanned. The scanned PLAYER record can claim
+        # a starbase design that has no block. Walking the raw counters then
+        # assigns this seat's own station to the scanned opponent.
+        if file_owner is not None and record.is_full_design:
+            owner = file_owner
+        elif record.is_starbase:
+            source = scanned_base_owners if file_owner is not None else starbase_owners
+            index = scanned_base_index if file_owner is not None else starbase_index
+            if index >= len(source):
                 raise HistoryMergeError("More starbase DESIGN blocks than PLAYER counters declare")
-            owner = starbase_owners[starbase_index]
-            starbase_index += 1
+            owner = source[index]
+            if file_owner is not None:
+                scanned_base_index += 1
+            else:
+                starbase_index += 1
         else:
-            if ship_index >= len(ship_owners):
+            source = scanned_ship_owners if file_owner is not None else ship_owners
+            index = scanned_ship_index if file_owner is not None else ship_index
+            if index >= len(source):
                 raise HistoryMergeError("More ship DESIGN blocks than PLAYER counters declare")
-            owner = ship_owners[ship_index]
-            ship_index += 1
+            owner = source[index]
+            if file_owner is not None:
+                scanned_ship_index += 1
+            else:
+                ship_index += 1
         info = _DesignInfo(owner, record, block, from_m)
         designs[info.key] = info
-    if ship_index != len(ship_owners) or starbase_index != len(starbase_owners):
+    if file_owner is None and (
+        ship_index != len(ship_owners) or starbase_index != len(starbase_owners)
+    ):
+        # No private race record. A stale tail on the same owner is a delete
+        # the host did not decrement. Anything else, including a history file,
+        # still has to match.
+        deleted_tail = from_m and _shortfall_is_deleted_tail(
+            ship_owners, ship_index
+        ) and _shortfall_is_deleted_tail(starbase_owners, starbase_index)
+        if not deleted_tail:
+            raise HistoryMergeError(
+                "PLAYER design counters do not match the number of DESIGN blocks"
+            )
+    if file_owner is not None and (
+        scanned_ship_index > len(scanned_ship_owners)
+        or scanned_base_index > len(scanned_base_owners)
+    ):
         raise HistoryMergeError(
             "PLAYER design counters do not match the number of DESIGN blocks"
         )
     return players, designs
+
+
+def _m_file_owner(players: dict[int, _PlayerInfo]) -> int | None:
+    """Return the seat whose PLAYER record carries the private race payload.
+
+    Scanned opponents are short summary records. Their design counts are not
+    reliable enough to own a full design.
+    """
+
+    owners = [
+        info.player
+        for info in players.values()
+        if len(info.block.data) >= 0x71 or bool(info.block.data[6] & 0x04)
+    ]
+    if len(owners) != 1:
+        return None
+    return owners[0]
+
+
+def _shortfall_is_deleted_tail(owners: list[int], consumed: int) -> bool:
+    """True when every unconsumed design slot belongs to the owner already being read.
+
+    Consuming fewer blocks than the counter is the host's stale count after a
+    delete. A later owner's declared designs must still be present.
+    """
+
+    if consumed > len(owners):
+        return False
+    tail = owners[consumed:]
+    if not tail:
+        return True
+    if consumed == 0:
+        return len(set(tail)) == 1 and len(owners) > 0
+    return all(owner == owners[consumed - 1] for owner in tail)
 
 
 def _select_designs(

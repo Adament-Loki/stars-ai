@@ -84,6 +84,32 @@ def test_starbase_creation_uses_validated_two_record_controls_for_every_ai_playe
     assert len(encode_stars_string(populated_name)) == 6
 
 
+def test_first_starbase_hull_uses_an_empty_bn_body_then_the_fitted_commit():
+    fitted = EncodedShipDesign(
+        slot=1, hull_id=32, pic=138, armor=128, turn_designed=0,
+        slots=(
+            ComponentRef(0, 0, 0), ComponentRef(16, 0, 1),
+            ComponentRef(0, 0, 0), ComponentRef(0, 0, 0), ComponentRef(0, 0, 0),
+        ),
+        name="Base 02", staging_name="Base 02", is_starbase=True,
+    )
+    empty = EncodedShipDesign(
+        slot=1, hull_id=32, pic=138, armor=128, turn_designed=0,
+        slots=tuple(ComponentRef(0, 0, 0) for _ in fitted.slots),
+        name="Base 02", staging_name="Base 02", is_starbase=True,
+    )
+
+    initial, populated = create_starbase_design_blocks(
+        fitted, player_id=1, baseline_design=empty,
+    )
+
+    assert initial.data[:2] == bytes.fromhex("01 B1")
+    assert populated.data[:2] == bytes.fromhex("01 71")
+    assert all(int(slot.count) == 0 for slot in parse_design_change_payload(initial.data).slots)
+    assert tuple(parse_design_change_payload(populated.data).slots)[1] == ComponentRef(16, 0, 1)
+    assert decode_design_block(populated.data[2:], allow_type27_bit0_clear=True).name == "Base 02"
+
+
 def test_starbase_framing_keeps_ordinary_orders_and_copies_only_known_submit():
     ordinary = [NativeBlock(4, 4, bytes.fromhex("00 00 00 00"))]
     changes = create_starbase_design_blocks(

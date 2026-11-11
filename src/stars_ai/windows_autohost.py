@@ -278,7 +278,7 @@ def _validate_seed_game(cfg: WindowsAutoHostConfig) -> ValidatedSeedGame:
 
     player_ids=[int(x) for x in cfg.player_ids]
     if not player_ids:
-        errors.append("player_ids must contain at least one human-controlled AI seat")
+        errors.append("player_ids must contain at least one AI seat")
     if len(set(player_ids)) != len(player_ids):
         errors.append(f"player_ids contains duplicate seats: {player_ids}")
     invalid_players=[x for x in player_ids if not 1 <= x <= 16]
@@ -1258,7 +1258,8 @@ def _pre_host_audit(cfg: WindowsAutoHostConfig, game: Path, hst: Path, xy: Path,
     order_types={1,2,3,4,5,10,19,23,24,25,27,29,34,35,36,37,38,40,42,44,46}
     report={"turn":turn,"game_dir":str(game),"ready":True,"players":[]}
 
-    for pid in cfg.player_ids:
+    order_seats=[int(seat) for seat in cfg.player_ids] + [int(seat) for seat in cfg.human_player_ids]
+    for pid in order_seats:
         exact=game/f"{hst.stem}.x{pid}"
         row={"player_id":pid,"ready":False,"expected_path":str(exact)}
         if not exact.exists():
@@ -1404,6 +1405,140 @@ def _write_running_observer_report(
     temporary.replace(destination)
     return destination
 
+def _stars_client_running(exe_path: str) -> bool:
+    """Whether this Stars! copy is open, including the otvdmw.exe wrapper."""
+    if _stars_processes_running(exe_path):
+        return True
+    if os.name != "nt":
+        return False
+    from .stars_dialog_watcher import command_mentions_executable, _process_command_line
+    image = "otvdmw.exe"
+    try:
+        cp = subprocess.run(
+            ["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception:
+        return False
+    for line in (cp.stdout or "").splitlines():
+        if not line or line.startswith("INFO:"):
+            continue
+        parts = [item.strip().strip('"') for item in line.split('","')]
+        if len(parts) < 2:
+            continue
+        try:
+            pid = int(parts[1].strip('"'))
+        except ValueError:
+            continue
+        command = _process_command_line(pid)
+        if command and command_mentions_executable(command, exe_path):
+            return True
+    return False
+
+
+def _open_human_turn(cfg: WindowsAutoHostConfig, game: Path, basename: str, seat: int) -> Path:
+    """Start Stars! with this seat's current turn file. Generation is a separate launch."""
+    m_file = game / f"{basename}.m{int(seat)}"
+    if not m_file.is_file():
+        raise FileNotFoundError(f"Human turn file is missing: {m_file}")
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen(
+        [cfg.stars_exe, m_file.name],
+        cwd=str(game),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+        creationflags=creationflags,
+    )
+    return m_file
+
+
+def _human_order_status(path: Path, game_turn: int) -> tuple[bool, str]:
+    """Whether a human X file is the submitted order for this host turn."""
+    if not path.is_file():
+        return False, f"{path.name} is not saved yet"
+    from .adapters.stars_native import read_blocks
+    try:
+        header, _blocks, _extra = read_blocks(path)
+    except Exception as exc:
+        return False, f"{path.name} could not be read ({type(exc).__name__}: {exc})"
+    if int(header.turn) != int(game_turn):
+        return False, f"{path.name} is turn {int(header.turn)}, the host is on turn {game_turn}"
+    if not bool(header.turn_submitted):
+        return False, f"{path.name} is saved but not submitted"
+    return True, "submitted"
+
+
+def _wait_for_human_orders(cfg: WindowsAutoHostConfig, game: Path, basename: str) -> None:
+    """Pause generation until each human seat has submitted this turn and Stars! is closed.
+
+    The person opens their .m file in Stars!, submits, and exits. This does not
+    write or replace their X file. A timeout of None or 0 waits as long as it takes.
+    """
+    if not cfg.human_player_ids:
+        return
+    from .adapters.stars_native import read_blocks
+    header, _blocks, _extra = read_blocks(_live_game_file(game, basename, ".hst"))
+    game_turn = int(header.turn)
+    year = 2400 + game_turn
+    seats = ", ".join(f"P{int(seat)}" for seat in cfg.human_player_ids)
+    print(
+        f"[HUMAN] {seats} play year {year}. "
+        "Submit the turn, then close Stars! so the next year can generate.",
+        flush=True,
+    )
+    timeout = cfg.human_turn_timeout_seconds
+    deadline = None if not timeout else time.time() + float(timeout)
+    announced: set[str] = set()
+    last_open_attempt = 0.0
+    while True:
+        pending_seats: list[int] = []
+        pending = []
+        for seat in cfg.human_player_ids:
+            path = game / f"{basename}.x{int(seat)}"
+            ready, reason = _human_order_status(path, game_turn)
+            if not ready:
+                pending_seats.append(int(seat))
+                pending.append(f"P{int(seat)}: {reason}")
+        stars_open = _stars_client_running(cfg.stars_exe)
+        if not pending and not stars_open:
+            print(f"[HUMAN] {seats} submitted year {year}. Generating the turn.", flush=True)
+            return
+        if pending and not stars_open and cfg.open_human_turn and time.time() - last_open_attempt >= 3.0:
+            last_open_attempt = time.time()
+            seat = pending_seats[0]
+            try:
+                opened = _open_human_turn(cfg, game, basename, seat)
+                print(
+                    f"[HUMAN] Opened {opened.name} for year {year}. "
+                    "Take the turn, submit it, and close Stars!.",
+                    flush=True,
+                )
+            except Exception as exc:
+                print(
+                    f"[HUMAN] Could not open the turn file ({type(exc).__name__}: {exc}). "
+                    f"Open {basename}.m{seat} in {game} yourself.",
+                    flush=True,
+                )
+            continue
+        if pending:
+            message = (
+                "Still waiting. " + "; ".join(pending)
+                + ". Submit the turn, then close Stars!."
+            )
+        else:
+            message = "The turn is submitted. Close Stars! so the host can generate."
+        if message not in announced:
+            print(f"[HUMAN] {message}", flush=True)
+            announced.add(message)
+        if deadline is not None and time.time() >= deadline:
+            raise RuntimeError(f"Timed out waiting for a human turn. {message}")
+        time.sleep(max(0.5, float(cfg.host_poll_seconds)))
+
+
 def _host_command(cfg: WindowsAutoHostConfig, hst: Path) -> list[str]:
     # Stars! manual: stars!.exe -g gamename.hst forces generation and exits.
     cmd = [cfg.stars_exe, "-g"]
@@ -1463,6 +1598,16 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
             f"{2400+starting_turn} for {cfg.turns} additional turn(s).",
             flush=True,
         )
+    if cfg.human_player_ids:
+        from .adapters.stars_native import clear_computer_control
+        live_hst = _live_game_file(game, validated.basename, ".hst")
+        cleared = clear_computer_control(live_hst, cfg.human_player_ids)
+        if cleared:
+            print(
+                f"[HUMAN] Marked seat(s) {cleared} as human in {live_hst.name}. "
+                "Stars! will not play those turns.",
+                flush=True,
+            )
     _write_bootstrap_snapshot(
         validated,game,root,
         starting_turn=starting_turn,
@@ -1538,19 +1683,25 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
     )
 
     for turn in range(1, cfg.turns + 1):
-        turn_tag = f"turn-{turn:03d}"
         turn_dir = logs_root
         year_before = None
         order_files = []
 
         try:
-            cfg._active_turn_tag = turn_tag
-            turn_lifecycle.activate(turn_tag)
-
             first_pre_m=_live_game_file(
                 game,validated.basename,f".m{cfg.player_ids[0]}"
             )
             year_before=_read_year(first_pre_m,xy)
+            # Tag archives by the game turn, not the count of generations in
+            # this process. A resumed game must not reuse turn-001 and refuse
+            # to snapshot over the earlier run.
+            game_turn=(
+                int(year_before) - 2400 + 1
+                if year_before is not None else turn
+            )
+            turn_tag = f"turn-{game_turn:03d}"
+            cfg._active_turn_tag = turn_tag
+            turn_lifecycle.activate(turn_tag)
             if turn_archiver is not None:
                 turn_archiver.capture(
                     turn_tag=turn_tag,
@@ -1601,8 +1752,10 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     logs_root/f"{turn_tag}-player-{player_id:02d}-GENERATED.x{player_id}"
                 )
 
+            _wait_for_human_orders(cfg, game, validated.basename)
+
             missing = [
-                pid for pid in cfg.player_ids
+                pid for pid in [int(seat) for seat in cfg.player_ids] + [int(seat) for seat in cfg.human_player_ids]
                 if not any(
                     p.is_file() and p.name.casefold()==f"{validated.basename}.x{pid}".casefold()
                     for p in game.iterdir()
@@ -1652,7 +1805,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
 
             tracked_outputs = [hst, xy] + [
                 _live_game_file(game,validated.basename,f".m{pid}")
-                for pid in cfg.player_ids
+                for pid in [int(seat) for seat in cfg.player_ids] + [int(seat) for seat in cfg.human_player_ids]
             ]
 
             cp, settled = _run_host_serialized(cfg, hst, tracked_outputs, turn_dir)
@@ -1746,7 +1899,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
 
                 _write_running_observer_report(
                     root,observer_history,
-                    personas=cfg.personas,major_report_turns=cfg.checkpoints,
+                    personas=cfg.report_personas(),major_report_turns=cfg.checkpoints,
                 )
 
                 # An explicitly empty list is a useful quiet-playtest mode:
@@ -1759,11 +1912,11 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                     print(build_turn_status_report(
                         current_observer,
                         observer_history[-2] if len(observer_history) > 1 else None,
-                        personas=cfg.personas,
+                        personas=cfg.report_personas(),
                     ),flush=True)
                     print("")
                 elif cfg.print_observer_each_turn:
-                    _print_observer_summary(current_observer, cfg.personas)
+                    _print_observer_summary(current_observer, cfg.report_personas())
             except Exception as exc:
                 (logs_root / f"{turn_tag}-observer-error.txt").write_text(
                     f"{type(exc).__name__}: {exc}", encoding="utf-8"
@@ -1774,7 +1927,7 @@ def run_50_turn_game(cfg: WindowsAutoHostConfig, order_bridge: NativeOrderBridge
                 report = build_human_report(
                     current_observer,
                     observer_history,
-                    personas=cfg.personas,
+                    personas=cfg.report_personas(),
                     checkpoint_from=last_checkpoint_observer,
                 )
                 (checkpoints_root / f"{turn_tag}-OBSERVER_REPORT.txt").write_text(

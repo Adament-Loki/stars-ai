@@ -87,9 +87,7 @@ def test_operable_cap_keeps_a_five_percent_factory_buffer_behind_overflow():
     assert all(item.get("overflow_buffer") for item in factories)
     assert q[0]["item"]=="mine"
     assert [item["item"] for item in q].index("mine") < [item["item"] for item in q].index("factory")
-    mode=next(x for x in o.orders if x.kind=="set_planet_research_mode")
-    assert mode.payload["leftover_only"] is True
-    assert mode.payload["planet_id"]==0
+    assert not any(x.kind=="set_planet_research_mode" for x in o.orders)
 
 
 def test_factories_stop_once_the_five_percent_buffer_is_full():
@@ -100,7 +98,7 @@ def test_factories_stop_once_the_five_percent_buffer_is_full():
     q=next(x for x in o.orders if x.kind=="set_planet_queue").payload["queue"]
     assert not any(item["item"]=="factory" for item in q)
     assert q[0]["item"]=="mine"
-    assert any(x.kind=="set_planet_research_mode" and x.payload["leftover_only"] for x in o.orders)
+    assert not any(x.kind=="set_planet_research_mode" for x in o.orders)
 
 
 def test_never_build_mines_beyond_current_population_cap():

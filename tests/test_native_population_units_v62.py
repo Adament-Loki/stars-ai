@@ -6,6 +6,7 @@ from stars_ai.population_units import (
     COLONY_LOAD_COLONISTS,
     COLONY_LOAD_KT,
     colonists_from_cargo_kt,
+    colony_departure_load,
 )
 
 def test_adapter_normalizes_native_planet_population_hundreds():
@@ -23,3 +24,6 @@ def test_fleet_colonist_cargo_converts_native_kt_to_colonists():
     assert COLONY_LOAD_KT == 25
     assert COLONY_LOAD_COLONISTS == 2_500
     assert colonists_from_cargo_kt(25) == 2_500
+    assert colony_departure_load(0) == (25, 2_500)
+    assert colony_departure_load(250) == (127, 12_700)
+    assert colony_departure_load(40, aboard_colonists=1_000) == (30, 3_000)

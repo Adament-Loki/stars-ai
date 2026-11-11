@@ -15,7 +15,7 @@ def test_colony_stays_home_when_only_unknown_worlds_exist():
     o=OrderSet("g",2400,1); add_economic_orders(s,o,None)
     intents=ensure_fleet_activity(s,o)
     assert not any(x.kind=="move_fleet" and x.payload.get("fleet_id")==2 for x in o.orders)
-    assert next(x for x in intents if x["fleet_id"]==2)["action"]=="HOLD FOR COLONY INTEL"
+    assert next(x for x in intents if x["fleet_id"]==2)["action"]=="COLONY RESERVE / REPURPOSE"
 
 def test_freighter_holds_without_real_logistics_route():
     s=state([Fleet(3,"Cargo",1,Position(0,0),role="freighter",speed=8)])
@@ -54,6 +54,20 @@ def test_known_viable_colony_at_home_triggers_load_plus_colonize():
     c=next(x for x in o.orders if x.kind=="colony_operation")
     assert c.payload["load_25kt_population"] is True
     assert c.payload["destination_planet_id"]==1
+
+def test_colony_ship_drops_a_survey_waypoint():
+    planets=[
+        Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=100,population=300000),
+        Planet(1,"Auriga",Position(80,0),owner=None,observed=False),
+    ]
+    colony=Fleet(2,"Colony",1,Position(10,0),role="colony",destination_planet_id=1,destination_task=0)
+    s=state([colony],planets)
+    o=OrderSet("g",2400,1)
+    intents=ensure_fleet_activity(s,o)
+    cancel=next(x for x in o.orders if x.kind=="cancel_scout_route")
+    assert cancel.payload["fleet_id"]==2
+    assert next(x for x in intents if x["fleet_id"]==2)["action"]=="CANCEL SURVEY ROUTE"
+
 
 def test_empty_colony_away_from_home_returns_for_population():
     planets=[

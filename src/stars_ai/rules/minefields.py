@@ -14,6 +14,28 @@ SAFE_WARP = {
     MinefieldType.SPEED_TRAP: 5,
 }
 
+# Stock standard fields use radius = sqrt(mines). A 100 ly diameter is the
+# smallest field that gives a defensive fleet room to fight inside it.
+USEFUL_MINEFIELD_DIAMETER_LY = 100.0
+
+
+def standard_minefield_diameter_ly(mine_count: int) -> float:
+    """Return the diameter, in light years, of a standard minefield."""
+    mines = max(0, int(mine_count))
+    if mines <= 0:
+        return 0.0
+    return 2.0 * (mines ** 0.5)
+
+
+def minefield_is_useful(mine_count: int, *, diameter_ly: float | None = None) -> bool:
+    """A small field does not aid the fleet defending its anchor."""
+    diameter = (
+        float(diameter_ly)
+        if diameter_ly is not None
+        else standard_minefield_diameter_ly(mine_count)
+    )
+    return diameter + 1e-6 >= USEFUL_MINEFIELD_DIAMETER_LY
+
 @dataclass
 class MineTransitRecommendation:
     warp: int

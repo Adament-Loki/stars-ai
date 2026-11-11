@@ -29,6 +29,52 @@ def worth_securing(planet: Any) -> bool:
     return int(getattr(planet, "factories", 0) or 0) >= 80
 
 
+def bomber_construction_authorized(plan: Any, territorial: Any) -> bool:
+    """Bombers are an invasion tool, not a standing fleet.
+
+    A hostile colony inside claimed space is not an invasion. Construction
+    waits until strategic growth and a source-world campaign is authorized.
+    """
+
+    phase = str(getattr(plan, "phase", "") or "")
+    if phase != "opportunistic_war":
+        return False
+    escalation = getattr(territorial, "source_escalation", None)
+    return bool(getattr(escalation, "invasion_authorized", False))
+
+
+def bomber_campaign_targets(state: Any, plan: Any, territorial: Any) -> list:
+    """Planets a bomber can actually be sent to bomb.
+
+    Authorization without a planet is not a target. Bombers stay off the
+    queue until a source world or a hostile colony is named.
+    """
+
+    if not bomber_construction_authorized(plan, territorial):
+        return []
+    from .territorial_defense import hostile_colonies_inside_claimed_area
+
+    found: list = []
+    seen: set[int] = set()
+    escalation = getattr(territorial, "source_escalation", None)
+    source_id = getattr(escalation, "source_planet_id", None)
+    if source_id is not None:
+        source = next(
+            (planet for planet in state.planets if int(planet.id) == int(source_id)),
+            None,
+        )
+        owner = getattr(source, "owner", None) if source is not None else None
+        if source is not None and owner is not None and int(owner) != int(state.player_id):
+            found.append(source)
+            seen.add(int(source.id))
+    for planet in hostile_colonies_inside_claimed_area(state, plan):
+        if int(planet.id) in seen:
+            continue
+        found.append(planet)
+        seen.add(int(planet.id))
+    return found
+
+
 def empire_ready_to_press_border(state: Any, plan: Any) -> bool:
     """Border attacks wait until nearby growth is used up.
 
@@ -66,6 +112,38 @@ def empire_ready_to_press_border(state: Any, plan: Any) -> bool:
             continue
         open_claims += 1
     return open_claims <= 3
+
+
+def paper_tiger_colony(state: Any, planet: Any) -> bool:
+    """An Alternate Reality colony is the orbital fort, not a defended world.
+
+    The fort is empty of ground defenses and population. A single armed scout
+    can destroy it. A real defense count or a warship on the world is not
+    this case.
+    """
+
+    from .population_invasion import is_alternate_reality_target
+
+    native = getattr(planet, "native", {}) or {}
+    orbital = bool((native.get("starbase_capabilities") or {}).get("is_orbital_fort"))
+    if not is_alternate_reality_target(state, planet) and not orbital:
+        return False
+    if int(getattr(planet, "defenses", 0) or 0) > 10:
+        return False
+    owner = int(getattr(planet, "owner", -1) or -1)
+    for fleet in getattr(state, "fleets", []) or []:
+        if int(getattr(fleet, "owner", -1) or -1) != owner:
+            continue
+        same_world = (
+            abs(float(fleet.position.x) - float(planet.position.x)) <= 1.0
+            and abs(float(fleet.position.y) - float(planet.position.y)) <= 1.0
+        )
+        if not same_world:
+            continue
+        role = str(getattr(fleet, "role", "") or "").casefold()
+        if role in {"combat", "escort", "warship", "bomber"} or float(getattr(fleet, "combat_power", 0.0) or 0.0) > 0.0:
+            return False
+    return True
 
 
 def weak_undefended_colony(state: Any, planet: Any) -> bool:

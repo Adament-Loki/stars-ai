@@ -122,6 +122,23 @@ def test_scan_arrival_requires_a_new_planet_observation():
     assert "explored New Hope" in observed["message"]
 
 
+def test_overdue_warning_is_logged_once_then_leaves_the_active_log():
+    memory=AgentMemory()
+    memory.record_emitted_actions([{
+        "kind":"colony_operation",
+        "payload":{"fleet_id":0,"destination_planet_id":1,"warp":8,"mission":"colonize"},
+    }],_state())
+
+    first=memory.evaluate_action_outcomes(_state(2401,fleet=False))
+    assert first[0]["status"]=="WARNING"
+    assert memory.action_expectations
+
+    later=memory.evaluate_action_outcomes(_state(2402,fleet=False,target_owner=5))
+    assert later==[]
+    assert not memory.action_expectations
+    assert memory.action_outcome_history[-1]["status"]=="EXPIRED"
+
+
 def test_missed_colonization_uses_requested_warning_language():
     memory=AgentMemory()
     memory.record_emitted_actions([{

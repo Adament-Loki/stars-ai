@@ -89,7 +89,7 @@ def read_observer_turn(hst_path: str|Path, xy_path: str|Path, turn:int) -> Obser
         pobj=pmap.get(pid)
         owned=[p for p in planets if p.owner==pid]
         ownf=[f for f in fleets if f.owner==pid]
-        pop=sum(int(getattr(p,"population",0) or 0) for p in owned)
+        pop=sum(int(getattr(p,"population",0) or 0) for p in owned) * 100
         factories=sum(int(getattr(p,"factories",0) or 0) for p in owned)
         mines=sum(int(getattr(p,"mines",0) or 0) for p in owned)
         defenses=sum(int(getattr(p,"defenses",0) or 0) for p in owned)
@@ -324,6 +324,8 @@ def load_observer_turn(path: str|Path) -> ObserverTurn:
 def _observer_controller(player: ObserverPlayer, personas: dict[str,str]) -> str:
     """Use the configured AI persona when present; otherwise retain neutral ownership."""
     persona=personas.get(str(player.player_id))
+    if persona == "Human":
+        return "Human"
     return f"AI/{persona}" if persona else "external/human"
 
 

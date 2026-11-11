@@ -24,17 +24,23 @@ from ..turn_state import mapping as turn_mapping, sequence as turn_sequence
 
 MAX_QUEUED_SCOUT_WAYPOINTS=7
 # A persistent scout route is deliberately long, so its first choice matters
-# disproportionately.  Clear the useful home neighborhood before reserving a
-# route that can pull a probe hundreds of light-years away for several years.
-# This is a reconnaissance doctrine boundary, not an empire expansion limit:
-# once this local backlog is gone, the ordinary fuel-safe frontier router owns
-# the rest of the map.
-HOME_NEIGHBORHOOD_RECON_RADIUS_LY=100.0
-# While this ring contains unobserved worlds, do not queue a chain of outer
-# destinations.  Keep two local stops instead: it preserves home-first
-# scouting while ensuring a probe which completes a short first leg does not
-# sit idle for the host phase before the next AI decision pass.
-HOME_CLEARANCE_MAX_ROUTE_STOPS=2
+# disproportionately.  Survey outward from the homeworld, and do not reserve a
+# route beyond this radius while any world inside it is still unexplored.
+# A human opening stays inside about 400 ly through turn 29; matching that
+# keeps the early scout fleet on the neighborhood instead of a cross-map
+# frontier chain.  Once this backlog is gone, the fuel-safe frontier router
+# owns the rest of the map.
+HOME_NEIGHBORHOOD_RECON_RADIUS_LY=400.0
+# Idle armed ships may fill a short local gap during the opening, but they
+# are not scouts.  Two of them, and only through turn 25, is the limit.
+EARLY_FIGHTER_SCOUT_TURN=25
+EARLY_FIGHTER_SCOUT_CAP=2
+EARLY_FIGHTER_SCOUT_RANGE_LY=70.0
+# While this ring contains unobserved worlds, the route stays inside it and
+# walks outward from the homeworld. The chain is long enough that one scout
+# keeps discovering worlds through the turn-40 exploration window instead of
+# stopping after a single hop and waiting to be retargeted.
+HOME_CLEARANCE_MAX_ROUTE_STOPS=MAX_QUEUED_SCOUT_WAYPOINTS
 PRIORITY_HUB_RECON_RADIUS_LY=85.0
 
 
@@ -69,14 +75,27 @@ def _needs_recon(planet) -> bool:
 
 
 def _probe_fleets(state):
+    """Dedicated scout hulls only.  Colony, miner, and unknown ships do not explore."""
     return [
         f for f in state.fleets
-        if f.owner==state.player_id
-        and (
-            f.role=="scout"
-            or (f.role=="unknown" and float(getattr(f,"combat_power",0.0) or 0.0)<=0.0)
-        )
+        if f.owner==state.player_id and f.role=="scout"
     ]
+
+
+def _early_fighter_scouts(state, known_enemy: bool):
+    """A couple of idle fighters may take a short local look during the opening."""
+    turn=max(0, int(getattr(state, "year", 2400) or 2400) - 2400)
+    if known_enemy or turn > EARLY_FIGHTER_SCOUT_TURN:
+        return []
+    idle=[
+        fleet for fleet in state.fleets
+        if fleet.owner==state.player_id
+        and fleet.destination_planet_id is None
+        and fleet.role=="combat"
+    ]
+    home=homeworld_center(state)
+    idle.sort(key=lambda fleet: (distance(fleet.position, home), int(fleet.id)))
+    return idle[:EARLY_FIGHTER_SCOUT_CAP]
 
 
 def _scout_hull_summary(state, probes):
@@ -256,9 +275,11 @@ def add_exploration_orders(
 ) -> None:
     """
     Exploration is a native queued-route campaign, not a yearly nearest-target
-    choice. Each probe receives up to seven fuel-safe waypoints.  Local worlds
-    are strongly preferred, but there is no arbitrary empire-support radius:
-    a viable one-way scout route may extend the frontier.
+    choice. Each scout receives up to seven fuel-safe waypoints.  Worlds inside
+    400 ly of the homeworld are cleared before any route leaves that
+    neighborhood.  After that backlog is gone, a fuel-safe route may extend
+    the frontier.  Only scout hulls survey; up to two idle fighters may take
+    a short local hop through turn 25.
     """
     probes=_probe_fleets(state)
     pending_scout_splits={
@@ -400,15 +421,8 @@ def add_exploration_orders(
     }
 
     known_enemy=bool(contact["enemy_contact"])
-    eligible_aux=[
-        f for f in state.fleets
-        if state.year<=2410
-        and not known_enemy
-        and f.owner==state.player_id
-        and f.destination_planet_id is None
-        and f.role=="combat"
-    ]
-    exploration_assets=max(1,len(probes)+len(eligible_aux))
+    fighter_scouts=_early_fighter_scouts(state, known_enemy)
+    exploration_assets=max(1,len(probes)+len(fighter_scouts))
     route_limit=min(
         MAX_QUEUED_SCOUT_WAYPOINTS,
         max(1,math.ceil(len(unknown_all)/exploration_assets)),
@@ -432,11 +446,12 @@ def add_exploration_orders(
     # nearby target and leaving the auxiliary with only a distant impossible leg.
     aux_targets={}
     aux_reserved=set()
-    for aux in eligible_aux:
+    for aux in fighter_scouts:
         nearby=[
             p for p in unknown_all
             if p.id not in aux_reserved
-            and distance(aux.position,p.position)<=70.0
+            and distance(aux.position,p.position)<=EARLY_FIGHTER_SCOUT_RANGE_LY
+            and distance(home_center,p.position)<=HOME_NEIGHBORHOOD_RECON_RADIUS_LY
             and mission_reachable(aux,p.position,"scan")
         ]
         if nearby:
@@ -611,9 +626,17 @@ def add_exploration_orders(
                             *local_target_key(planet),distance(probe.position,planet.position),
                         ),
                     )
+                    # One first leg per scout explores more worlds by turn 40
+                    # than one long chain that leaves the other scouts idle.
+                    # Spare stops on a route cover worlds that do not have
+                    # their own scout, still walking outward from home.
+                    share=max(
+                        1,
+                        math.ceil(len(nearby_backlog)/max(1,len(probes))),
+                    )
                     local_stop_cap=(
                         1 if local_singleton_assignment
-                        else HOME_CLEARANCE_MAX_ROUTE_STOPS
+                        else min(HOME_CLEARANCE_MAX_ROUTE_STOPS, share)
                     )
                     route=build_probe_route(
                         state,probe,candidates,reserved=assigned,
@@ -801,53 +824,47 @@ def add_exploration_orders(
 
     state.native["probe_route_diagnostics"]=route_diags
 
-    # Early-game auxiliary reconnaissance remains useful, but only with idle
-    # COMBAT hulls and only while no enemy is known. Dedicated probes own the
-    # persistent sectors; auxiliaries take nearby leftovers.
-    if state.year<=2410 and not known_enemy:
-        auxiliaries=[
-            f for f in state.fleets
-            if f.owner==state.player_id
-            and f.destination_planet_id is None
-            and f.role=="combat"
-            and f.id not in already_moving
-        ]
-        for fleet in auxiliaries:
-            reserved_pid=aux_targets.get(int(fleet.id))
-            target=next(
-                (p for p in unknown_all if p.id==reserved_pid),
-                None,
-            )
-            if target is None:
-                candidates=[
-                    p for p in unknown_all
-                    if p.id not in assigned
-                    and p.id not in recent_targets
-                    and distance(fleet.position,p.position)<=70.0
-                    and mission_reachable(fleet,p.position,"scan")
-                ]
-                if not candidates:
-                    continue
-                target=min(candidates,key=lambda p:distance(fleet.position,p.position))
-            assigned.add(target.id)
-            orders.add(
-                "move_fleet",
-                {
-                    "fleet_id":fleet.id,
-                    "destination_planet_id":target.id,
-                    "warp":mission_warp(
-                        fleet,target.position,"scan",pressure=pressure
-                    ),
-                    "mission":"scan",
-                    "auxiliary_recon":True,
-                },
-                (
-                    f"{plan.persona_name + ': ' if plan else ''}"
-                    "short-range auxiliary reconnaissance with idle combat fleet."
+    # Early-game auxiliary reconnaissance is a capped local exception for idle
+    # fighters. Dedicated scout hulls own the survey.
+    for fleet in fighter_scouts:
+        if int(fleet.id) in already_moving:
+            continue
+        reserved_pid=aux_targets.get(int(fleet.id))
+        target=next(
+            (p for p in unknown_all if p.id==reserved_pid),
+            None,
+        )
+        if target is None:
+            candidates=[
+                p for p in unknown_all
+                if p.id not in assigned
+                and p.id not in recent_targets
+                and distance(fleet.position,p.position)<=EARLY_FIGHTER_SCOUT_RANGE_LY
+                and distance(home_center,p.position)<=HOME_NEIGHBORHOOD_RECON_RADIUS_LY
+                and mission_reachable(fleet,p.position,"scan")
+            ]
+            if not candidates:
+                continue
+            target=min(candidates,key=lambda p:distance(fleet.position,p.position))
+        assigned.add(target.id)
+        orders.add(
+            "move_fleet",
+            {
+                "fleet_id":fleet.id,
+                "destination_planet_id":target.id,
+                "warp":mission_warp(
+                    fleet,target.position,"scan",pressure=pressure
                 ),
-                priority=max(45,int(54*scout_weight)),
-            )
-            already_moving.add(fleet.id)
+                "mission":"scan",
+                "auxiliary_recon":True,
+            },
+            (
+                f"{plan.persona_name + ': ' if plan else ''}"
+                "short-range auxiliary reconnaissance with an idle fighter; scout hulls own the survey."
+            ),
+            priority=max(45,int(54*scout_weight)),
+        )
+        already_moving.add(fleet.id)
 
     _record_scout_productivity_invariant(
         state,orders,probes,unknown_all,
@@ -866,7 +883,7 @@ def deconflict_recon_orders(state: GameState, orders: OrderSet) -> None:
     fleet_by_id={f.id:f for f in state.fleets if f.owner==state.player_id}
     reserved=set()
     for f in fleet_by_id.values():
-        if f.role not in ("scout","unknown"):
+        if f.role != "scout":
             continue
         if f.destination_planet_id is not None:
             reserved.add(int(f.destination_planet_id))

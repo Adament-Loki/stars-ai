@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 import math
+from types import SimpleNamespace
 
 
 MINERAL_TYPES = ("ironium", "boranium", "germanium")
@@ -416,20 +417,308 @@ def breeder_export_floor(planet, race) -> int:
     return int(math.ceil(cap * fraction))
 
 
-def may_receive_homeworld_population(source, target, race) -> bool:
-    """The homeworld feeds an 80%+ world once it is past 25% capacity.
+def racial_growth_rate(race) -> float:
+    rate=float(getattr(race, "growth_rate", 0.15) or 0.15)
+    native=getattr(race, "native", {}) or {}
+    prt_id=int(native.get("prt_id", -1))
+    prt=str(getattr(race, "primary_trait", "") or "")
+    if prt_id==0 or "Hyper Expansion" in prt:
+        rate *= 2.0
+    return rate
 
-    Lesser worlds wait until the homeworld has reached the 33% growth peak.
-    Other breeders may still feed a world of at least 30% habitability.
+
+def marginal_colonist_growth(population:int, capacity:int, habitability:int, rate:float) -> float:
+    """Extra colonists per year from one more colonist on this world.
+
+    At or below 25% of capacity the marginal is ``rate * habitability``.
+    Above that, Stars! crowding multiplies it by ``(16/9) * (1-c) * (1-3c)``.
+    That term is about one third of the uncrowded rate just past 25%, zero at
+    one third of capacity, and negative after the peak.
+    """
+    cap=max(1, int(capacity))
+    hab=int(habitability)
+    if hab<=0 or rate<=0:
+        return 0.0
+    fraction=max(0.0, int(population))/cap
+    habit=hab/100.0
+    if fraction<=0.25:
+        return rate*habit
+    if fraction>=1.0:
+        return 0.0
+    return rate*habit*(16.0/9.0)*(1.0-fraction)*(1.0-3.0*fraction)
+
+
+def snowball_population(planet, race) -> int:
+    """Population at which another colonist stops being the best use of a person.
+
+    Below 25% of this world's current capacity, each colonist grows at the
+    full habitability rate. The next colonist past 25% produces about a third
+    of that, so it belongs on a world that is still under 25%.
+    """
+    cap=max(1, planet_population_capacity(planet, race))
+    return int(math.ceil(cap*0.25))
+
+
+def growth_peak_population(planet, race) -> int:
+    """Population where this world adds the most new colonists per year."""
+    cap=max(1, planet_population_capacity(planet, race))
+    return int(math.ceil(cap/3.0))
+
+
+def starvation_population(planet, race) -> int:
+    """Smallest population that grows a full 100 colonists and can build industry.
+
+    Stars! rounds growth to 100 colonists, so fewer people than
+    ``100 / (rate * habitability)`` add nobody. A non-AR world also needs
+    enough people to produce one factory's resource cost by themselves.
+    The result never exceeds the snowball point.
+    """
+    hab=int(getattr(planet, "habitability", 0) or 0)
+    if hab<=0:
+        return 0
+    rate=racial_growth_rate(race)
+    grow=int(math.ceil(100.0/max(rate*(hab/100.0), 1e-9)))
+    economy=decode_race_economy(race)
+    if economy.alternate_reality or economy.operable_factories_per_10k<=0:
+        factory=0
+    else:
+        factory=int(economy.factory_build_cost)*int(economy.colonists_per_resource)
+    return min(snowball_population(planet, race), max(100, grow, factory))
+
+
+def population_to_operate_factories(planet, race) -> int:
+    """People required to run the factories already built on this world."""
+    factories=int(getattr(planet, "factories", 0) or 0)
+    economy=decode_race_economy(race)
+    per=int(economy.operable_factories_per_10k)
+    if economy.alternate_reality or per<=0 or factories<=0:
+        return 0
+    return int(math.ceil(factories*10000/per))
+
+
+def breeder_hold(planet, race) -> int:
+    """People who stay. Shipping them idles a factory or cuts the growth peak."""
+    return max(
+        breeder_export_floor(planet, race),
+        population_to_operate_factories(planet, race),
+    )
+
+
+def _advance_world(pop:int, hab:int, factories:int, race, economy:RaceEconomy, energy:int) -> tuple[int,int,int]:
+    """One year of resources, population growth, and factory construction."""
+    planet=SimpleNamespace(
+        population=max(0, int(pop)),
+        habitability=int(hab),
+        factories=max(0, int(factories)),
+        mines=0,
+        native={},
+    )
+    resources=int(estimated_operating_resources(planet, economy, energy_tech=energy)["estimated_resources"])
+    if economy.alternate_reality:
+        built=0
+    else:
+        cap_f,_mines=installation_caps(int(planet.population), economy)
+        room=max(0, int(cap_f)-int(planet.factories))
+        built=min(room, resources//max(1, int(economy.factory_build_cost)))
+    growth=projected_population_growth(planet, race)
+    return resources, int(planet.population)+int(growth), int(planet.factories)+int(built)
+
+
+def _step_toward(environment:tuple, goal:tuple) -> tuple | None:
+    """Move one environment point toward the terraformed goal."""
+    best=None
+    for axis in range(3):
+        gap=int(goal[axis])-int(environment[axis])
+        if gap==0:
+            continue
+        distance=abs(gap)
+        if best is None or distance>best[0]:
+            best=(distance, axis, 1 if gap>0 else -1)
+    if best is None:
+        return None
+    updated=list(environment)
+    updated[best[1]]+=best[2]
+    return tuple(updated)
+
+
+def _buy_terraform(environment:tuple, goal:tuple, resources:int, cost:int, race) -> tuple:
+    """Spend this year's resources on steps. The new habitability applies next year."""
+    from .terraforming import habitability_for_environment
+    env=tuple(int(v) for v in environment)
+    goal=tuple(int(v) for v in goal)
+    left=max(0, int(resources))
+    price=max(1, int(cost))
+    while left>=price:
+        nxt=_step_toward(env, goal)
+        if nxt is None:
+            break
+        env=nxt
+        left-=price
+    hab=habitability_for_environment(race, env)
+    return env, left, (None if hab is None else int(hab))
+
+
+def ten_year_transfer_roi(
+    source, target, race, colonists:int, travel_years:int, *,
+    horizon:int=10, energy_tech:int=0, state=None,
+) -> dict:
+    """Resources and people gained over ten years by shipping colonists.
+
+    The shipment produces nothing while it is in transit. The alternative is
+    leaving those people on the source. Each year the destination spends
+    resources on terraforming steps it can already perform. A 40% world grows
+    at 40% until those steps are paid for, and at the higher habitability
+    only in the years after it gets there. A goal the colony cannot afford
+    inside the ten years is not credited.
+    """
+    moved=max(0, int(colonists))
+    years=max(0, int(horizon))
+    transit=max(0, int(travel_years))
+    economy=decode_race_economy(race)
+    energy=max(0, int(energy_tech))
+    start_hab=int(getattr(target, "habitability", 0) or 0)
+    goal_env=None
+    start_env=None
+    step_cost=100
+    if state is not None:
+        from .terraforming import evaluate_terraforming
+        potential=evaluate_terraforming(state, target)
+        if (
+            int(potential.tech_steps or 0)>0
+            and potential.current_environment is not None
+            and potential.tech_environment is not None
+        ):
+            start_env=tuple(potential.current_environment)
+            goal_env=tuple(potential.tech_environment)
+            step_cost=max(1, int(potential.resource_cost_per_step or 100))
+            if potential.current_habitability is not None:
+                start_hab=int(potential.current_habitability)
+
+    def run(ship:bool) -> tuple[int,int,int]:
+        source_pop=int(getattr(source, "population", 0) or 0)
+        target_pop=int(getattr(target, "population", 0) or 0)
+        source_factories=int(getattr(source, "factories", 0) or 0)
+        target_factories=int(getattr(target, "factories", 0) or 0)
+        source_hab=int(getattr(source, "habitability", 0) or 0)
+        target_hab=start_hab
+        target_env=None if start_env is None else tuple(start_env)
+        if ship:
+            source_pop=max(0, source_pop-moved)
+        total=0
+        delivered=not ship
+        for year in range(years):
+            if ship and not delivered and year>=transit:
+                target_pop+=moved
+                delivered=True
+            growth_hab=target_hab
+            source_resources, source_pop, source_factories=_advance_world(
+                source_pop, source_hab, source_factories, race, economy, energy,
+            )
+            pop_now=target_pop
+            fac_now=target_factories
+            world=SimpleNamespace(
+                population=max(0, pop_now), habitability=int(growth_hab),
+                factories=max(0, fac_now), mines=0, native={},
+            )
+            target_resources=int(estimated_operating_resources(
+                world, economy, energy_tech=energy,
+            )["estimated_resources"])
+            budget=target_resources
+            if target_env is not None and goal_env is not None:
+                target_env, budget, bought_hab=_buy_terraform(
+                    target_env, goal_env, budget, step_cost, race,
+                )
+                if bought_hab is not None:
+                    target_hab=bought_hab
+            if economy.alternate_reality:
+                target_factories=fac_now
+            else:
+                cap_f,_mines=installation_caps(max(0, pop_now), economy)
+                room=max(0, int(cap_f)-fac_now)
+                built=min(room, max(0, budget)//max(1, int(economy.factory_build_cost)))
+                target_factories=fac_now+built
+            target_pop=max(0, pop_now+int(projected_population_growth(world, race)))
+            total+=source_resources+target_resources
+        return total, source_pop+target_pop, int(target_hab)
+
+    stayed_resources, stayed_population, _stayed_hab=run(False)
+    shipped_resources, shipped_population, shipped_hab=run(True)
+    resource_delta=int(shipped_resources-stayed_resources)
+    population_delta=int(shipped_population-stayed_population)
+    # The resource ledger is only the years inside the window. The extra
+    # people at year 10 are the asset that produces the next decade, priced
+    # at one colonist's population resources for that same ten years.
+    per_year=1.0/max(1, int(economy.colonists_per_resource))
+    if economy.alternate_reality:
+        per_year *= (energy+1)/10.0
+    terminal=int(population_delta*per_year*years)
+    return {
+        "horizon":years,
+        "travel_years":transit,
+        "colonists":moved,
+        "resource_delta":resource_delta,
+        "population_delta":population_delta,
+        "habitability_now":int(start_hab),
+        "habitability_year10":int(shipped_hab),
+        "score":int(resource_delta+terminal),
+    }
+
+
+def feed_habitability(planet, state=None) -> int:
+    """Habitability used when deciding whether to send colonists now.
+
+    A world already at 70% counts as itself. A world at 40% or better counts
+    as the habitability it reaches once the race finishes terraforming, so a
+    40% world that becomes 70% is fed while the terraform is still running.
+    """
+    hab=int(getattr(planet, "habitability", 0) or 0)
+    if state is None or hab >= 70 or hab < 40:
+        return hab
+    from .terraforming import evaluate_terraforming
+    eventual=evaluate_terraforming(state, planet).eventual_habitability
+    if eventual is None:
+        return hab
+    return max(hab, int(eventual))
+
+
+def may_receive_homeworld_population(source, target, race, state=None) -> bool:
+    """True when one colonist grows the empire faster on the target than on the source.
+
+    A colonist on a world under 25% of capacity grows at the full habitability
+    rate. On the usual homeworld that rate is the best in the empire, so the
+    homeworld does not export until it has crossed 25% and crowding has cut
+    its marginal. A world already at 70%, or at 40% now and 70% after
+    terraforming, is fed once that happens. A lesser world waits until the
+    homeworld is at its one-third growth peak, where another colonist adds
+    nothing. Other breeders may still feed a world of at least 30%.
     """
     hab=int(getattr(target, "habitability", 0) or 0)
     if hab < 30:
         return False
     if not bool((getattr(source, "native", None) or {}).get("is_homeworld")):
         return True
-    cap=max(1, planet_population_capacity(source, race))
-    at_peak=int(getattr(source, "population", 0) or 0) >= int(math.ceil(cap * 0.33))
-    return hab >= 80 or at_peak
+    rate=racial_growth_rate(race)
+    source_cap=max(1, planet_population_capacity(source, race))
+    target_cap=max(1, planet_population_capacity(target, race))
+    source_marginal=marginal_colonist_growth(
+        int(getattr(source, "population", 0) or 0),
+        source_cap,
+        int(getattr(source, "habitability", 0) or 0),
+        rate,
+    )
+    target_marginal=marginal_colonist_growth(
+        int(getattr(target, "population", 0) or 0),
+        target_cap,
+        hab,
+        rate,
+    )
+    if target_marginal<=source_marginal:
+        return False
+    if int(getattr(target, "population", 0) or 0) >= growth_peak_population(target, race):
+        return False
+    if feed_habitability(target, state) >= 70:
+        return True
+    return int(getattr(source, "population", 0) or 0) >= growth_peak_population(source, race)
 
 
 def population_capacity_fraction(planet,race) -> float:

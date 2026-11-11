@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .diplomacy import allied_player_ids
 from .util import distance
 from .planetary_scanners import deployed_planetary_sensor_network
 
@@ -10,19 +11,22 @@ from .planetary_scanners import deployed_planetary_sensor_network
 def enemy_contact_summary(state: Any) -> dict[str, Any]:
     """Return visible foreign fleet/planet contact that ends classic scouting.
 
-    Stars! intelligence is incomplete, so a foreign owner is treated as a
-    strategic contact until diplomacy has enough evidence to classify it as a
-    friendly ally. This avoids continuing to build unarmed wide-area scouts
-    after the empire has reached another player's space.
+    Stars! intelligence is incomplete. A configured ally is shared map
+    information, not contact: treating those homeworlds as enemies makes the
+    opening build a border screen toward friends and ignore the frontier.
+    Any other foreign owner ends classic scouting.
     """
     player_id=int(getattr(state,"player_id",0) or 0)
+    allies=allied_player_ids(state)
+    def _hostile(owner: Any) -> bool:
+        return owner is not None and int(owner) != player_id and int(owner) not in allies
     foreign_fleets=[
         fleet for fleet in (getattr(state,"fleets",[]) or [])
-        if getattr(fleet,"owner",None) not in (None,player_id)
+        if _hostile(getattr(fleet,"owner",None))
     ]
     foreign_planets=[
         planet for planet in (getattr(state,"planets",[]) or [])
-        if getattr(planet,"owner",None) not in (None,player_id)
+        if _hostile(getattr(planet,"owner",None))
     ]
     owners=sorted({
         int(getattr(item,"owner"))
@@ -72,9 +76,13 @@ def custom_scout_missions(state: Any, *, support_distance: float|None=None) -> l
     penetrating_coverage={
         int(pid) for pid in sensor_network.get("penetrating_covered_planet_ids", [])
     }
+    allies=allied_player_ids(state)
+    me=int(getattr(state,"player_id",0) or 0)
     contacts=[
         item for item in [*(getattr(state,"fleets",[]) or []),*(getattr(state,"planets",[]) or [])]
-        if getattr(item,"owner",None) not in (None,getattr(state,"player_id",None))
+        if getattr(item,"owner",None) is not None
+        and int(getattr(item,"owner")) != me
+        and int(getattr(item,"owner")) not in allies
     ]
     for planet in getattr(state,"planets",[]) or []:
         if bool(getattr(planet,"observed",False)):

@@ -40,6 +40,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         personas: dict[str, str] | None = None,
         console_player_logs: list[int] | None = None,
         allied_pairs: list[list[int]] | None = None,
+        human_player_ids: list[int] | None = None,
         memory_root: str | Path | None = None,
         report_root: str | Path | None = None,
     ):
@@ -48,6 +49,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             None if console_player_logs is None else {int(value) for value in console_player_logs}
         )
         self.allied_pairs = [list(map(int, pair)) for pair in (allied_pairs or [])]
+        self.human_player_ids = [int(seat) for seat in (human_player_ids or [])]
         self.memory_root = Path(memory_root).resolve() if memory_root else None
         self.report_root = Path(report_root).resolve() if report_root else None
         # Retained for direct legacy callers/tests that used this diagnostic
@@ -89,6 +91,7 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             persona_name=self.personas.get(str(player_id), "Balanced"),
             trace_path=turn_dir / f"{getattr(self, 'turn_tag', 'current')}-player-{player_id:02d}-decision-native.json",
             friend_player_ids=self._friend_ids_for(int(player_id)),
+            human_player_ids=self.human_player_ids,
             state_store=state_store,
         )
         result = execution.native_result

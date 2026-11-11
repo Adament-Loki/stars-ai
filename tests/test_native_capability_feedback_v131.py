@@ -186,10 +186,13 @@ def test_blocked_combat_bomber_and_minelayer_demands_remain_open_without_hulls()
     demand = state.native["proactive_force_capability_demand"]
 
     assert demand["combat_seed_required"]
-    assert demand["bomber_design_required"]
+    assert not demand["bomber_design_required"]
     assert demand["minelayer_design_required"]
     assert {item["capability_id"] for item in state.native["open_design_capability_demand"]} >= {
-        "design:combat", "design:bomber", "design:minelayer",
+        "design:combat", "design:minelayer",
+    }
+    assert "design:bomber" not in {
+        item["capability_id"] for item in state.native["open_design_capability_demand"]
     }
     assert not any(proposal.role in {"combat", "bomber", "minelayer"} for proposal in proposals)
 
@@ -198,6 +201,31 @@ def test_blocked_combat_bomber_and_minelayer_demands_remain_open_without_hulls()
     assert state.native["minelayer_capability_demand"]["blocked_native"]
     assert state.native["bomber_capability_demand"]["blocked_native"]
     assert state.native["objective_combat_policy"]["blocked_native"]
+
+
+def test_duplicate_architecture_is_retried_instead_of_blocking_the_role():
+    memory = AgentMemory()
+    state = _lifecycle_state()
+    orders = OrderSet("feedback", 2444, 2)
+    payload = {
+        "role": "combat", "is_starbase": False, "purpose": "combat",
+        "name": "Fleet Combat Mk II", "target_slot": 8,
+    }
+    orders.add("create_design", payload, "Weapons improved.")
+    memory.record_capability_plans(orders, state)
+    memory.record_native_capability_execution([], [{
+        "kind": "create_design",
+        "payload": payload,
+        "reason": (
+            "Generic proposal cannot be compiled into a client-safe ship design: "
+            "the requested hull/engine/components are not all researched and race-legal, "
+            "the architecture already exists, or it is an unvalidated starbase mutation."
+        ),
+    }], state)
+
+    entry = memory.capability_execution["design:combat"]
+    assert entry["status"] == PLANNED
+    assert "blocking_reason" not in entry
 
 
 def test_writer_rejection_persists_blocked_status_with_reason(tmp_path):

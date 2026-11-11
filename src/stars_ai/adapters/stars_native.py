@@ -140,6 +140,72 @@ def read_blocks(path:str|Path)->tuple[FileHeader,list[NativeBlock],bytes|None]:
     return header,out,xy_extra
 
 
+# PLAYER.wMdPlr bit 9. Set means the host plays the seat; clear means a person does.
+PLAYER_AI_CONTROL = 0x0200
+
+
+def player_is_computer(player_block: bytes) -> bool:
+    """Whether a decoded type-6 player record is a Stars! computer player."""
+    if len(player_block) < 8:
+        return False
+    return bool(int.from_bytes(player_block[6:8], "little") & PLAYER_AI_CONTROL)
+
+
+def mark_player_human(player_block: bytes) -> bytes:
+    """Clear computer control on one decoded player record. Other bits stay."""
+    raw = bytearray(player_block)
+    word = int.from_bytes(raw[6:8], "little") & ~PLAYER_AI_CONTROL
+    raw[6:8] = word.to_bytes(2, "little")
+    return bytes(raw)
+
+
+def write_blocks(path: str | Path, blocks: list[NativeBlock]) -> None:
+    """Write blocks back with the same header-then-stream cipher used to read them.
+
+    The type-8 header stays plaintext. Every later block is encrypted with a
+    fresh cipher seeded from that header, which is how ``read_blocks`` decrypts.
+    """
+    header_block = next((block for block in blocks if block.type_id == 8), None)
+    if header_block is None:
+        raise ValueError("Cannot write Stars! blocks without a FileHeader")
+    rng = _rng(parse_file_header(header_block.data))
+    out = bytearray()
+    for block in blocks:
+        payload = block.data if block.type_id == 8 else _crypt(block.data, rng)
+        size = len(block.data)
+        if size > 0x3FF:
+            raise ValueError(f"Stars! block type {block.type_id} is larger than 1023 bytes")
+        out += ((int(block.type_id) << 10) | size).to_bytes(2, "little")
+        out += payload
+    Path(path).write_bytes(out)
+
+
+def clear_computer_control(path: str | Path, player_ids: list[int]) -> list[int]:
+    """Make the named seats human in a staged host file. The seed is not touched.
+
+    Returns the seats whose computer-control bit was cleared.
+    """
+    _header, blocks, extra = read_blocks(path)
+    if extra:
+        raise ValueError(f"Refusing to rewrite {path}: it has a trailing coordinate table")
+    targets = {int(seat) for seat in player_ids}
+    changed: list[int] = []
+    rewritten: list[NativeBlock] = []
+    from ..native.player import parse_player
+    for block in blocks:
+        if block.type_id == 6:
+            player = parse_player(block.data)
+            if player.player_number in targets and player_is_computer(block.data):
+                data = mark_player_human(block.data)
+                rewritten.append(NativeBlock(block.type_id, len(data), data))
+                changed.append(int(player.player_number))
+                continue
+        rewritten.append(block)
+    if changed:
+        write_blocks(path, rewritten)
+    return changed
+
+
 def parse_xy(path:str|Path)->dict:
     header,blocks,extra=read_blocks(path)
     pb=next((b for b in blocks if b.type_id==7),None)

@@ -76,8 +76,8 @@ def test_core_infrastructure_precedes_optional_work_and_preserves_germanium():
 
     queue=next(order.payload["queue"] for order in orders.orders if order.kind=="set_planet_queue")
     assert [item["item"] for item in queue[:2]] == ["factory","mine"]
-    assert queue[0]["quantity"]==25
-    assert queue[1]["quantity"]==25
+    assert queue[0]["quantity"]==80
+    assert queue[1]["quantity"]==80
     economy=next(order.payload["economy"] for order in orders.orders if order.kind=="set_planet_queue")
     assert economy["economic_core"] is True
     assert economy["mineral_reserve"]["germanium"] >= 320
@@ -103,7 +103,7 @@ def test_mature_mineral_secure_core_builds_factories_before_more_mines():
 
     queue=next(order.payload["queue"] for order in orders.orders if order.kind=="set_planet_queue")
     assert queue[0]["item"]=="factory"
-    assert not any(item["item"]=="mine" for item in queue)
+    assert any(item["item"]=="mine" for item in queue)
 
 
 def test_saturated_factory_buffer_waits_behind_ships_and_mines():
@@ -173,14 +173,15 @@ def test_only_key_research_sprints_may_displace_shared_economic_growth():
     sprint=OrderSet(state.game_name,state.year,state.player_id)
     add_economic_orders(state,sprint,research_decision=_decision("SPRINT"))
     sprint_queue=next(order.payload["queue"] for order in sprint.orders if order.kind=="set_planet_queue")
-    assert sprint_queue == []
+    assert any(item["item"]=="factory" for item in sprint_queue)
+    assert any(item["item"]=="mine" for item in sprint_queue)
     execution=state.native["research_sprint_execution"]
     assert execution["requested_research_allocation"] == 25
-    assert execution["expected_available_resource_total"] > 0
     assert execution["contributors"] == [{
-        "planet_id":0,"status":"contributing","reason":"queue cleared for named sprint",
+        "planet_id":0,
+        "status":"protected_production",
+        "reason":"mines and factories are still below the population cap",
     }]
-    assert execution["factories_or_mines_deferred"]
 
 
 def test_freight_cannot_drain_a_core_below_its_working_reserve():

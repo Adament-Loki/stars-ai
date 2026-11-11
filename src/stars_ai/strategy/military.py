@@ -3,8 +3,14 @@
 from __future__ import annotations
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
-from ..invasion import empire_ready_to_press_border, plan_invasion, weak_undefended_colony, worth_securing
-from ..territorial_defense import assess_territorial_defense
+from ..invasion import (
+    empire_ready_to_press_border,
+    paper_tiger_colony,
+    plan_invasion,
+    weak_undefended_colony,
+    worth_securing,
+)
+from ..territorial_defense import _minefield_base, assess_territorial_defense
 from ..util import distance
 from ..warp_policy import mission_warp
 
@@ -311,23 +317,24 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
                         f"at {required_ratio:.2f}x; fell back from {anchor.name} rather than losing the stack."
                     )
 
+        field_base = _minefield_base(owned, anchor) if violation.requires_minefield else None
         if (
-            violation.requires_minefield
-            and int(anchor.id) in territorial.uncovered_minefield_anchor_ids
-            and int(anchor.id) not in assigned_minefield_anchors
+            field_base is not None
+            and int(field_base.id) in territorial.uncovered_minefield_anchor_ids
+            and int(field_base.id) not in assigned_minefield_anchors
             and available_minelayers
         ):
             minelayer = available_minelayers.pop(0)
             at_anchor = (
-                int((minelayer.native or {}).get("position_object_id", -1) or -1) == int(anchor.id)
+                int((minelayer.native or {}).get("position_object_id", -1) or -1) == int(field_base.id)
                 or (
-                    abs(float(minelayer.position.x) - float(anchor.position.x)) <= 0.5
-                    and abs(float(minelayer.position.y) - float(anchor.position.y)) <= 0.5
+                    abs(float(minelayer.position.x) - float(field_base.position.x)) <= 0.5
+                    and abs(float(minelayer.position.y) - float(field_base.position.y)) <= 0.5
                 )
             )
             payload = {
                 "fleet_id": minelayer.id,
-                "destination_planet_id": anchor.id,
+                "destination_planet_id": field_base.id,
                 "minefield_type": "standard",
                 "minefield_mode": "planet_destination",
                 "violator_fleet_id": violation.fleet_id,
@@ -338,8 +345,9 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
                 orders.add(
                     "lay_minefield", payload,
                     (
-                        f"claim and protect {anchor.name} with a minefield after {violation.classification} "
-                        f"violator {violation.fleet_name} entered the territorial zone."
+                        f"claim and protect {field_base.name} with a minefield after {violation.classification} "
+                        f"violator {violation.fleet_name} entered the territorial zone. "
+                        "Keep laying until the field is at least 100 ly across."
                     ),
                     priority=int(118 + 20 * violation.severity),
                 )
@@ -352,12 +360,12 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
                         "mission": "minefield_deploy_and_lay",
                     },
                     (
-                        f"send minelayer {minelayer.name} to {anchor.name}, then establish a territorial "
-                        f"minefield against P{violation.owner}'s {violation.classification} intrusion."
+                        f"send minelayer {minelayer.name} to {field_base.name}, then lay until the field "
+                        f"is at least 100 ly across against P{violation.owner}'s {violation.classification} intrusion."
                     ),
                     priority=int(110 + 18 * violation.severity),
                 )
-            assigned_minefield_anchors.add(int(anchor.id))
+            assigned_minefield_anchors.add(int(field_base.id))
 
     threats = []
     for enemy in hostile_fleets:
@@ -409,8 +417,104 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
                 f"the {required_ratio:.2f}x intercept threshold and is reinforcing the planet instead."
             )
 
+    _add_paper_tiger_push(state, orders, plan, available_patrols)
     _add_weak_colony_assault(state, orders, plan, available_patrols, required_ratio)
     _add_border_pressure(state, orders, plan, available_patrols, required_ratio)
+
+
+# Two light armed ships are enough to slow an Alternate Reality colony drive.
+# The battle line stays on defense.
+PAPER_TIGER_SHIP_CAP = 2
+
+
+def _light_armed_ship(fleet, player_id: int) -> bool:
+    """A scout or other small armed hull, not a warship pulled off the line."""
+    if not _available_defensive_fleet(fleet, player_id) or not _is_explicitly_armed(fleet):
+        return False
+    role = str(getattr(fleet, "role", "") or "").casefold()
+    if role in {"combat", "warship", "bomber", "escort"} and _defensive_power(fleet) > 40.0:
+        return False
+    return True
+
+
+def _add_paper_tiger_push(state, orders, plan, available_patrols) -> None:
+    """Send at most two light armed ships at nearby high-value empty forts.
+
+    Alternate Reality territory looks large because every world has a fort.
+    Those forts have no ground defense. A couple of scouts with a weapon
+    remove the ones on good worlds. A colonizer then claims the world.
+    """
+
+    owned = [planet for planet in state.planets if planet.owner == state.player_id]
+    if not owned:
+        return
+    planets_by_id = {int(planet.id): planet for planet in state.planets}
+    committed = []
+    for fleet in state.fleets:
+        if int(getattr(fleet, "owner", -1) or -1) != int(state.player_id):
+            continue
+        destination = getattr(fleet, "destination_planet_id", None)
+        if destination is None:
+            continue
+        planet = planets_by_id.get(int(destination))
+        if planet is None or not paper_tiger_colony(state, planet):
+            continue
+        committed.append(int(planet.id))
+    slots = PAPER_TIGER_SHIP_CAP - len(committed)
+    claims = list(committed)
+    if slots > 0:
+        lights = [
+            fleet for fleet in state.fleets
+            if _light_armed_ship(fleet, state.player_id)
+        ]
+        lights.sort(key=lambda fleet: (_defensive_power(fleet), int(fleet.id)))
+        candidates = []
+        for planet in state.planets:
+            owner = getattr(planet, "owner", None)
+            if owner is None or int(owner) == int(state.player_id) or not bool(getattr(planet, "observed", False)):
+                continue
+            if plan is not None:
+                view = (plan.diplomacy or {}).get(int(owner), {})
+                if str(view.get("attitude", "neutral") or "neutral").lower() in {"helpful", "allied"}:
+                    continue
+            if not paper_tiger_colony(state, planet) or not worth_securing(planet):
+                continue
+            nearest = min(distance(planet.position, world.position) for world in owned)
+            if nearest > 180.0:
+                continue
+            candidates.append((nearest, int(planet.habitability or 0), int(planet.id), planet))
+        candidates.sort(key=lambda row: (row[0], -row[1], row[2]))
+        for _nearest, _habitability, _planet_id, planet in candidates:
+            if slots <= 0 or not lights:
+                break
+            if int(planet.id) in claims:
+                continue
+            scout = lights.pop(0)
+            slots -= 1
+            claims.append(int(planet.id))
+            if scout in available_patrols:
+                available_patrols.remove(scout)
+            scout.destination_planet_id = int(planet.id)
+            orders.add(
+                "move_fleet",
+                {
+                    "fleet_id": scout.id,
+                    "destination_planet_id": int(planet.id),
+                    "warp": mission_warp(scout, planet.position, "attack"),
+                    "mission": "attack",
+                    "invasion_action": "CAPTURE",
+                    "target_owner": int(planet.owner),
+                    "secure_after_attack": True,
+                    "paper_tiger": True,
+                },
+                (
+                    f"push into {planet.name}: the colony is an empty orbital fort with no ground defense. "
+                    f"One light armed ship removes it, and habitability={int(planet.habitability or 0)}% "
+                    "is worth settling. Two such ships are enough."
+                ),
+                priority=92,
+            )
+    state.native["paper_tiger_claims"] = list(dict.fromkeys(claims))[:PAPER_TIGER_SHIP_CAP]
 
 
 def _add_weak_colony_assault(state, orders, plan, available_patrols, required_ratio: float) -> None:

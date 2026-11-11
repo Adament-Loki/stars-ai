@@ -16,10 +16,14 @@ from .base import TurnAdapter
 from ..models import GameState, Planet, Fleet, Position, Tech, RaceProfile, OrderSet
 from ..native.player_state import PlayerState
 from ..fuel_planner import design_fuel_profile, fleet_fuel_profile, has_ife, has_ce
-from ..starbase_capabilities import starbase_capabilities
+from ..starbase_capabilities import design_is_armed, starbase_capabilities
 from ..population_units import colonists_from_cargo_kt
-from ..design_legality import COLONIZATION_MODULE_ITEM_ID
-from ..starsapi_items import MECHANICAL, MINE_LAYER, stock_hulls
+from ..design_legality import (
+    COLONY_SHIP_HULL_ID,
+    MINI_COLONY_SHIP_HULL_ID,
+    is_colonizer_module,
+)
+from ..starsapi_items import MINE_LAYER, stock_hulls
 
 
 def _infer_xy(m_path: Path) -> Path | None:
@@ -46,23 +50,39 @@ def _pick_current_player(native: PlayerState, player_id: int):
     return native.players[0] if native.players else None
 
 
+def _starbase_design(planet, owner_bases: dict, own_bases: dict):
+    """Return the starbase design fitted to this planet, including an enemy fort."""
+    if not planet.has_starbase or planet.starbase_design is None:
+        return None
+    slot = int(planet.starbase_design)
+    if planet.owner is not None:
+        found = owner_bases.get(int(planet.owner), {}).get(slot)
+        if found is not None:
+            return found
+    return own_bases.get(slot)
+
+
 def _role_for_design(d) -> str:
     """Classify a design from fitted components for high-level planning."""
     armed=any(s.count>0 and s.category in (16,32,64) for s in d.slots)
     has_mine_layer=any(s.count>0 and s.category==MINE_LAYER for s in d.slots)
-    has_colonization_module=any(
-        s.count > 0
-        and s.category == MECHANICAL
-        and s.item_id == COLONIZATION_MODULE_ITEM_ID
+    has_colonizer_module=any(
+        int(getattr(s, "count", 0) or 0) > 0
+        and is_colonizer_module(getattr(s, "category", 0), getattr(s, "item_id", 0))
         for s in d.slots
     )
     hull=stock_hulls().get(int(d.hull_id))
-    # A Colonization Module is the role-defining equipment, not a particular
-    # hull ID.  General cargo hulls with the module were previously decoded as
-    # freighters after native read-back, which hid live colonizers from the
-    # expansion and production planners.  A non-cargo hull still cannot carry
-    # settlers, so it remains outside the colony role.
-    if has_colonization_module and hull is not None and int(hull.cargo) > 0:
+    # Either stock colonizer defines the role: the Colonization Module on a
+    # cargo hull, or Alternate Reality's Orbital Construction Module.  A
+    # non-cargo hull still cannot carry settlers.  Dedicated colony hulls with
+    # no decoded equipment are the same ship; a partial Colony Ship must not
+    # fall through as an unarmed scout.
+    if has_colonizer_module and hull is not None and int(hull.cargo) > 0:
+        return 'colony'
+    if (
+        int(d.hull_id) in (MINI_COLONY_SHIP_HULL_ID, COLONY_SHIP_HULL_ID)
+        and not any(int(s.count) > 0 for s in d.slots)
+    ):
         return 'colony'
     if d.hull_id==4: return 'scout'
     if d.hull_id in (20,21,22,23,24): return 'miner'
@@ -305,6 +325,19 @@ class NativeCoreTurnAdapter(TurnAdapter):
             for d in player_designs
             if d.is_starbase
         }
+        # A scanned enemy starbase uses that owner's design number, not ours.
+        # The M file still carries their design list, including an Orbital Fort.
+        owner_bases={}
+        owner_races={}
+        for record in native.players:
+            seat=int(record.player_number)
+            owner_bases[seat]={
+                int(design.design_number):design
+                for design in native.designs_for_player(seat)
+                if design.is_starbase
+            }
+            if record.race is not None:
+                owner_races[seat]=(int(record.race.prt_id), record.race.prt_name)
 
         planet_map = native.best_planets()
         planets: list[Planet] = []
@@ -312,6 +345,9 @@ class NativeCoreTurnAdapter(TurnAdapter):
             meta = native.planet_metadata.get(pid, {})
             # Observed means the player has at least environmental or concrete state data.
             observed = p.can_see_environment() or p.owner is not None or p.has_surface_minerals
+            fitted_base = _starbase_design(p, owner_bases, base_designs)
+            fitted_hull = None if fitted_base is None else int(fitted_base.hull_id)
+            owner_prt = owner_races.get(int(p.owner), (None, None)) if p.owner is not None else (None, None)
             planets.append(Planet(
                 id=pid,
                 name=meta.get('name', f'Planet #{pid + 1}'),
@@ -348,21 +384,14 @@ class NativeCoreTurnAdapter(TurnAdapter):
                     'has_scanner': p.has_scanner,
                     'has_starbase': p.has_starbase,
                     'starbase_design': p.starbase_design,
-                    'starbase_hull_id': (
-                        int(base_designs[p.starbase_design].hull_id)
-                        if p.has_starbase and p.starbase_design in base_designs
-                        else None
-                    ),
-                    'starbase_hull_name': (
-                        base_designs[p.starbase_design].hull_name
-                        if p.has_starbase and p.starbase_design in base_designs
-                        else None
-                    ),
+                    'starbase_hull_id': fitted_hull,
+                    'starbase_hull_name': None if fitted_base is None else fitted_base.hull_name,
                     'starbase_capabilities': starbase_capabilities(
-                        int(base_designs[p.starbase_design].hull_id)
-                        if p.has_starbase and p.starbase_design in base_designs
-                        else None
+                        fitted_hull,
+                        armed=design_is_armed(None if fitted_base is None else fitted_base.slots),
                     ),
+                    'owner_prt_id': owner_prt[0],
+                    'owner_prt_name': owner_prt[1],
                     'has_route': p.has_route,
                     'route_short': p.route_short,
                     'observed_turn': p.observed_turn,
@@ -412,7 +441,10 @@ class NativeCoreTurnAdapter(TurnAdapter):
                     # Preserve exact fitted components so economic planning can
                     # fund the real base bill rather than a guessed allowance.
                     'slots':[asdict(slot) for slot in d.slots],
-                    'capabilities':starbase_capabilities(int(d.hull_id)),
+                    'capabilities':starbase_capabilities(
+                        int(d.hull_id),
+                        armed=design_is_armed(d.slots),
+                    ),
                 })
                 continue
             fp=design_fuel_profile(d,role=design_roles.get(d.design_number,'unknown')).to_dict()
@@ -558,6 +590,19 @@ class NativeCoreTurnAdapter(TurnAdapter):
                 'research_allocation_percent': _research_percent(native),
                 'planet_research_modes': _planet_research_modes(native),
                 'designs': [asdict(x) for x in native.designs_for_player(player_id)],
+                'enemy_designs': [
+                    {
+                        'owner': int(record.player_number),
+                        'design_number': int(design.design_number),
+                        'hull_id': int(design.hull_id),
+                        'is_starbase': bool(design.is_starbase),
+                        'slots': [asdict(slot) for slot in design.slots],
+                    }
+                    for record in native.players
+                    if int(record.player_number) != int(player_id)
+                    for design in native.designs_for_player(int(record.player_number))
+                    if not design.is_starbase
+                ],
                 'design_profiles': design_profile_list,
                 'starbase_profiles': starbase_profile_list,
                 'population_source_m_file': str(m_path),

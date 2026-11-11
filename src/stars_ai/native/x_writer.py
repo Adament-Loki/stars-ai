@@ -22,7 +22,9 @@ from stars_ai.native.design_change import (
     EncodedShipDesign, UnsafeShipDesignMutationError, assert_deletable_ship_design_slot,
     assert_free_ship_design_slot, assert_free_starbase_design_slot,
     create_ship_design_blocks, create_starbase_design_blocks,
-    delete_existing_ship_design_block, encoded_ship_design_from_payload,
+    delete_existing_ship_design_block, delete_existing_starbase_design_block,
+    assert_deletable_starbase_design_slot, encoded_ship_design_from_payload,
+    same_turn_queued_ship_count, same_turn_queued_starbase_count,
 )  # V8_6_NATIVE_DESIGN_LIFECYCLE_PATCH
 from stars_ai.design_legality import ComponentRef
 from stars_ai.native.population_transport import (
@@ -364,6 +366,7 @@ def _manual_load_population_25kt_block(
     fleet_id: int,
     *,
     source_planet_id: int,
+    population_kt: int = 25,
 ) -> NativeBlock:
     """Load 25 kT of population cargo from an explicit source planet.
 
@@ -372,10 +375,11 @@ def _manual_load_population_25kt_block(
     source-aware form; a hard-coded source can make a multi-colony X file hang
     the native host.
     """
+    qty=max(1, min(int(population_kt), MAX_SMALL_POPULATION_LOAD_KT))
     return small_population_load_block(
         state,
         fleet_id,
-        25,
+        qty,
         source_planet_id=int(source_planet_id),
     )
 
@@ -966,10 +970,12 @@ def _colonize_blocks(state:Any,payload:dict)->list[NativeBlock]:
             raise ValueError(
                 "Colony population load requires source_planet_id for the native Type-1 record"
             )
+        load_kt=int(payload.get("load_population_kt") or payload.get("native_load_order_kt") or 25)
         out.append(_manual_load_population_25kt_block(
             state,
             fid,
             source_planet_id=int(source_planet_id),
+            population_kt=load_kt,
         ))
     # The live turn-058 Player-2 control uses 0x11 for both legs of a
     # load-and-colonize route.  0x51 is the distinct general Transport form.
@@ -1436,52 +1442,55 @@ def _fleet_id_from_split_block(block: NativeBlock) -> int:
     return int.from_bytes(block.data, "little") & 0x1FF
 
 
-def _singleton_scout_split_block(state:Any, source_fleet_id:int) -> NativeBlock:
-    """Create the Type-24 FleetSplit record for one singleton-scout transfer."""
-    if not 0 <= int(source_fleet_id) <= 0x1FF:
-        raise ValueError(f"FleetSplit source must be a 9-bit local fleet id; got {source_fleet_id}")
-    data=_u16(_raw_fleet_number(state,int(source_fleet_id)))
-    return NativeBlock(24,len(data),data)
-
-
-def _singleton_scout_move_block(
+def _fleet_split_transfer_blocks(
     state:Any,
     *,
     source_fleet_id:int,
     destination_fleet_id:int,
-    scout_slot:int,
-) -> NativeBlock:
-    """Encode one decoded nine-byte Type-23 MoveShips singleton transfer.
+    design_slot:int,
+    ships:int,
+) -> tuple[NativeBlock, NativeBlock]:
+    """Encode the captured Type24 FleetSplit plus nine-byte Type23 MoveShips pair.
 
-    The layout is destination u16, source u16, transfer flags 0x22, design-slot
-    mask u16, then one signed i16 transfer count. The count is positive from
-    the destination fleet's perspective, so +1 moves one scout into the newly
-    created split fleet.
+    Player 1's turn-040 capture split six scouts into two fleets of three as
+    Type24 ``06 00`` followed by Type23 ``06 00 13 00 22 01 00 fd ff``.
+    The first MoveShips word is the source fleet, the second is the new fleet,
+    ``0x22`` is the transfer flag, the next word is the design-slot mask, and
+    the last word is a negative count of ships leaving the source (``fd ff``
+    is -3). Owner tags stay on both fleet words, matching Type37 and waypoints.
     """
-    slot=int(scout_slot)
+    if not 0 <= int(source_fleet_id) <= 0x1FF:
+        raise ValueError(f"FleetSplit source must be a 9-bit local fleet id; got {source_fleet_id}")
+    if not 0 <= int(destination_fleet_id) <= 0x1FF:
+        raise ValueError(f"FleetSplit destination must be a 9-bit local fleet id; got {destination_fleet_id}")
+    slot=int(design_slot)
+    moved=int(ships)
     if not 0 <= slot < 16:
-        raise ValueError(f"Scout design slot must be 0..15; got {scout_slot}")
-    data=(
-        _u16(_raw_fleet_number(state,int(destination_fleet_id)))
-        + _u16(_raw_fleet_number(state,int(source_fleet_id)))
+        raise ValueError(f"Design slot must be 0..15; got {design_slot}")
+    if moved <= 0 or moved > 0x7FFF:
+        raise ValueError(f"FleetSplit must move a positive ship count; got {ships}")
+    source_raw=_raw_fleet_number(state,int(source_fleet_id))
+    destination_raw=_raw_fleet_number(state,int(destination_fleet_id))
+    split=NativeBlock(24,2,_u16(source_raw))
+    move=NativeBlock(23,9,(
+        _u16(source_raw)
+        + _u16(destination_raw)
         + bytes([0x22])
         + _u16(1 << slot)
-        + int(1).to_bytes(2,"little",signed=True)
-    )
-    return NativeBlock(23,len(data),data)
+        + int(-moved).to_bytes(2,"little",signed=True)
+    ))
+    return split, move
 
 
-def _next_available_split_fleet_id(occupied:set[int]) -> int:
-    """Reserve and return the first unused 9-bit local fleet ID."""
-    for fleet_id in range(0x200):
-        if fleet_id not in occupied:
-            occupied.add(fleet_id)
-            return fleet_id
-    raise ValueError("No free fleet id is available for singleton scout splitting")
-
-# TODO: add codec regression tests for Type24/Type23 singleton scout transfers
-# and validate repeated same-source splits against a fresh Stars! client capture
-# plus host replay before promoting split_scout_fleet beyond EXPERIMENTAL.
+def _next_split_fleet_id(occupied:set[int]) -> int:
+    """Reserve the next local fleet id above every id this player already uses."""
+    candidate=(max(occupied) + 1) if occupied else 0
+    if candidate > 0x1FF:
+        candidate=next((fleet_id for fleet_id in range(0x200) if fleet_id not in occupied), None)
+    if candidate is None or candidate in occupied or not 0 <= int(candidate) <= 0x1FF:
+        raise ValueError("No free fleet id is available for a fleet split")
+    occupied.add(int(candidate))
+    return int(candidate)
 
 
 def _copy_client_fleet_split_pairs(
@@ -1964,6 +1973,15 @@ def _build_decision_report(
     for e in emitted:
         payload=e.get("payload",{})
         kind=e.get("kind")
+        if kind in ("split_scout_fleet","split_fleet"):
+            fid=int(payload.get("fleet_id",-1))
+            moved=payload.get("new_fleet_ids") or []
+            lines.append(
+                f"{_object_name_for_fleet(state,fid)} - SPLIT {len(moved)} ship(s) from design slot "
+                f"{payload.get('design_slot', payload.get('scout_slot','?'))} into fleet(s) {moved}. "
+                "Each pair is the captured Type24 source fleet plus a Type23 transfer of one ship."
+            )
+            continue
         if kind=="fleet_split":
             source=int(payload.get("source_fleet_id",-1))
             lines.append(
@@ -2137,7 +2155,10 @@ def write_native_orders(
     type27_kind=None
     type27_slot=None
     type27_requested=any(
-        candidate.kind in {"create_design", "create_ship_design", "delete_ship_design"}
+        candidate.kind in {
+            "create_design", "create_ship_design",
+            "delete_ship_design", "delete_starbase_design",
+        }
         for candidate in orders.orders
     )
     type27_exact_client_transaction=False
@@ -2269,30 +2290,29 @@ def write_native_orders(
                     "deferred until the next M-file read-back rather than synthesizing an unvalidated replacement."
                 )
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
-            elif o.kind=="split_scout_fleet":
+            elif o.kind in ("split_scout_fleet","split_fleet"):
                 source_fleet_id=int(o.payload.get("fleet_id",-1))
-                scout_slot=int(o.payload.get("scout_slot",-1))
+                design_slot=int(o.payload.get("design_slot",o.payload.get("scout_slot",-1)))
                 requested=max(0,int(o.payload.get("singleton_fleets_required",0) or 0))
                 if source_fleet_id in touched_fleets:
-                    skipped.append({"kind":o.kind,"reason":"Scout fleet already has a higher-priority native operation.","payload":o.payload})
+                    skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
                 source_fleet=next((
                     fleet for fleet in state.fleets
                     if int(fleet.id)==source_fleet_id and int(fleet.owner)==int(state.player_id)
                 ),None)
                 if source_fleet is None:
-                    skipped.append({"kind":o.kind,"reason":"Scout split source is not a current owned fleet.","payload":o.payload})
+                    skipped.append({"kind":o.kind,"reason":"Split source is not a current owned fleet.","payload":o.payload})
                     continue
                 ship_count=list((source_fleet.native or {}).get("ship_count") or [])
                 live_count=(
-                    int(ship_count[scout_slot] or 0)
-                    if 0 <= scout_slot < len(ship_count) else 0
+                    int(ship_count[design_slot] or 0)
+                    if 0 <= design_slot < len(ship_count) else 0
                 )
                 split_count=min(requested,max(0,live_count-1))
                 if split_count <= 0:
-                    skipped.append({"kind":o.kind,"reason":"Scout stack no longer contains excess ships in the requested design slot.","payload":o.payload})
+                    skipped.append({"kind":o.kind,"reason":"Stack no longer contains excess ships in the requested design slot.","payload":o.payload})
                     continue
-
                 occupied={
                     int(fleet.id) for fleet in state.fleets
                     if int(fleet.owner)==int(state.player_id) and 0 <= int(fleet.id) <= 0x1FF
@@ -2301,23 +2321,22 @@ def write_native_orders(
                 new_fleet_ids=[]
                 block_trace=[]
                 for _ in range(split_count):
-                    destination_fleet_id=_next_available_split_fleet_id(occupied)
+                    destination_fleet_id=_next_split_fleet_id(occupied)
                     allocated_split_fleet_ids.add(destination_fleet_id)
-                    split_block=_singleton_scout_split_block(state,source_fleet_id)
-                    move_block=_singleton_scout_move_block(
+                    split_block,move_block=_fleet_split_transfer_blocks(
                         state,
                         source_fleet_id=source_fleet_id,
                         destination_fleet_id=destination_fleet_id,
-                        scout_slot=scout_slot,
+                        design_slot=design_slot,
+                        ships=1,
                     )
                     generated.extend([split_block,move_block])
                     new_fleet_ids.append(destination_fleet_id)
                     block_trace.append({
                         "new_fleet_id":destination_fleet_id,
-                        "type24_hex":split_block.data.hex(),
-                        "type23_hex":move_block.data.hex(),
+                        "type24_hex":split_block.data.hex(" "),
+                        "type23_hex":move_block.data.hex(" "),
                     })
-
                 touched_fleets.add(source_fleet_id)
                 touched_fleets.update(new_fleet_ids)
                 ep=dict(o.payload)
@@ -2325,8 +2344,8 @@ def write_native_orders(
                 ep["native_blocks"]=block_trace
                 ep["native_capability_status"]=cap.status
                 ep["native_reference"]=(
-                    "Experimental singleton scout split: one Type24 FleetSplit followed by one "
-                    "nine-byte Type23 MoveShips transfer per excess scout."
+                    "Captured Type24 FleetSplit followed by Type23 MoveShips: source, new fleet, "
+                    "0x22, design-slot mask, and a negative count of one ship leaving the source."
                 )
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="merge_fleets":
@@ -2617,17 +2636,21 @@ def write_native_orders(
                 if is_starbase:
                     client_seed=_starbase_client_seed(state,design)
                     if client_seed is None:
-                        skipped.append({
-                            "kind":o.kind,
-                            "reason":(
-                                "Starbase creation requires a populated existing design on the same hull "
-                                "to seed the captured Bn/7n native lifecycle; no safe client baseline exists."
-                            ),
-                            "payload":o.payload,
-                        })
-                        continue
+                        # First design on this hull. An empty Bn body of the
+                        # new hull, then the fitted 7n body, is the form the
+                        # host installed for an Orbital Fort.
+                        baseline=EncodedShipDesign(
+                            slot=int(design.slot), hull_id=int(design.hull_id),
+                            pic=int(design.pic), armor=int(design.armor),
+                            turn_designed=int(design.turn_designed),
+                            slots=tuple(ComponentRef(0, 0, 0) for _ in design.slots),
+                            name=design.name, staging_name=design.name,
+                            is_starbase=True,
+                        )
+                    else:
+                        baseline=client_seed[0]
                     design_blocks=create_starbase_design_blocks(
-                        design,player_id=player_id,baseline_design=client_seed[0],
+                        design,player_id=player_id,baseline_design=baseline,
                     )
                 else:
                     design_blocks=create_ship_design_blocks(design,player_id=player_id)
@@ -2700,6 +2723,18 @@ def write_native_orders(
                     skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
                     continue
                 slot=int(o.payload["target_slot"])
+                queued_now=same_turn_queued_ship_count(orders,slot)
+                if queued_now:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            f"Refusing to delete ship design slot {slot}: this turn's production "
+                            f"queues {queued_now} of that design. Deleting a slot on the same turn "
+                            "it is built leaves every generated player file unreadable."
+                        ),
+                        "payload":o.payload,
+                    })
+                    continue
                 try:
                     assert_deletable_ship_design_slot(state,slot)
                 except UnsafeShipDesignMutationError as exc:
@@ -2714,6 +2749,46 @@ def write_native_orders(
                 ep=dict(o.payload)
                 ep["type27_hex"]=[delete_block.data.hex(" ")]
                 ep["design_body_codec"]="existing-design delete; no DesignBlock body"
+                ep["type27_transaction_mode"]="isolated" if TYPE27_ISOLATE_TRANSACTION else "mixed_with_ordinary_orders"
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="delete_starbase_design":
+                if not TYPE27_AUTOPLAY_ENABLED:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":TYPE27_AUTOPLAY_BLOCK_REASON,
+                        "payload":o.payload,
+                    })
+                    continue
+                if touched_design:
+                    skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
+                    continue
+                slot=int(o.payload["target_slot"])
+                queued_now=same_turn_queued_starbase_count(orders,slot)
+                if queued_now:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            f"Refusing to delete starbase design slot {slot}: this turn's production "
+                            f"queues {queued_now} of that design. Deleting a slot on the same turn "
+                            "it is built leaves every generated player file unreadable."
+                        ),
+                        "payload":o.payload,
+                    })
+                    continue
+                try:
+                    assert_deletable_starbase_design_slot(state,slot)
+                except UnsafeShipDesignMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
+                    continue
+                delete_block=delete_existing_starbase_design_block(slot,player_id=player_id)
+                design_tail.append(delete_block)
+                touched_design=True
+                type27_client_framing=TYPE27_ISOLATE_TRANSACTION
+                type27_kind=o.kind
+                type27_slot=slot
+                ep=dict(o.payload)
+                ep["type27_hex"]=[delete_block.data.hex(" ")]
+                ep["design_body_codec"]="existing-starbase delete; no DesignBlock body"
                 ep["type27_transaction_mode"]="isolated" if TYPE27_ISOLATE_TRANSACTION else "mixed_with_ordinary_orders"
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="replace_ship_design":

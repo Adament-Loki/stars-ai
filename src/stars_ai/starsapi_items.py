@@ -446,6 +446,60 @@ def proven_available_components(state:Any)->dict[tuple[int,int],ComponentSpec]:
     return researched_available_components(state)
 
 
+def race_legal_components(state:Any)->dict[tuple[int,int],ComponentSpec]:
+    """Every stock component this race may eventually fit, ignoring current tech."""
+    trait_prt,trait_lrt,forbidden_lrt=_component_trait_maps()
+    race_prt=prt_id(state)
+    race_lrts=lrts(state)
+    acquired_mt=mystery_trader_acquired_component_keys(state)
+    out={}
+    for key in stock_component_database().components:
+        needed_prt=trait_prt.get(key)
+        needed_lrt=trait_lrt.get(key)
+        denied_lrt=forbidden_lrt.get(key)
+        if needed_prt is not None and race_prt!=needed_prt:
+            continue
+        if needed_lrt is not None and needed_lrt not in race_lrts:
+            continue
+        if denied_lrt is not None and denied_lrt in race_lrts:
+            continue
+        if key in _mystery_trader_component_bits() and key not in acquired_mt:
+            continue
+        out[key]=component_spec(*key)
+    return out
+
+
+def top_remote_miner_package(state:Any)->tuple[HullSpec|None,ComponentSpec|None]:
+    """Best miner hull and mining robot this race can research.
+
+    Dedicated miner hulls are 20-24. The ceiling is the highest construction
+    gate the race is allowed to reach, not the first robot it can afford.
+    """
+    robots=[
+        spec for (category,_item),spec in race_legal_components(state).items()
+        if int(category)==MINING_ROBOT
+    ]
+    robot=max(
+        robots,
+        key=lambda spec:(int(spec.tech_required[3]),int(spec.tech_required[4]),int(spec.item_id)),
+        default=None,
+    )
+    hulls=[
+        hull for hull in stock_hulls().values()
+        if 20<=int(hull.hull_id)<=24 and hull_available_to_race(hull,state)
+    ]
+    hull=max(hulls,key=lambda hull:(int(hull.tech_required[3]),int(hull.hull_id)),default=None)
+    return hull,robot
+
+
+def remote_miner_package_ready(state:Any)->bool:
+    """True once the top legal miner hull and mining robot are both researched."""
+    hull,robot=top_remote_miner_package(state)
+    if hull is None or robot is None:
+        return False
+    return hull_unlocked(hull,state) and robot.key() in researched_available_components(state)
+
+
 def design_mass_and_fuel(hull_id:int,slots:Iterable[Any])->tuple[int,int,bool]:
     hull=stock_hulls()[int(hull_id)]
     mass=0 if hull.is_starbase else int(hull.mass); fuel=0 if hull.is_starbase else int(hull.fuel); exact=True

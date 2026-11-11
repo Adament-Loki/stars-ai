@@ -11,17 +11,21 @@ Initial native scope is intentionally narrow:
 from __future__ import annotations
 
 import csv
+import math
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from .design_legality import (
+    COLONIZATION_MODULE_ITEM_ID,
     COLONY_SHIP_HULL_ID,
+    ORBITAL_CONSTRUCTION_MODULE_ITEM_ID,
     PRT_ALTERNATE_REALITY,
     ComponentCategory,
     ComponentRef,
     HULL_RULES,
+    is_colonizer_module,
     validate_design,
 )
 from .expansion_network import evaluate_expansion_network
@@ -36,7 +40,8 @@ from .combat_doctrine import (
 from .fuel_planner import ENGINE_DATA, best_range_ly, design_fuel_profile
 from .starsapi_items import (
     stock_hulls as canonical_stock_hulls, hull_unlocked as canonical_hull_unlocked,
-    component_spec, proven_available_components, ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO,
+    component_spec, proven_available_components, remote_miner_package_ready,
+    top_remote_miner_package, ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO,
     BOMB, MINING_ROBOT, MINE_LAYER, ORBITAL, ELECTRICAL, MECHANICAL,
 )
 from .logistics_capacity import evaluate_logistics_capacity, POPULATION_PULSE_KT
@@ -712,9 +717,9 @@ def ranked_legal_ship_hulls(
     during synthesis.
     """
     role=str(role).casefold()
-    # AR's Colonization Module has a hard hull restriction.  General cargo
-    # ships may still carry colonists, but cannot become colony ships merely
-    # because they expose a Mechanical slot.
+    # AR colonizes with the Orbital Construction Module, and only on the
+    # Colony Ship.  General cargo ships may still carry colonists, but cannot
+    # become colony ships merely because they expose a Mechanical slot.
     if (
         role == "colony"
         and _prt_id(state) == PRT_ALTERNATE_REALITY
@@ -810,6 +815,9 @@ def _component_pool_for_role(
     return [
         spec for spec in proven.values()
         if spec.category in weights
+        and not (
+            role == "minelayer" and spec.category != MINE_LAYER
+        )
         and not (
             role == "combat"
             and spec.category in (BEAM,TORPEDO)
@@ -1065,13 +1073,18 @@ def _observed_weapon_pressure(state) -> tuple[float,float]:
 
 
 def _observed_counter_weapon_category(state) -> int|None:
-    """Use observed enemy composition when it makes the family choice clear."""
+    """Pick the family that actually fights the fleets we have seen.
+
+    A beam destroyer swarm with a jammer, which is what the computer fielded,
+    shrugs off a torpedo answer: jammers cut accuracy and each capital missile
+    kills one cheap hull. Beams fire first and ignore jamming, so they thin
+    that swarm. The same beam line, plus one jammer, is also the answer to a
+    missile stack. Torpedoes stay on starbases, where range matters.
+    """
     beam,torpedo=_observed_weapon_pressure(state)
-    if torpedo > beam * 1.20:
-        return BEAM
-    if beam > torpedo * 1.20:
-        return TORPEDO
-    return None
+    if beam <= 0 and torpedo <= 0:
+        return None
+    return BEAM
 
 
 def _preferred_combat_weapon_category(state) -> int|None:
@@ -1095,18 +1108,11 @@ def _preferred_combat_weapon_category(state) -> int|None:
     if not torpedoes:
         return BEAM
 
-    best_torp=max(torpedoes,key=lambda spec: (
-        int(spec.tech_required[1]),
-        float((weapon_stats(spec.category,spec.item_id) or object()).damage if weapon_stats(spec.category,spec.item_id) else 0.0),
-    ))
-    # Before a real beam package, a range-four Beta/Delta torpedo line is the
-    # useful early combat architecture.  Once capital missiles arrive they
-    # again form a distinct standoff line, especially on a BB with dedicated
-    # computer banks.  Between those breakpoints normal beams are the more
-    # dependable default against unknown opposition.
+    # Before a real beam package, a Beta/Delta destroyer is the useful early
+    # hull. Once beams exist they stay the battle line, including after Jihad.
+    # Capital missiles on a ship dump one shot into each jammed beam destroyer.
+    # Those missiles belong on a starbase, mixed with a beam that can clear chaff.
     if int(state.tech.weapons or 0) < 8:
-        return TORPEDO
-    if int(best_torp.tech_required[1]) >= 12:
         return TORPEDO
     return BEAM
 
@@ -1161,7 +1167,14 @@ def _role_design_records(state, role: str) -> list[dict]:
         profile_role = str(profile.get("role", "")).casefold()
         component_match = False
         if role == "colony":
-            component_match = _slot_component_count(raw, MECHANICAL, 0) > 0
+            component_match = any(
+                is_colonizer_module(
+                    int(slot.get("category", 0) or 0),
+                    int(slot.get("item_id", 0) or 0),
+                )
+                and int(slot.get("count", 0) or 0) > 0
+                for slot in _raw_slots(raw)
+            )
         elif role == "combat":
             component_match = any(
                 int(slot.get("category", 0) or 0) in (BEAM, TORPEDO)
@@ -1400,11 +1413,18 @@ def synthesize_role_design(state,role:str,*,desired_hull_id:int|None=None,name:s
             continue
         # A costly specialist must be a complete usable hull.  Scouts are the
         # deliberate exception: their small opening hull may have no current
-        # legal fitting beyond engine + scanner.  Combat, bombing, remote
-        # mining, and mine-laying designs must fill at least most of their
-        # available equipment slots.
+        # legal fitting beyond engine + scanner.  Combat, bombing, and remote
+        # mining designs must fill at least most of their available equipment
+        # slots.  A mine layer is the other exception: its scanner and armor
+        # slots stay empty so the frigate remains a cheap dispenser ship.
         utilization = _non_engine_slot_utilization(slots_t)
-        if role != "scout" and utilization < MIN_NON_ENGINE_SLOT_UTILIZATION:
+        # An early mine layer is a frigate with dispensers and an engine.
+        # Shields and scanners spend minerals the field itself needs, and the
+        # scanner and armor slots are supposed to stay empty.
+        if role == "minelayer":
+            if not any(int(x.category) == MINE_LAYER and int(x.count) > 0 for x in slots_t):
+                continue
+        elif role != "scout" and utilization < MIN_NON_ENGINE_SLOT_UTILIZATION:
             continue
         if role == "combat" and desired_hull_id is None:
             existing_weapon_tier = _best_existing_combat_weapon_requirement(state)
@@ -1467,9 +1487,15 @@ def synthesize_colony_upgrade(
         for planet in state.planets
     ):
         return None
-    # Colonization Module is Mechanical item 0 in stock Stars!.
+    # Standard races fit the Colonization Module.  Alternate Reality fits the
+    # Orbital Construction Module, and only on the Colony Ship hull.
     available=proven_available_components(state)
-    if (MECHANICAL,0) not in available: return None
+    colonizer_item=(
+        ORBITAL_CONSTRUCTION_MODULE_ITEM_ID
+        if _prt_id(state) == PRT_ALTERNATE_REALITY
+        else COLONIZATION_MODULE_ITEM_ID
+    )
+    if (MECHANICAL, colonizer_item) not in available: return None
     engine_id=_best_engine_for_role(state,"colony") if engine_id is None else int(engine_id)
     if engine_id is None: return None
     if (ENGINE,int(engine_id)) not in available: return None
@@ -1495,16 +1521,16 @@ def synthesize_colony_upgrade(
         )
         if target_slot_idx is None:
             continue
-        slots[target_slot_idx]=ComponentRef(MECHANICAL,0,1)
+        slots[target_slot_idx]=ComponentRef(MECHANICAL,colonizer_item,1)
         # A colony ship is retained for many turns.  Use every legal support
         # fitting that is already researched instead of leaving a costly hull
-        # as an engine-plus-module shell.  A Colonization Module is singular;
+        # as an engine-plus-module shell.  A colonizer module is singular;
         # other mechanical slots prefer fuel tanks, then ordinary protection.
         support_weights={MECHANICAL:5.0,SHIELD:4.0,ARMOR:3.0,ELECTRICAL:2.0}
         support_pool=[
             spec for spec in available.values()
             if spec.category in support_weights
-            and not (spec.category == MECHANICAL and spec.item_id == 0)
+            and not is_colonizer_module(spec.category, spec.item_id)
         ]
         for ss in canonical.slots[1:]:
             if slots[ss.index].count > 0:
@@ -1532,7 +1558,8 @@ def synthesize_colony_upgrade(
         )
         return NativeShipDesignPlan(design,"colony",priority,(
             f"Colonizer synthesis selected {hull.name}; the dedicated Colony Ship is preferred over "
-            f"general-purpose cargo hulls so reusable freighters deliver follow-up settlers. It fits the race-legal Colonization Module with "
+            f"general-purpose cargo hulls so reusable freighters deliver follow-up settlers. It fits the race-legal "
+            f"{'Orbital Construction Module' if colonizer_item == ORBITAL_CONSTRUCTION_MODULE_ITEM_ID else 'Colonization Module'} with "
             f"engine item {engine_id}; research and PRT/LRT component gates passed, "
             f"slot geometry is canonical. Architecture justification: {upgrade_reason}. "
             "Production waits for next-M design read-back."
@@ -1636,6 +1663,306 @@ def _starbase_component_offensive_rating(component) -> float:
     }).rating
 
 
+def _planned_orbital_component(state, payload, available):
+    """A gate or mass driver is fitted only when a plan actually asks for one."""
+    requested=str(
+        (payload or {}).get("orbital_plan")
+        or ((getattr(state,"native",{}) or {}).get("planned_starbase_orbital"))
+        or ""
+    ).casefold()
+    if requested in {"stargate","gate"}:
+        pool=[spec for spec in available if int(spec.category)==ORBITAL and "stargate" in spec.name.casefold()]
+    elif requested in {"mass_driver","mass driver","driver"}:
+        pool=[spec for spec in available if int(spec.category)==ORBITAL and "driver" in spec.name.casefold()]
+    else:
+        return None
+    return max(pool,key=lambda spec:int(spec.item_id),default=None)
+
+
+def _best_starbase_weapon(options, capacity:int):
+    return max(options,key=lambda spec:(
+        calculate_offensive_rating({
+            "hull_id":32,
+            "slots":[{
+                "category":int(spec.category),
+                "item_id":int(spec.item_id),
+                "count":max(1,int(capacity)),
+            }],
+        }).rating,
+        int(spec.item_id),
+    ))
+
+
+def _count_steps(capacity: int, steps: tuple[int, ...]) -> list[int]:
+    values: list[int] = []
+    for step in steps:
+        count = min(int(capacity), int(step))
+        if count > 0 and count not in values:
+            values.append(count)
+    if int(capacity) not in values:
+        values.append(int(capacity))
+    return values
+
+
+def _existing_weapon_count(state, hull_id: int, weapon) -> int:
+    best = 0
+    profiles = list((getattr(state, "native", {}) or {}).get("starbase_profiles", []) or [])
+    profiles += list((getattr(state, "native", {}) or {}).get("designs", []) or [])
+    for profile in profiles:
+        if int(profile.get("hull_id", -1) or -1) != int(hull_id):
+            continue
+        for slot in profile.get("slots") or []:
+            if int(slot.get("category", 0) or 0) != int(weapon.category):
+                continue
+            if int(slot.get("item_id", -1) or -1) != int(weapon.item_id):
+                continue
+            best = max(best, int(slot.get("count", 0) or 0))
+    return best
+
+
+def _phase_bill_years(state, canonical, weapon, shield, weapon_count: int, shield_count: int) -> int:
+    """Years for the fullest world to pay this partial station bill."""
+    from .planet_economy import decode_race_economy, estimated_mineral_output, estimated_operating_resources
+    from .starbase_planner import _stock_starbase_hull_costs
+
+    weapon_slots = [
+        slot for slot in canonical.slots
+        if slot.allows(weapon.category)
+    ]
+    shield_slots = [slot for slot in canonical.slots if slot.allows(SHIELD)]
+    hull = _stock_starbase_hull_costs().get(int(canonical.hull_id), {})
+    resources = int(hull.get("resources", 0) or 0)
+    minerals = {
+        "ironium": int(hull.get("ironium", 0) or 0),
+        "boranium": int(hull.get("boranium", 0) or 0),
+        "germanium": int(hull.get("germanium", 0) or 0),
+    }
+    resources += len(weapon_slots) * weapon_count * int(weapon.resource_cost)
+    resources += len(shield_slots) * shield_count * int(getattr(shield, "resource_cost", 0) or 0)
+    for name in ("ironium", "boranium", "germanium"):
+        minerals[name] += len(weapon_slots) * weapon_count * int(getattr(weapon, name, 0) or 0)
+        if shield is not None:
+            minerals[name] += len(shield_slots) * shield_count * int(getattr(shield, name, 0) or 0)
+    economy = decode_race_economy(getattr(state, "race", None))
+    energy = int(getattr(getattr(state, "tech", None), "energy", 0) or 0)
+    owned = [
+        planet for planet in getattr(state, "planets", []) or []
+        if getattr(planet, "owner", None) == getattr(state, "player_id", None)
+    ]
+    if not owned:
+        return 99
+    best = 99
+    for planet in owned:
+        produced = int(estimated_operating_resources(planet, economy, energy_tech=energy).get("estimated_resources") or 0)
+        output = estimated_mineral_output(planet, economy).get("estimated_mineral_output") or {}
+        resource_years = 99 if produced <= 0 else max(1, int(math.ceil(resources / produced)))
+        mineral_years = 1
+        for mineral, need in minerals.items():
+            if need <= 0:
+                continue
+            rate = int(output.get(mineral) or 0)
+            if rate <= 0:
+                mineral_years = 99
+                break
+            mineral_years = max(mineral_years, int(math.ceil(need / rate)))
+        best = min(best, max(resource_years, mineral_years))
+    return best
+
+
+def _phased_defense_counts(state, canonical, weapon, shield) -> tuple[int, int]:
+    """First fit is thin. The next thicker fit waits until it is about two years away.
+
+    Four weapons and eight shields are a legal first station. Twelve weapons
+    and a full shield bank are the following step, not the opening bill.
+    """
+    from .critical_assets import FORTRESS_PHASE_TURNS
+
+    weapon_steps = _count_steps(max(step.capacity for step in canonical.slots if step.allows(weapon.category)), (4, 8, 12, 16))
+    shield_capacity = max((step.capacity for step in canonical.slots if step.allows(SHIELD)), default=1)
+    shield_steps = _count_steps(shield_capacity, (8, 16))
+    existing = _existing_weapon_count(state, int(canonical.hull_id), weapon)
+    current = max((index for index, count in enumerate(weapon_steps) if count <= existing), default=-1)
+    target = 0 if current < 0 else current
+    if current >= 0 and current + 1 < len(weapon_steps):
+        nxt = current + 1
+        shield_count = shield_steps[min(nxt, len(shield_steps) - 1)]
+        years = _phase_bill_years(state, canonical, weapon, shield, weapon_steps[nxt], shield_count)
+        if years <= FORTRESS_PHASE_TURNS:
+            target = nxt
+    shield_count = shield_steps[min(target, len(shield_steps) - 1)]
+    return weapon_steps[target], shield_count
+
+
+def _fit_starbase_slots(state, canonical, payload) -> list[ComponentRef]:
+    """Fill a starbase.
+
+    A defense station, the one built on a critical planet, puts the best
+    torpedo or capital missile in every weapon slot that can hold one.
+    A support station keeps two torpedo slots and may use a beam elsewhere.
+    One shield layer, then armor. The first electrical slot is a jammer,
+    then a battle computer.
+    """
+    available=list(proven_available_components(state).values())
+    slots=[ComponentRef(0,0,0) for _ in range(canonical.slot_count)]
+
+    def _line(spec, category:int, *, missile:bool|None=None) -> bool:
+        if int(spec.category)!=int(category) or not is_line_weapon(spec.category,spec.item_id):
+            return False
+        is_missile="missile" in spec.name.casefold()
+        return True if missile is None else is_missile==missile
+
+    missiles=[spec for spec in available if _line(spec,TORPEDO,missile=True)]
+    torpedoes=[spec for spec in available if _line(spec,TORPEDO,missile=False)]
+    beams=[spec for spec in available if _line(spec,BEAM)]
+    defense=str((payload or {}).get("purpose") or "").casefold()=="defense"
+    purpose=str((payload or {}).get("purpose") or "").casefold()
+    from .critical_assets import FORTRESS_WEAPONS, fortress_plan_active
+    fortress_weapons = defense and fortress_plan_active(state)
+    if fortress_weapons:
+        def _fortress_class(spec) -> bool:
+            return int(spec.tech_required[1] or 0) >= FORTRESS_WEAPONS
+
+        missiles=[spec for spec in missiles if _fortress_class(spec)]
+        torpedoes=[spec for spec in torpedoes if _fortress_class(spec)]
+    phased_weapon = None
+    phased_shield = None
+    if fortress_weapons and (missiles or torpedoes):
+        weapon_spec = _best_starbase_weapon(missiles or torpedoes, 1)
+        shield_spec = max(
+            (spec for spec in available if int(spec.category) == SHIELD),
+            key=lambda spec: int(spec.item_id),
+            default=None,
+        )
+        phased_weapon, phased_shield = _phased_defense_counts(state, canonical, weapon_spec, shield_spec)
+    weapon_slots=[slot for slot in canonical.slots if slot.allows(BEAM) or slot.allows(TORPEDO)]
+    if purpose=="refuel":
+        # A couple of weapons on an Orbital Fort is the refuel stop. Filling
+        # the rest of the hull with armor makes a bill the new colony cannot pay.
+        placed=0
+        for slot in weapon_slots:
+            if placed>=2:
+                break
+            capacity=max(1,int(slot.capacity))
+            spec=None
+            if beams and slot.allows(BEAM):
+                spec=_best_starbase_weapon(beams,1)
+            elif torpedoes and slot.allows(TORPEDO):
+                spec=_best_starbase_weapon(torpedoes,1)
+            if spec is None:
+                continue
+            count=min(capacity, 2-placed)
+            slots[int(slot.index)]=ComponentRef(int(spec.category),int(spec.item_id),max(1,count))
+            placed+=count
+        return slots
+    torpedo_slots_used=0
+    fitted_beam=False
+    for slot in weapon_slots:
+        capacity=max(1,int(slot.capacity))
+        if defense and (missiles or torpedoes) and slot.allows(TORPEDO):
+            spec=_best_starbase_weapon(missiles or torpedoes,capacity)
+            torpedo_slots_used+=1
+        elif fortress_weapons and not (missiles or torpedoes):
+            continue
+        elif defense and beams and slot.allows(BEAM):
+            spec=_best_starbase_weapon(beams,capacity)
+            fitted_beam=True
+        elif defense:
+            continue
+        elif missiles and slot.allows(TORPEDO) and torpedo_slots_used<2:
+            spec=_best_starbase_weapon(missiles,capacity)
+            torpedo_slots_used+=1
+        elif missiles and beams and slot.allows(BEAM):
+            sappers=[spec for spec in beams if "sapper" in spec.name.casefold()]
+            spec=_best_starbase_weapon(sappers or beams,capacity)
+            fitted_beam=True
+        elif missiles and slot.allows(TORPEDO):
+            spec=_best_starbase_weapon(missiles,capacity)
+        elif missiles:
+            continue
+        else:
+            reserve=bool(torpedoes and slot.allows(TORPEDO) and torpedo_slots_used<2)
+            beam_better=False
+            if beams and torpedoes and slot.allows(BEAM) and slot.allows(TORPEDO) and not reserve:
+                beam_better=(
+                    _best_starbase_weapon(beams,capacity)
+                    and calculate_offensive_rating({
+                        "hull_id":32,
+                        "slots":[{"category":BEAM,"item_id":int(_best_starbase_weapon(beams,1).item_id),"count":1}],
+                    }).rating
+                    > calculate_offensive_rating({
+                        "hull_id":32,
+                        "slots":[{"category":TORPEDO,"item_id":int(_best_starbase_weapon(torpedoes,1).item_id),"count":1}],
+                    }).rating
+                )
+            if reserve or (torpedoes and slot.allows(TORPEDO) and not beam_better):
+                spec=_best_starbase_weapon(torpedoes,capacity)
+                torpedo_slots_used+=1
+            elif beams and slot.allows(BEAM):
+                spec=_best_starbase_weapon(beams,capacity)
+                fitted_beam=True
+            else:
+                continue
+        count = phased_weapon if phased_weapon is not None and int(spec.category) == TORPEDO else capacity
+        slots[int(slot.index)]=ComponentRef(int(spec.category),int(spec.item_id),max(1, min(capacity, int(count))))
+
+    computers=[spec for spec in available if int(spec.category)==ELECTRICAL and int(spec.item_id) in BATTLE_COMPUTERS]
+    jammers=[spec for spec in available if int(spec.category)==ELECTRICAL and str(spec.name).startswith("Jammer ")]
+    capacitors=[spec for spec in available if int(spec.category)==ELECTRICAL and int(spec.item_id) in ENERGY_CAPACITORS]
+    best_computer=max(computers,key=lambda spec:(BATTLE_COMPUTERS[int(spec.item_id)][1],int(spec.item_id)),default=None)
+    best_jammer=max(jammers,key=lambda spec:int(spec.item_id),default=None)
+    planned=_planned_orbital_component(state,payload,available)
+    orbital_used=False
+    electrical_index=0
+    for slot in canonical.slots:
+        if int(slots[int(slot.index)].count)>0:
+            continue
+        if planned is not None and not orbital_used and slot.allows(ORBITAL):
+            slots[int(slot.index)]=ComponentRef(int(planned.category),int(planned.item_id),1)
+            orbital_used=True
+            continue
+        if not slot.allows(ELECTRICAL):
+            continue
+        if electrical_index%2==0 and best_jammer is not None:
+            choice=best_jammer
+        elif best_computer is not None:
+            choice=best_computer
+        elif best_jammer is not None:
+            choice=best_jammer
+        elif fitted_beam and capacitors:
+            choice=max(capacitors,key=lambda spec:int(spec.item_id))
+        else:
+            choice=None
+        electrical_index+=1
+        if choice is None:
+            continue
+        slots[int(slot.index)]=ComponentRef(int(choice.category),int(choice.item_id),max(1,int(slot.capacity)))
+
+    for slot in canonical.slots:
+        if int(slots[int(slot.index)].count)>0:
+            continue
+        shields=[spec for spec in available if int(spec.category)==SHIELD and slot.allows(SHIELD)]
+        armors=[spec for spec in available if int(spec.category)==ARMOR and slot.allows(ARMOR)]
+        # One shield layer keeps capital missiles from double-damaging armor
+        # for the whole battle. Further protection is armor, which is what
+        # survives a beam destroyer swarm after that shield is gone.
+        shield_already=any(int(fitted.category)==SHIELD and int(fitted.count)>0 for fitted in slots)
+        if armors and (shield_already or not shields):
+            pool=armors
+        else:
+            pool=shields or armors
+        if not pool:
+            scanners=[spec for spec in available if int(spec.category)==SCANNER and slot.allows(SCANNER)]
+            pool=scanners
+        if not pool:
+            continue
+        spec=max(pool,key=lambda item:int(item.item_id))
+        count = int(slot.capacity)
+        if phased_shield is not None and int(spec.category) == SHIELD:
+            count = phased_shield
+        slots[int(slot.index)]=ComponentRef(int(spec.category),int(spec.item_id),max(1, min(int(slot.capacity), count)))
+    return slots
+
+
 def _choose_starbase_component(state, slot, *, purpose: str = "support") -> ComponentRef | None:
     """Pick a researched fitting suitable for a support or defensive base.
 
@@ -1686,13 +2013,11 @@ def synthesize_starbase_design_proposal(
         return None
 
     purpose = str(payload.get("purpose", "support")).casefold()
-    if purpose not in {"support", "defense"}:
+    if purpose not in {"support", "defense", "refuel"}:
         return None
-    slots = [ComponentRef(0, 0, 0) for _ in range(hull.slot_count)]
-    for slot in canonical.slots:
-        fitting = _choose_starbase_component(state, slot, purpose=purpose)
-        if fitting is not None:
-            slots[int(slot.index)] = fitting
+    if purpose == "refuel" and int(hull.hull_id) != 32:
+        return None
+    slots = _fit_starbase_slots(state, canonical, payload)
     slots_t = tuple(slots)
     if not _validate_candidate(state, hull, slots_t):
         return None
@@ -1727,7 +2052,9 @@ def synthesize_starbase_design_proposal(
         design, "starbase", priority,
         (
             f"Custom {hull.name} {purpose}-base design uses {component_count}/{hull.slot_count} "
-            f"{'fully stocked defensive' if purpose == 'defense' else 'economical support'} researched fittings. "
+            f"filled slots. A defense station fills every weapon slot with the best torpedo or "
+            f"capital missile. Orbital slots take a jammer or battle computer "
+            f"unless a gate or mass driver is planned. "
             f"Battle-board offensive rating={offensive_rating.display_rating} "
             f"({offensive_rating.expected_damage_per_volley:.1f} expected damage/volley). "
             "The hull grants ship construction and refueling; "
@@ -1767,9 +2094,15 @@ def synthesize_generic_design_proposal(state,payload:dict[str,Any])->NativeShipD
             engine_id=engine_id,require_demand=False,
         )
 
-    if role=="miner" and not _remote_mining_targets(state):
+    if role=="miner" and not remote_miner_package_ready(state):
+        # A midget miner spent now is the wrong ship. Wait for the best hull
+        # and mining robot this race can research.
+        return None
+    if role=="miner" and not _remote_mining_targets(state) and _prt_id(state)!=PRT_ALTERNATE_REALITY:
         # Remote miners are an expensive dedicated asset, never a generic
         # hull filler.  Require an observed planetary mining assignment.
+        # Alternate Reality's homeworld stays rich, so that race may design
+        # the miner for its own world.
         return None
 
     if role=="freighter":
@@ -1836,17 +2169,31 @@ def _remote_mining_targets(state) -> list:
 
 
 def synthesize_remote_miner(state) -> NativeShipDesignPlan | None:
-    """Create one legal miner design when observed remote work exists."""
-    targets=_remote_mining_targets(state)
-    profiles=[d for d in ((state.native or {}).get("design_profiles",[]) or []) if d.get("role")=="miner"]
-    if not targets or profiles:
+    """Create one legal miner design once the top hull and robot exist."""
+    if not remote_miner_package_ready(state):
         return None
-    proposal=synthesize_role_design(state,"miner",name="Remote Miner AI",priority=136)
+    targets=_remote_mining_targets(state)
+    homeworld_mine=_prt_id(state)==PRT_ALTERNATE_REALITY and any(
+        planet.owner==state.player_id for planet in state.planets
+    )
+    profiles=[d for d in ((state.native or {}).get("design_profiles",[]) or []) if d.get("role")=="miner"]
+    if profiles or not (targets or homeworld_mine):
+        return None
+    hull,_robot=top_remote_miner_package(state)
+    proposal=synthesize_role_design(
+        state,"miner",desired_hull_id=None if hull is None else int(hull.hull_id),
+        name="Remote Miner AI",priority=136,
+    )
     if proposal is None:
         return None
     return NativeShipDesignPlan(
         proposal.encoded,proposal.role,proposal.priority,
-        proposal.reason + f" It addresses {len(targets)} observed high-concentration unowned mineral world(s).",
+        proposal.reason + (
+            " It mines the Alternate Reality homeworld, whose mineral rate stays above the colonies."
+            if homeworld_mine and not targets else
+            f" It addresses {len(targets)} observed high-concentration unowned mineral world(s)."
+            + (" The same hull can also mine the Alternate Reality homeworld." if homeworld_mine else "")
+        ),
     )
 
 

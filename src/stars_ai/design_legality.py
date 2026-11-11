@@ -23,12 +23,23 @@ class ComponentCategory(IntFlag):
 
 
 # Stars! PRT IDs and the stock hull identity are stable game rules, not an AI
-# heuristic.  Alternate Reality may fit a Colonization Module only to the
-# regular Colony Ship; general-purpose Mechanical slots remain available for
-# ordinary equipment such as fuel tanks.
+# heuristic.  Alternate Reality does not colonize with the standard
+# Colonization Module.  Its colonizer is the Orbital Construction Module, and
+# that module fits only the regular Colony Ship.  General-purpose Mechanical
+# slots remain available for ordinary equipment such as fuel tanks.
 PRT_ALTERNATE_REALITY = 8
+MINI_COLONY_SHIP_HULL_ID = 14
 COLONY_SHIP_HULL_ID = 15
 COLONIZATION_MODULE_ITEM_ID = 0
+ORBITAL_CONSTRUCTION_MODULE_ITEM_ID = 1
+
+
+def is_colonizer_module(category: int, item_id: int) -> bool:
+    """True for either stock colonizer: the module, or AR's orbital unit."""
+    return int(category) == int(ComponentCategory.MECHANICAL) and int(item_id) in (
+        COLONIZATION_MODULE_ITEM_ID,
+        ORBITAL_CONSTRUCTION_MODULE_ITEM_ID,
+    )
 
 
 CATEGORY_NAMES = {
@@ -220,17 +231,26 @@ def validate_design(
         if (
             prt_id is not None
             and int(prt_id) == PRT_ALTERNATE_REALITY
-            and int(hull_id) != COLONY_SHIP_HULL_ID
             and int(comp.category) == int(ComponentCategory.MECHANICAL)
-            and int(comp.item_id) == COLONIZATION_MODULE_ITEM_ID
-        ):
-            issues.append(
-                ValidationIssue(
-                    idx,
-                    "alternate_reality_colonizer_hull",
-                    "Alternate Reality may fit a Colonization Module only to the Colony Ship hull.",
-                )
+            and int(comp.item_id) in (
+                COLONIZATION_MODULE_ITEM_ID,
+                ORBITAL_CONSTRUCTION_MODULE_ITEM_ID,
             )
+        ):
+            uses_standard_module = int(comp.item_id) == COLONIZATION_MODULE_ITEM_ID
+            wrong_hull = int(hull_id) != COLONY_SHIP_HULL_ID
+            if uses_standard_module or wrong_hull:
+                issues.append(
+                    ValidationIssue(
+                        idx,
+                        "alternate_reality_colonizer_hull",
+                        (
+                            "Alternate Reality colonizes with an Orbital Construction Module on the Colony Ship hull."
+                            if uses_standard_module else
+                            "Alternate Reality may fit an Orbital Construction Module only to the Colony Ship hull."
+                        ),
+                    )
+                )
 
     return ValidationResult(not issues, tuple(issues))
 

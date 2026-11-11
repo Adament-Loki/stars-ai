@@ -14,6 +14,11 @@ from .warp_policy import mission_warp
 OPENING_COLONY_SUPPORT_DISTANCE=300.0
 MAX_COLONY_SUPPORT_DISTANCE=650.0
 MIN_COLONY_SCORE=0.0
+# A world under this racial habitability can feed a colony, but growth is poor.
+# It stays eligible. A world that is uninhabitable now is a settlement only when
+# terraforming will carry it to this line and no better claim is in range.
+RISKY_HABITABILITY=20
+EARLY_SETTLEMENT_TURN=40
 
 
 def colony_transit_year_budget(state:GameState) -> int:
@@ -142,6 +147,7 @@ def _eligibility(
     *,
     evaluated_habitability:int | None=None,
     current_habitability:int | None=None,
+    eventual_habitability:int | None=None,
     nearest_owned:float,
     nearby_frontier:int,
 ) -> tuple[bool,str]:
@@ -150,10 +156,14 @@ def _eligibility(
     if evaluated_habitability is None:
         return False,"habitability_unknown"
 
-    # Future terraforming is a ranking input, never a license to settle a
-    # world that cannot support the initial colony population.  A colony must
-    # be currently viable before its projected tech/eventual value matters.
+    # A red world cannot feed the landing, so it is not a normal claim. It is
+    # still a thin-start gamble when full terraforming will make it livable:
+    # the colony can also turn up a research artifact. Callers keep that claim
+    # behind every world that is already at or above the risky line.
     if current_habitability is None or int(current_habitability)<=0:
+        eventual=int(eventual_habitability or 0)
+        if eventual>=RISKY_HABITABILITY:
+            return True,"eventual_habitability_gamble"
         return False,"currently_uninhabitable"
 
     hab=int(evaluated_habitability)
@@ -205,6 +215,7 @@ def colony_planet_is_eligible(state:GameState, planet, plan=None) -> bool:
         state,planet,policy,
         evaluated_habitability=potential.planning_habitability,
         current_habitability=potential.current_habitability,
+        eventual_habitability=potential.eventual_habitability,
         nearest_owned=nearest,nearby_frontier=nearby,
     )[0]
 
@@ -283,8 +294,17 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
     layer1_needed=max(0,promotion_network.layer1_target_count-len(p1_hubs))
     transit_budget=colony_transit_year_budget(state)
 
+    claims={
+        int(planet_id)
+        for planet_id in ((state.native or {}).get("paper_tiger_claims") or [])
+    }
     for p in state.planets:
-        if p.owner is not None or not p.observed:
+        claimed=int(p.id) in claims
+        if not p.observed:
+            continue
+        if p.owner is not None and not claimed:
+            continue
+        if p.owner is not None and int(p.owner)==int(state.player_id):
             continue
         if int(p.id) in {int(planet_id) for planet_id in (state.native.get("raid_only_planet_ids") or [])}:
             continue
@@ -315,9 +335,13 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             state,p,policy,
             evaluated_habitability=potential.planning_habitability,
             current_habitability=potential.current_habitability,
+            eventual_habitability=potential.eventual_habitability,
             nearest_owned=nearest_owned,
             nearby_frontier=nearby_frontier,
         )
+        if not eligible and claimed and int(potential.current_habitability or p.habitability or 0) >= 55:
+            eligible = True
+            selection_basis = "paper_tiger_claim"
         if not eligible:
             continue
         cluster_bonus=min(nearby_frontier,12)*1.5
@@ -339,6 +363,9 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             home_penalty=home_distance*.05
             home_bonus=max(0.0,120.0-home_distance)*.04
         direction_bonus=_allied_frontier_bonus(state, p, owned)
+        # The armed scout is already clearing this fort. Rank it ahead of an
+        # ordinary empty world so a colonizer is inbound when the fort dies.
+        claim_bonus=250.0 if claimed else 0.0
 
         layer1_bonus=0.0
         if turn<=30 and layer1_needed>0 and 65.0<=home_distance<=190.0:
@@ -387,7 +414,7 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             known_bonus=8.0 if mineral_known else 0.0
             score=(
                 mineral_bonus+known_bonus+cluster_bonus+home_bonus+layer1_bonus+p2_bonus
-                +direction_bonus
+                +direction_bonus+claim_bonus
                 -travel_penalty-support_penalty-home_penalty-population_penalty-stale_penalty
             )
             explanation=(
@@ -416,7 +443,15 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 if selection_basis=="racial_habitability" else 0.0
             )
             mineral_bonus=min(20.0, mineral_avg*policy.mineral_weight)
-            low_current_penalty=max(0.0, 40.0-float(current_hab))*0.55
+            # 20% is the risky line. Worlds between that and 40% take a light
+            # ranking drag. Worlds under 20% take a larger one, but they stay
+            # on the list instead of being scored out of the opening.
+            if current_hab>=40:
+                low_current_penalty=0.0
+            elif current_hab>=RISKY_HABITABILITY:
+                low_current_penalty=(40.0-float(current_hab))*0.20
+            else:
+                low_current_penalty=4.0+(RISKY_HABITABILITY-float(max(current_hab,0)))*0.25
             speculation_penalty=(
                 max(0,hab-tech_hab)*.25
                 +float(potential.tech_steps)*.35
@@ -426,15 +461,38 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
                 decode_race_economy(state.race),
                 float(current_hab),
             ) * 0.8
-            score=(
-                hab+quality_bonus+mineral_bonus+cluster_bonus+home_bonus+layer1_bonus+p2_bonus
-                +direction_bonus+resource_bonus
-                -travel_penalty-support_penalty-home_penalty-population_penalty
-                -speculation_penalty-stale_penalty-low_current_penalty
-            )
-            explanation=(
-                f"race-adjusted hab current={current_hab}%, current-tech terraform={tech_hab}%, "
-                f"eventual terraform={eventual_hab}%, planning value={hab:.1f}; resource growth={resource_bonus:.1f}; "
+            if selection_basis=="eventual_habitability_gamble":
+                # Do not score this from planning habitability. That number
+                # includes terraforming the colony cannot use on landing, and
+                # it used to outrank a world that can grow now. The small
+                # artifact term is the research find a new colony sometimes
+                # turns up. It only matters when every in-range world is under
+                # the risky line; a livable claim is preferred by the caller.
+                artifact_bonus=6.0
+                eventual_bonus=min(8.0, max(0, eventual_hab)*0.06)
+                score=(
+                    6.0+artifact_bonus+eventual_bonus
+                    +home_bonus*0.15+cluster_bonus*0.25
+                    -travel_penalty*0.25-support_penalty*0.25-home_penalty*0.25
+                )
+                explanation=(
+                    f"eventual-habitability gamble: current={current_hab}% cannot feed a colony, "
+                    f"eventual terraform={eventual_hab}% reaches the {RISKY_HABITABILITY}% line; "
+                    f"research-artifact chance={artifact_bonus:.1f}; "
+                )
+            else:
+                score=(
+                    hab+quality_bonus+mineral_bonus+cluster_bonus+home_bonus+layer1_bonus+p2_bonus
+                    +direction_bonus+resource_bonus+claim_bonus
+                    -travel_penalty-support_penalty-home_penalty-population_penalty
+                    -speculation_penalty-stale_penalty-low_current_penalty
+                )
+                explanation=(
+                    f"race-adjusted hab current={current_hab}%, current-tech terraform={tech_hab}%, "
+                    f"eventual terraform={eventual_hab}%, planning value={hab:.1f}; resource growth={resource_bonus:.1f}; "
+                    f"risky line={RISKY_HABITABILITY}%, low-habitability penalty={low_current_penalty:.1f}; "
+                )
+            explanation+=(
                 f"terraform steps now={potential.tech_steps}, speculation cost={speculation_penalty:.1f}; "
                 f"{policy.stage} normal floor={policy.normal_habitability_floor}% "
                 f"(selection={selection_basis}, quality bonus={quality_bonus:.1f}); "

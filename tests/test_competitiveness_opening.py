@@ -49,7 +49,7 @@ def test_resource_floor_world_colonizes_before_the_idle_fallback():
 
 def test_neutral_undefended_colony_is_a_population_capture():
     state = _state(fleets=[_large_freighter(3)])
-    state.planets[0].population = 200_000
+    state.planets[0].population = 360_000
     state.planets.append(Planet(
         9, "Enemy Seed", Position(40, 0), owner=2, habitability=75, population=20_000,
         observed=True, native={"owner_prt_id": 4},
@@ -109,8 +109,12 @@ def test_allied_border_starbase_uses_the_cheaper_unarmed_design():
     builds = plan_support_base_builds(state)
 
     assert builds
-    assert all(build.design_slot == 1 for build in builds)
-    assert all("cheap unarmed support base" in build.reason for build in builds)
+    hubs = [build for build in builds if "defensive hub" in build.reason]
+    quiet = [build for build in builds if "cheap unarmed support base" in build.reason]
+    assert hubs
+    assert all(build.design_slot == 0 for build in hubs)
+    assert all(build.design_slot == 1 for build in quiet)
+    assert all(build.priority >= 205 for build in hubs)
 
 
 def test_configured_ally_colony_is_not_attacked_or_captured():

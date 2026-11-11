@@ -277,8 +277,14 @@ class StrategicPersona:
 
         planet_actions = assign_planet_roles(
             state,
-            full=phase_decision.phase == StrategicPhase.MIDGAME,
-        ) if phase_decision.phase in {StrategicPhase.FRONTIER_CONTACT, StrategicPhase.MIDGAME} else {}
+            full=phase_decision.phase != StrategicPhase.EARLY_EXPANSION,
+        ) if phase_decision.phase in {
+            StrategicPhase.FRONTIER_CONTACT,
+            StrategicPhase.MIDGAME,
+            StrategicPhase.INDUSTRIAL_BUILDOUT,
+            StrategicPhase.FORTIFICATION,
+            StrategicPhase.OPPORTUNISTIC_WAR,
+        } else {}
         if planet_actions:
             notes.append(
                 "Planet jobs: "
@@ -286,6 +292,33 @@ class StrategicPersona:
                             for role in ("hold_line", "industrialize", "ships", "tech")
                             if any(item == role for item in planet_actions.values()))
             )
+
+        from ..empire_optimizer import classify_planet_role
+
+        classified = [
+            classify_planet_role(planet, state)
+            for planet in getattr(state, "planets", []) or []
+            if getattr(planet, "owner", None) == int(getattr(state, "player_id", 0) or 0)
+        ]
+        if classified:
+            def _count(field: str, value: str) -> int:
+                return sum(1 for item in classified if getattr(item, field) == value)
+
+            jobs = ", ".join(
+                f"{name.lower()}={_count('role', name)}"
+                for name in ("GROWTH", "FORTIFY", "INDUSTRIAL", "OUTPOST", "SKIP")
+                if _count("role", name)
+            )
+            stages = ", ".join(
+                f"{label}={_count('development_band', name)}"
+                for name, label in (
+                    ("COLONY", "colony"),
+                    ("SOLID_POP", "solid_pop"),
+                    ("DEVELOPED", "developed"),
+                )
+                if _count("development_band", name)
+            )
+            notes.append(f"Planet roles: {jobs}; {stages}")
 
         return StrategicPlan(
             persona_name=self.name,
@@ -319,7 +352,11 @@ class StrategicPersona:
 
 
     def with_human_players(self, *player_ids: int) -> "StrategicPersona":
-        """Declare player slots controlled by humans. Humans can never be allied."""
+        """Declare player slots controlled by humans.
+
+        An unconfigured human is never offered an alliance. A human listed in
+        the game's allied group stays allied and is not attacked.
+        """
         self.diplomacy_policy.human_player_ids = frozenset(int(x) for x in player_ids)
         return self
 

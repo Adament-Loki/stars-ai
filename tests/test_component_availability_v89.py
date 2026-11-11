@@ -160,6 +160,10 @@ def test_alternate_reality_colonizer_module_is_limited_to_the_colony_ship_hull()
     plan = synthesize_generic_design_proposal(state, payload)
     assert plan is not None
     assert plan.encoded.hull_id == 15
+    assert any(
+        int(slot.category) == MECHANICAL and int(slot.item_id) == 1 and int(slot.count) > 0
+        for slot in plan.encoded.slots
+    )
 
     invalid_privateer = (
         ComponentRef(ENGINE, 2, 1),

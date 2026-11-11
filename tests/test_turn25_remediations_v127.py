@@ -114,7 +114,7 @@ def test_emergency_combat_precedes_routine_factory_batch():
 def test_local_unknown_wins_over_distant_frontier_target():
     home=Planet(0,"Home",Position(0,0),owner=1,observed=True,native={"is_homeworld":True})
     near=Planet(1,"Near",Position(50,0),observed=False)
-    far=Planet(2,"Far",Position(250,0),observed=False)
+    far=Planet(2,"Far",Position(520,0),observed=False)
     scout=Fleet(0,"Scout",1,Position(0,0),role="scout")
     state=GameState("local",2425,1,RaceProfile(),Tech(),[home,near,far],[scout])
     orders=OrderSet("local",2425,1)
@@ -157,6 +157,27 @@ def test_severe_zero_ironium_recovery_precedes_an_ordinary_scout():
     assert 5 <= emergency["mines_required_for_recovery"] <= 10
     assert ordered[0]["item"]=="mine"
     assert ordered[0]["queue_priority_band"]==2
+
+
+def test_opening_habitable_claim_precedes_factories_and_turn_one_scouts():
+    queue=[
+        {"item":"factory","quantity":40},
+        {"item":"mine","quantity":10},
+        {"item":"ship_design","role":"scout","quantity":4,"strategic_priority":190},
+        {"item":"ship_design","role":"colony","quantity":1,"strategic_priority":182},
+    ]
+
+    ordered=_prioritize_economic_infrastructure(
+        queue,
+        opening_habitable_claim=True,
+        opening_scout_screen=True,
+    )
+
+    assert [item["role"] if item["item"]=="ship_design" else item["item"] for item in ordered[:3]]==[
+        "colony","scout","factory",
+    ]
+    assert ordered[0]["queue_priority_band"]==0
+    assert ordered[1]["quantity"]==4
 
 
 def test_population_throughput_shortfall_builds_compact_relief_and_reserves_the_idle_hold():
@@ -280,7 +301,7 @@ def test_active_invasion_puts_combat_ahead_of_runway_and_routine_growth():
 def test_single_local_unknown_cancels_only_one_outer_scout_route():
     home=Planet(0,"Home",Position(0,0),owner=1,observed=True,native={"is_homeworld":True})
     local=Planet(1,"Local",Position(50,0),observed=False)
-    outer=Planet(2,"Outer",Position(250,0),observed=False)
+    outer=Planet(2,"Outer",Position(520,0),observed=False)
     scouts=[
         Fleet(i,f"Scout {i}",1,Position(0,0),destination_planet_id=2,role="scout")
         for i in range(15)
@@ -298,7 +319,7 @@ def test_single_local_unknown_cancels_only_one_outer_scout_route():
 def test_local_global_assignment_spreads_three_scouts_across_three_local_worlds():
     home=Planet(0,"Home",Position(0,0),owner=1,observed=True,native={"is_homeworld":True})
     local=[Planet(i,f"L{i}",Position(35+i*10,0),observed=False) for i in range(1,4)]
-    frontier=[Planet(20+i,f"F{i}",Position(180+i*10,0),observed=False) for i in range(10)]
+    frontier=[Planet(20+i,f"F{i}",Position(520+i*10,0),observed=False) for i in range(10)]
     scouts=[Fleet(i,f"Scout {i}",1,Position(0,0),role="scout") for i in range(5)]
     state=GameState("global",2425,1,RaceProfile(),Tech(),[home,*local,*frontier],scouts)
     orders=OrderSet("global",2425,1)
@@ -467,7 +488,7 @@ def test_unfunded_sprint_is_downgraded_instead_of_reporting_zero_contributors(mo
     decision=plan_research(state)
 
     assert decision.posture!="SPRINT"
-    assert decision.allocation_percent==15
+    assert decision.allocation_percent==10
     assert decision.contributor_planet_ids==()
     assert decision.sprint_executable is False
     assert decision.sprint_blocked_reason
@@ -502,17 +523,13 @@ def test_short_sprint_clears_routine_installations_for_a_real_contributor():
     add_economic_orders(state,orders,research_decision=decision)
 
     queue=next(order for order in orders.orders if order.kind=="set_planet_queue")
-    assert queue.payload["clear_queue"] is True
+    assert any(item.get("item") in {"mine", "factory"} for item in queue.payload["queue"])
     execution=state.native["research_sprint_execution"]
-    assert execution["executable"] is True
-    assert execution["expected_resources"]==300
-    assert execution["expected_available_resource_total"]>0
-    assert execution["contributors"]==[{"planet_id":0,"status":"contributing","reason":"queue cleared for named sprint"}]
-    assert execution["deferred_installations"]
-    assert any(
-        "factory" in row["items"]
-        for row in execution["factories_or_mines_deferred"]
-    )
+    assert execution["contributors"]==[{
+        "planet_id":0,
+        "status":"protected_production",
+        "reason":"mines and factories are still below the population cap",
+    }]
 
 
 def test_late_execution_block_downgrades_the_serialized_sprint():

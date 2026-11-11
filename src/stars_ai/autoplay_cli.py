@@ -25,7 +25,9 @@ def main():
             raise SystemExit("--external-writer requires --writer-command")
         bridge=ExternalCommandOrderBridge(args.writer_command)
     else:
-        bridge=IntegratedNativeOrderBridge(cfg.personas, cfg.console_player_logs, cfg.allied_pairs)
+        bridge=IntegratedNativeOrderBridge(
+            cfg.personas, cfg.console_player_logs, cfg.allied_pairs, cfg.human_player_ids,
+        )
 
     results=run_50_turn_game(cfg,bridge)
     ok=sum(1 for r in results if r.success)

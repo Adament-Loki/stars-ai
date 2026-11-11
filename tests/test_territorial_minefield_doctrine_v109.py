@@ -61,12 +61,11 @@ def test_neutral_transport_inside_claimed_space_requests_patrol_and_minefield():
     assert violation.classification == "transport"
     assert violation.anchor_planet_id == 1
     assert violation.requires_patrol and violation.requires_minefield
-    assert assessment.uncovered_minefield_anchor_ids == (1,)
+    # Frontier is an 80k outpost. The field belongs on Home, the important world.
+    assert assessment.uncovered_minefield_anchor_ids == (0,)
     assert any(order.kind == "move_fleet" and order.payload.get("mission") == "territorial_intercept" for order in orders.orders)
-    assert any(
-        order.kind == "lay_minefield" and order.payload.get("mission") == "minefield_deploy_and_lay"
-        for order in orders.orders
-    )
+    lay = next(order for order in orders.orders if order.kind == "lay_minefield")
+    assert lay.payload["destination_planet_id"] == 0
 
 
 def test_scout_and_friend_traffic_do_not_trigger_minefield_doctrine():
@@ -274,7 +273,22 @@ def test_minefield_doctrine_waits_for_frigate_instead_of_using_an_early_destroye
     assert not any(proposal.role == "minelayer" for proposal in proposals)
 
 
-def test_first_dedicated_mine_layer_is_a_fully_fitted_three_dispenser_frigate():
+def test_small_minefield_does_not_count_as_coverage():
+    state = _state()
+    state.native["objects"] = [{
+        "kind": "minefield", "owner": 1, "x": 0, "y": 0,
+        "fields": {"mine_count": 400},
+    }]
+    plan = BalancedPersona().build_plan(state)
+    assessment = assess_territorial_defense(state, plan)
+    assert 0 in assessment.uncovered_minefield_anchor_ids
+
+    state.native["objects"][0]["fields"]["mine_count"] = 2500
+    assessment = assess_territorial_defense(state, plan)
+    assert 0 not in assessment.uncovered_minefield_anchor_ids
+
+
+def test_first_dedicated_mine_layer_is_a_cheap_three_dispenser_frigate():
     state = _state()
     state.tech.construction = 6
     state.native["design_profiles"] = [
@@ -291,10 +305,11 @@ def test_first_dedicated_mine_layer_is_a_fully_fitted_three_dispenser_frigate():
     assert proposal.desired_hull_id == 5
     assert native_plan is not None
     assert native_plan.encoded.hull_id == 5
-    assert all(slot.count > 0 for slot in native_plan.encoded.slots)
     assert sum(
         slot.count for slot in native_plan.encoded.slots if slot.category == 0x0100
     ) == 3
+    assert not any(slot.category in (0x0002, 0x0004, 0x0008) and slot.count > 0 for slot in native_plan.encoded.slots)
+    assert any(slot.count == 0 for slot in native_plan.encoded.slots)
 
 
 def test_non_space_demolition_race_also_waits_for_frigate_mine_layer_geometry():
@@ -337,5 +352,16 @@ def test_cargo_hull_with_colonization_module_is_a_colony_not_a_freighter():
         ],
     )
 
+    orbital = SimpleNamespace(
+        hull_id=15,
+        slots=[
+            SimpleNamespace(category=1, item_id=2, count=1),
+            SimpleNamespace(category=0x1000, item_id=1, count=1),
+        ],
+    )
+    unread_colony_hull = SimpleNamespace(hull_id=15, slots=[])
+
     assert _role_for_design(privateer) == "colony"
     assert _role_for_design(non_cargo_scout) == "scout"
+    assert _role_for_design(orbital) == "colony"
+    assert _role_for_design(unread_colony_hull) == "colony"

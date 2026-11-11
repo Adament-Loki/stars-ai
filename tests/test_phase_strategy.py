@@ -71,7 +71,7 @@ def test_first_contact_does_not_end_early_expansion():
     assert decision.policy.fortify_weight < 1.0
 
 
-def test_nearby_hostile_after_the_opening_is_frontier_contact():
+def test_border_contact_during_the_explore_clock_keeps_expanding():
     owned = [
         Planet(index, f"P{index}", Position(index * 80, 300), owner=1, observed=True, habitability=80)
         for index in range(8)
@@ -90,9 +90,55 @@ def test_nearby_hostile_after_the_opening_is_frontier_contact():
 
     decision = StrategicPhaseManager().decide(state, Persona())
 
-    assert decision.phase == StrategicPhase.FRONTIER_CONTACT
+    assert decision.phase == StrategicPhase.EARLY_EXPANSION
     assert decision.assessment.hostile_worlds >= 1
     assert decision.policy.expand_weight > decision.policy.fortify_weight
+
+
+def test_internal_clock_changes_the_job_without_counting_planets():
+    state = _midgame_state()
+
+    state.year = 2410
+    opening = StrategicPhaseManager().decide(state, Persona())
+    assert opening.phase == StrategicPhase.EARLY_EXPANSION
+
+    state.year = 2435
+    develop = StrategicPhaseManager().decide(state, Persona())
+    assert develop.phase == StrategicPhase.INDUSTRIAL_BUILDOUT
+    assert develop.policy.develop_weight > develop.policy.expand_weight
+
+    state.year = 2475
+    fortify = StrategicPhaseManager().decide(state, Persona())
+    assert fortify.phase == StrategicPhase.FORTIFICATION
+    assert fortify.policy.fortify_weight > 1.0
+    assert fortify.policy.research_weight > 1.0
+    assert fortify.policy.develop_weight > 1.0
+    assert fortify.policy.attack_weight < 1.0
+
+    state.year = 2520
+    growth = StrategicPhaseManager().decide(state, Persona())
+    assert growth.phase == StrategicPhase.OPPORTUNISTIC_WAR
+    assert growth.policy.attack_weight > 1.5
+    assert growth.policy.expand_weight > 1.0
+
+
+def test_pressed_home_bunkers_and_an_adjacent_ally_does_not():
+    home = Planet(0, "Home", Position(0, 0), owner=1, observed=True, habitability=100)
+    raider = Fleet(1, "Raider", 2, Position(30, 0), role="combat")
+    pressed = GameState("pressed", 2406, 1, RaceProfile(), Tech(), [home], [raider])
+
+    bunker = StrategicPhaseManager().decide(pressed, Persona())
+
+    assert bunker.phase == StrategicPhase.FORTIFICATION
+    assert bunker.policy.fortify_weight > bunker.policy.expand_weight
+
+    allied = GameState(
+        "ally", 2406, 1, RaceProfile(), Tech(), [home],
+        [Fleet(2, "Friend", 2, Position(30, 0), role="combat")],
+        native={"configured_allies": [2]},
+    )
+    opening = StrategicPhaseManager().decide(allied, Persona())
+    assert opening.phase == StrategicPhase.EARLY_EXPANSION
 
 
 def _midgame_state():
@@ -126,7 +172,7 @@ def _midgame_state():
 def test_persona_assigns_midgame_jobs_per_planet():
     plan = BalancedPersona().build_plan(_midgame_state())
 
-    assert plan.phase == StrategicPhase.MIDGAME.value
+    assert plan.phase == StrategicPhase.INDUSTRIAL_BUILDOUT.value
     assert plan.planet_actions[12] == "hold_line"
     assert plan.planet_actions[10] == "ships"
     assert plan.planet_actions[11] == "tech"
@@ -135,13 +181,12 @@ def test_persona_assigns_midgame_jobs_per_planet():
     assert "hostile_pressure" in plan.phase_assessment
 
 
-def test_saturated_empire_uses_one_midgame_policy():
+def test_develop_clock_strengthens_instead_of_keeping_the_opening_sprint():
     decision = StrategicPhaseManager().decide(_midgame_state(), Persona())
 
-    assert decision.phase == StrategicPhase.MIDGAME
+    assert decision.phase == StrategicPhase.INDUSTRIAL_BUILDOUT
     assert decision.policy.fortify_weight > 1.0
     assert decision.policy.develop_weight > decision.policy.expand_weight
-    assert decision.policy.attack_weight > decision.policy.expand_weight
 
 
 def test_selective_planet_policy_rejects_marginal_world():

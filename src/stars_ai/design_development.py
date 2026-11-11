@@ -13,6 +13,7 @@ from .ship_design_synth import (
     PRT_ALTERNATE_REALITY,
     best_legal_ship_hull,
     best_legal_starbase_hull,
+    ranked_legal_starbase_hulls,
     colony_design_records,
     plan_native_ship_design,
     ranked_legal_ship_hulls,
@@ -26,7 +27,6 @@ from .starsapi_items import (
     prt_id as race_prt_id,
     stock_hulls as race_stock_hulls,
 )
-from .diplomacy import allied_player_ids, world_faces_hostile
 from .territorial_defense import assess_territorial_defense, hostile_colonies_inside_claimed_area
 from .population_invasion import population_capture_targets, is_recently_lost_world
 from .capability_execution import (
@@ -251,6 +251,119 @@ def _unbuilt_superseded_combat_design(state) -> dict | None:
     }
 
 
+def _unused_superseded_ship_design(state) -> dict | None:
+    """Delete one unused ship blueprint that a newer design of its role replaced.
+
+    Colony and combat have their own rules. Every other role keeps the designs
+    that are still built or queued, and keeps the newest blueprint when none
+    of them have reached production yet.
+    """
+    designs={
+        int(d.get("design_number", -1)): d
+        for d in (state.native or {}).get("designs", []) or []
+        if not bool(d.get("is_starbase", False)) and int(d.get("design_number", -1)) >= 0
+    }
+    profiles={
+        int(d.get("design_number", -1)): d
+        for d in (state.native or {}).get("design_profiles", []) or []
+    }
+    groups: dict[str, list[int]] = {}
+    for slot, design in designs.items():
+        role=str(profiles.get(slot, {}).get("role") or "")
+        if role not in {"scout", "freighter", "miner", "minelayer", "bomber"}:
+            continue
+        groups.setdefault(role, []).append(slot)
+    choices=[]
+    for role, slots in groups.items():
+        if len(slots) < 2:
+            continue
+        live, queued=_design_activity(state, set(slots))
+        active={
+            slot for slot in slots
+            if live[slot] or queued[slot] or int(designs[slot].get("total_remaining", 0) or 0) > 0
+        }
+        keep=set(active)
+        if not keep:
+            keep.add(max(slots, key=lambda candidate: (
+                int(designs[candidate].get("turn_designed", 0) or 0), candidate,
+            )))
+        for slot in slots:
+            if slot in keep or live[slot] or queued[slot]:
+                continue
+            if int(designs[slot].get("total_remaining", 0) or 0) > 0:
+                continue
+            choices.append((int(designs[slot].get("turn_designed", 0) or 0), slot, role))
+    if not choices:
+        return None
+    _turn, slot, role=min(choices)
+    return {
+        "target_slot":int(slot),
+        "role":role,
+        "design_name":str(designs[slot].get("name") or f"Design #{slot + 1}"),
+        "reason":(
+            f"Delete unused {role} design: no live hulls, no queued builds, and no remaining "
+            "production. A current design of that role is kept."
+        ),
+    }
+
+
+def _starbase_design_rank(design: dict) -> tuple[int, int, int, int]:
+    """Rank a starbase blueprint by weapon, then hull, then age."""
+    best_item=-1
+    weapon_count=0
+    for component in design.get("slots", []) or []:
+        category=int(component.get("category", 0) or 0)
+        count=int(component.get("count", 0) or 0)
+        if category not in {16, 32} or count <= 0:
+            continue
+        best_item=max(best_item, int(component.get("item_id", 0) or 0))
+        weapon_count += count
+    return (
+        best_item,
+        weapon_count,
+        int(design.get("hull_id", 0) or 0),
+        int(design.get("turn_designed", 0) or 0),
+    )
+
+
+def _obsolete_starbase_design(state) -> dict | None:
+    """Delete one uninstalled starbase design that a better blueprint replaced."""
+    from .native.design_change import starbase_design_slot_safety
+
+    designs={
+        int(d.get("design_number", -1)): d
+        for d in (state.native or {}).get("designs", []) or []
+        if bool(d.get("is_starbase", False)) and 0 <= int(d.get("design_number", -1)) <= 9
+    }
+    if len(designs) < 2:
+        return None
+    ranked=sorted(designs, key=lambda slot: _starbase_design_rank(designs[slot]))
+    best=ranked[-1]
+    obsolete=[]
+    for slot in ranked:
+        if slot == best:
+            continue
+        if _starbase_design_rank(designs[slot]) >= _starbase_design_rank(designs[best]):
+            continue
+        safety=starbase_design_slot_safety(state, slot)
+        if safety.installed_starbase_count or safety.queued_starbase_count or safety.total_remaining:
+            continue
+        obsolete.append(slot)
+    if not obsolete:
+        return None
+    slot=obsolete[0]
+    return {
+        "kind":"delete_starbase_design",
+        "target_slot":int(slot),
+        "role":"starbase",
+        "design_name":str(designs[slot].get("name") or f"Base {slot + 1:02d}"),
+        "reason":(
+            "Delete obsolete starbase design: it is not installed, not queued, and a better "
+            f"blueprint remains in slot {best}."
+        ),
+    }
+
+
 @dataclass
 class HullOption:
     hull_id:int
@@ -333,6 +446,15 @@ def _has_engine(state,role,engine_id):
 
 
 def plan_design_development(state,plan=None)->list[DesignProposal]:
+    from .critical_assets import (
+        FORTRESS_PLAN_TURN,
+        clock_turn,
+        fortress_research_demand,
+        release_blocked_fortress_design,
+    )
+
+    release_blocked_fortress_design(state)
+    fortress_research_demand(state)
     proposals=[]
     ife=has_ife(state.race)
     lrts={str(x).upper() for x in ((state.race.native or {}).get("lrts",[]) or [])}
@@ -529,6 +651,34 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                 purpose="support",
             ))
 
+    armed_fort=any(
+        int(profile.get("hull_id", -1) or -1)==32
+        and bool((profile.get("capabilities") or {}).get("can_refuel"))
+        for profile in (state.native or {}).get("starbase_profiles", []) or []
+        if not profile_is_blocked(state, profile, is_starbase=True)
+    )
+    prt=str(getattr(state.race, "primary_trait", "") or "").casefold()
+    try:
+        prt_id=int((state.race.native or {}).get("prt_id", -1))
+    except (TypeError, ValueError):
+        prt_id=-1
+    is_ar=prt_id==8 or "alternate reality" in prt
+    if not is_ar and not armed_fort and clock_turn(state) >= 15:
+        proposals.append(DesignProposal(
+            role="starbase", name="Refuel Fort", is_starbase=True,
+            desired_hull_id=32, desired_hull_name="Orbital Fort", desired_engine=None,
+            objectives=[
+                "fit two weapons so the fort refuels orbiting ships",
+                "keep the bill to those weapons so a new colony can finish it",
+            ],
+            reason=(
+                "A non-AR colony does not get a useful fuel stop from an empty starbase. "
+                "An Orbital Fort with a couple of weapons refuels, and it is the base to put on a claim."
+            ),
+            priority=148,
+            purpose="refuel",
+        ))
+
     operational_hull_ids = {
         int((planet.native or {}).get("starbase_capabilities", {}).get("hull_id", -1) or -1)
         for planet in owned
@@ -571,27 +721,45 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
     # quicker overlap gives the threatened world protection sooner.
     advanced_hull = (
         best_legal_starbase_hull(state, purpose="defense")
-        if operational > 0 and int(state.tech.construction) >= 12
+        if operational > 0
         else None
     )
     advanced_variant = _modern_variant(advanced_hull)
-    if territorial.needs_response:
+    # A larger legal hull is the station to build once Construction allows it.
+    # Alternate Reality's payoff is the Death Star. Improved Starbases can
+    # step up to the Ultra Station. The installed base stays in orbit and its
+    # cost is credited, so the bigger hull is not a from-scratch purchase.
+    current_hull = max(operational_hull_ids) if operational_hull_ids else -1
+    larger_hull = bool(
+        advanced_variant is not None
+        and advanced_hull is not None
+        and int(advanced_hull.hull_id) > int(current_hull)
+    )
+    if larger_hull:
         selected_hull, selected_variant, label, priority = (
-            (immediate_hull, immediate_variant, "Immediate", 200)
-            if immediate_variant is not None else
-            (advanced_hull, advanced_variant, "Immediate Advanced", 196)
+            advanced_hull, advanced_variant, "Advanced", 206 if territorial.needs_response else 198
+        )
+    elif immediate_variant is not None:
+        selected_hull, selected_variant, label, priority = (
+            immediate_hull, immediate_variant,
+            "Immediate" if territorial.needs_response else "Modernized",
+            200 if territorial.needs_response else 176,
         )
     else:
-        selected_hull, selected_variant, label, priority = (
-            (advanced_hull, advanced_variant, "Advanced", 184)
-            if advanced_variant is not None else
-            (immediate_hull, immediate_variant, "Modernized", 176)
-        )
+        selected_hull, selected_variant, label, priority = (None, None, "", 0)
 
-    quiet_allied_border = bool(allied_player_ids(state)) and not any(
-        world_faces_hostile(state, planet) for planet in owned
-    )
-    if selected_hull is not None and selected_variant is not None and not quiet_allied_border:
+    fortress_hold = bool((state.native or {}).get("fortress_research_hold"))
+    # A distinct defensive architecture is a fortress-plan action. Before turn
+    # 35 it consumes the only Type27 of the turn and leaves the opening without
+    # a colony or scout design. A nearby fleet does not move that clock.
+    if (
+        selected_hull is not None
+        and selected_variant is not None
+        and not fortress_hold
+        and clock_turn(state) >= FORTRESS_PLAN_TURN
+    ):
+        if clock_turn(state) >= FORTRESS_PLAN_TURN:
+            priority = 220
         proposals.append(DesignProposal(
             role="starbase", name=f"{label} {selected_hull.name} Defense", is_starbase=True,
             desired_hull_id=selected_hull.hull_id, desired_hull_name=selected_hull.name, desired_engine=None,
@@ -611,6 +779,35 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
             priority=priority,
             purpose="defense",
         ))
+        if clock_turn(state) >= FORTRESS_PLAN_TURN:
+            ranked = ranked_legal_starbase_hulls(state, purpose="defense")
+            small = ranked[-1] if ranked else None
+            if (
+                small is not None
+                and int(small.hull_id) != int(selected_hull.hull_id)
+            ):
+                small_variant = _modern_variant(small)
+                if small_variant is not None:
+                    proposals.append(DesignProposal(
+                        role="starbase",
+                        name=f"Immediate {small.name} Defense",
+                        is_starbase=True,
+                        desired_hull_id=small.hull_id,
+                        desired_hull_name=small.name,
+                        desired_engine=None,
+                        objectives=[
+                            "arm this hull now with the best legal torpedo or missile",
+                            "accept a partial weapon and shield fit so the station can be built soon",
+                            "replace it later with a larger hull or a thicker missile fit",
+                        ],
+                        reason=(
+                            f"{small.name} can carry weapons now. A larger station is preferable "
+                            "when it finishes inside this world's patience, and an armed smaller hull "
+                            "is preferable to a station that is still many years away."
+                        ),
+                        priority=214,
+                        purpose="defense",
+                    ))
 
     # A minefield is a territorial claim and should be backed by a real
     # minelayer, not merely an advisory response. Design one when armed or
@@ -627,21 +824,25 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                 desired_hull_id=minelayer_hull.hull_id, desired_hull_name=minelayer_hull.name,
                 desired_engine=None,
                 objectives=[
-                    "mark and defend violated territory with a minefield",
-                    "fit a researched mine-laying component and an efficient legal engine",
-                    "support patrol fleets rather than replacing them",
+                    "lay a 100 ly or wider field at an important planet",
+                    "fit only mine dispensers and an engine on the early frigate",
+                    "leave shields and scanners off so the layer stays cheap",
                 ],
                 reason=(
-                    f"{territorial.reason} No minelayer design is available; create a legal "
-                    f"{minelayer_hull.name} to establish territorial minefield coverage."
+                    f"{territorial.reason} No minelayer design is available; create a cheap "
+                    f"{minelayer_hull.name} with dispensers only. Small fields do not help "
+                    "defensive fleets, so this layer stays at an important world until the "
+                    "field is at least 100 ly across."
                 ),
                 priority=188,
             ))
 
-    # Bomber capability for hostile colonies inside claimed territory.
+    # A bomber design is created when an invasion is authorized and none exists.
+    from .invasion import bomber_campaign_targets
+    invade = bool(bomber_campaign_targets(state, plan, territorial))
     hostile_colonies=hostile_colonies_inside_claimed_area(state,plan)
     bombers=_designs(state,"bomber")
-    if hostile_colonies and not bombers:
+    if invade and not bombers:
         bomber_hull=best_legal_ship_hull(state,"bomber")
         if bomber_hull is not None:
             proposals.append(DesignProposal(
@@ -655,9 +856,8 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
                     "retain enough protection and range to operate with an escort fleet",
                 ],
                 reason=(
-                    f"{len(hostile_colonies)} observed hostile/opposed colony world(s) lie inside the "
-                    f"{territorial.claim_radius_ly:.0f}-ly claimed area; no bomber design exists. "
-                    "Seed bombing capability before a territorial clearing campaign is ordered."
+                    "An invasion has a planet to bomb and no bomber design exists. "
+                    "Create one strike design for that campaign."
                 ),
                 priority=194,
             ))
@@ -706,7 +906,7 @@ def plan_design_development(state,plan=None)->list[DesignProposal]:
         "border_pressure":border_pressure,
         "combat_seed_required":bool(border_pressure and not combat),
         "hostile_colonies_in_claimed_area":[int(planet.id) for planet in hostile_colonies],
-        "bomber_design_required":bool(hostile_colonies and not bombers),
+        "bomber_design_required":bool(invade and not bombers),
         "minelayer_design_required":bool(territorial.needs_minefield and not minelayers),
         "desired_minelayers":int(territorial.desired_minelayers),
         "minefield_anchor_ids":list(territorial.uncovered_minefield_anchor_ids),
@@ -807,11 +1007,15 @@ def add_design_development_orders(state,orders,plan=None):
 
     if cleanup is None and native_plan is None:
         cleanup=_unbuilt_superseded_combat_design(state)
+    if cleanup is None and native_plan is None:
+        cleanup=_unused_superseded_ship_design(state)
+    if cleanup is None and native_plan is None:
+        cleanup=_obsolete_starbase_design(state)
     if cleanup is not None:
         orders.add(
-            "delete_ship_design",
+            str(cleanup.get("kind") or "delete_ship_design"),
             {"target_slot":cleanup["target_slot"],"role":cleanup["role"],"design_name":cleanup["design_name"]},
-            cleanup["reason"] + " Native deletion is owner-aware and independently refuses any live, queued, or remaining hull.",
+            cleanup["reason"] + " Native deletion is owner-aware and independently refuses any live, queued, installed, or remaining hull.",
             priority=150,
         )
 

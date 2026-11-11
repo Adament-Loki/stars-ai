@@ -77,7 +77,7 @@ def test_range_three_cruiser_uses_beam_capacitor_and_mobility_package():
     assert _combat_categories(plan) == {BEAM}
 
 
-def test_jihad_battleship_uses_all_missile_and_dedicated_computer_capacity():
+def test_weapons_twelve_battleship_stays_a_beam_line_instead_of_a_missile_dump():
     plan = synthesize_role_design(
         _state(Tech(energy=6, weapons=12, propulsion=6, construction=13)),
         "combat",
@@ -85,23 +85,22 @@ def test_jihad_battleship_uses_all_missile_and_dedicated_computer_capacity():
     assert plan is not None
     assert plan.encoded.hull_id == 9  # Battleship
     fitted = _fitted_counts(plan)
-    assert fitted["Jihad Missile"] == 20
-    assert fitted["Battle Computer"] == 6
-    assert fitted["Wolverine Diffuse Shield"] == 8
-    assert _combat_categories(plan) == {TORPEDO}
+    assert "Jihad Missile" not in fitted
+    assert _combat_categories(plan) == {BEAM}
+    assert sum(count for name, count in fitted.items() if "Phaser" in name or "Blaster" in name or "Disruptor" in name) >= 6
 
 
-def test_enemy_intelligence_changes_family_but_never_creates_a_mixed_line():
+def test_enemy_beam_swarm_and_missile_stack_both_stay_on_a_pure_beam_line():
     tech = Tech(energy=6, weapons=12, propulsion=6, construction=13)
     anti_missile = synthesize_role_design(
         _state(tech, enemy_rows=[{"torpedo_strength": 50, "beam_strength": 5}]), "combat",
     )
-    standoff = synthesize_role_design(
+    against_destroyers = synthesize_role_design(
         _state(tech, enemy_rows=[{"torpedo_strength": 5, "beam_strength": 50}]), "combat",
     )
-    assert anti_missile is not None and standoff is not None
+    assert anti_missile is not None and against_destroyers is not None
     assert _combat_categories(anti_missile) == {BEAM}
-    assert _combat_categories(standoff) == {TORPEDO}
+    assert _combat_categories(against_destroyers) == {BEAM}
 
 
 def test_observed_missile_pressure_keeps_a_researched_jammer_in_the_beam_counter():

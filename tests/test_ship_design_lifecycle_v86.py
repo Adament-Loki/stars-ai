@@ -9,6 +9,7 @@ from stars_ai.native.design_change import (
     UnsafeShipDesignMutationError,
     assert_deletable_ship_design_slot,
     assert_free_ship_design_slot,
+    same_turn_queued_ship_count,
     create_ship_design_blocks,
     delete_existing_ship_design_block,
     parse_design_change_payload,
@@ -73,6 +74,22 @@ def test_delete_block_is_owner_aware_two_byte_form():
     assert delete_existing_ship_design_block(3,player_id=1).data == bytes.fromhex("00 03")
     assert delete_existing_ship_design_block(3).data == bytes.fromhex("10 03")
     assert delete_existing_ship_design_block(3,player_id=3).data == bytes.fromhex("20 03")
+
+
+def test_starbase_delete_sets_the_slot_byte_starbase_bit():
+    from stars_ai.native.design_change import (
+        delete_existing_starbase_design_block,
+        parse_design_change_payload,
+    )
+
+    block = delete_existing_starbase_design_block(1, player_id=1)
+    parsed = parse_design_change_payload(block.data)
+
+    assert block.data == bytes.fromhex("00 11")
+    assert delete_existing_starbase_design_block(3).data == bytes.fromhex("10 13")
+    assert parsed.delete is True
+    assert parsed.design_slot == 1
+    assert parsed.is_starbase is True
 
 
 def test_writer_safety_refuses_delete_while_any_live_ship_uses_design():
@@ -175,3 +192,14 @@ def test_fuel_mizer_scout_is_not_proposed_when_best_existing_w7_scout_is_better(
     }]
     assert synthesize_scout_upgrade(state) is None
     assert not any(p.role == "scout" for p in plan_design_development(state))
+
+
+def test_same_turn_production_counts_a_design_the_saved_queue_does_not():
+    orders = OrderSet("v86", 2415, 3)
+    orders.add(
+        "set_planet_queue",
+        {"planet_id": 47, "queue": [{"item": "ship_design", "design_slot": 4, "quantity": 1}]},
+        "build the colonizer",
+    )
+    assert same_turn_queued_ship_count(orders, 4) == 1
+    assert same_turn_queued_ship_count(orders, 2) == 0

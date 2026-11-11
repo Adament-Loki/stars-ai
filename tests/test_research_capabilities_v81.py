@@ -29,6 +29,17 @@ def _isolate_network_specific_research_demands(monkeypatch):
     )
 
 
+def test_alternate_reality_opens_on_energy_without_spending_every_resource():
+    state=_state(year=2404)
+    state.race=RaceProfile(native={"prt_id":8})
+
+    decision=plan_research(state)
+
+    assert decision.current_field=="energy"
+    assert decision.allocation_percent==50
+    assert "Energy" in decision.capability_name
+
+
 def _state(*, year=2405, tech=None, hostile=False, external=None):
     home = Planet(
         0,"Home",Position(0,0),owner=1,population=250000,factories=100,mines=50,
@@ -71,7 +82,8 @@ def test_opening_large_freighter_research_stays_background_until_turn_10():
     assert decision.estimated_turns > 5
     assert "resources" in decision.reason
     assert decision.posture == "EXPANSION_FIRST"
-    assert decision.allocation_percent == 15
+    assert decision.allocation_percent == 10
+    assert "INDUSTRY FIRST" in decision.reason
     assert decision.contributor_planet_ids == ()
     assert 0 in decision.protected_production_planet_ids
     assert "OPENING ECONOMY" in decision.reason
@@ -116,7 +128,7 @@ def test_opening_military_demand_does_not_override_growth_lock():
     assert decision.category == "military"
     assert decision.posture == "EXPANSION_FIRST"
     assert decision.current_field == "weapons"
-    assert decision.allocation_percent == 15
+    assert decision.allocation_percent == 10
 
 
 def test_fielded_combat_family_targets_next_race_legal_weapon_upgrade_before_same_gun_hull_variants():
@@ -161,7 +173,7 @@ def test_sprints_are_available_from_turn_10():
     # goal instead of a five-year sprint with no cleared contributor.
     assert decision.posture=="EXPANSION_FIRST"
     assert decision.commitment=="ROUTINE"
-    assert decision.allocation_percent==15
+    assert decision.allocation_percent==10
 
 
 def test_ungraduated_promoted_hub_is_not_used_as_a_research_sprint_lab():
@@ -186,7 +198,7 @@ def _demand(capability_id,score_scale,field="electronics",level=2,utilization=1.
 
 
 def test_hysteresis_retains_incumbent_until_challenger_is_materially_better():
-    state=_state(external=[_demand("incumbent",1.4),_demand("challenger",1.5,"biotechnology")])
+    state=_state(external=[_demand("incumbent",1.4,"weapons"),_demand("challenger",1.5,"weapons",level=3)])
     state.native["design_profiles"][0]["cargo_capacity"]=3000
     state.native["strategic_watchdog"]={}
     memory=AgentMemory(research_state={"capability_id":"incumbent"})
@@ -196,7 +208,7 @@ def test_hysteresis_retains_incumbent_until_challenger_is_materially_better():
 
 
 def test_material_challenger_can_replace_incumbent():
-    state=_state(external=[_demand("incumbent",1.0),_demand("challenger",2.5,"biotechnology")])
+    state=_state(external=[_demand("incumbent",1.0,"weapons"),_demand("challenger",2.5,"weapons",level=4)])
     state.native["design_profiles"][0]["cargo_capacity"]=3000
     state.native["strategic_watchdog"]={}
     memory=AgentMemory(research_state={"capability_id":"incumbent"})
@@ -214,7 +226,7 @@ def test_stalled_sprint_enters_recovery_instead_of_continuing_25_percent():
     })
     decision=plan_research(state,_plan(state),memory)
     assert decision.posture == "RECOVERY"
-    assert decision.allocation_percent == 15
+    assert decision.allocation_percent == 10
     assert decision.sprint_stalled is True
 
 
@@ -224,7 +236,7 @@ def test_low_utilization_capability_is_not_sprinted():
     state.native["strategic_watchdog"]={}
     decision=plan_research(state,_plan(state))
     assert decision.capability_id == "blocked"
-    assert decision.allocation_percent == 15
+    assert decision.allocation_percent == 10
 
 
 def test_unlock_is_recorded_and_next_named_capability_selected():

@@ -9,7 +9,11 @@ Opening doctrine:
 * the homeworld exports only population above its protected breeder floor;
 * a graduated child hub keeps at least ~25% of racial planet capacity before
   exporting onward;
-* the homeworld feeds only designated, not-yet-graduated Layer-1 hubs;
+* the homeworld keeps every colonist that still grows faster there than on a
+  colony, and keeps enough people to run the factories it has already built.
+  A colony is fed toward 25% of its current capacity. A 40% world that
+  terraforming will raise to 70% is on that list. Pushing a world past 25%
+  while another livable world is still under 25% is overfeeding.
 * after a Layer-1 hub has a shipyard/refuel starbase AND ~25% population, the
   homeworld stops feeding it and the hub becomes an exporter to Layer 2;
 * empty transports return only to an immediately loadable export hub so scarce
@@ -27,6 +31,7 @@ can be isolated without disabling the capability.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import math
 from types import SimpleNamespace
 from typing import Any
 
@@ -47,15 +52,21 @@ from .logistics_capacity import (
 from .models import OrderSet
 from .native.population_transport import MAX_SMALL_POPULATION_LOAD_KT
 from .planet_economy import (
+    breeder_hold,
     decode_race_economy,
+    feed_habitability,
+    growth_peak_population,
     may_receive_homeworld_population,
     projected_population_growth,
+    snowball_population,
+    ten_year_transfer_roi,
 )
 from .util import distance
 from .warp_policy import mission_warp
 
 COLONISTS_PER_KT = 100
 MIN_POPULATION_CARRIER_KT = 1
+HIGH_HAB_JUMPSTART = 70
 
 
 @dataclass(frozen=True)
@@ -144,6 +155,26 @@ def _cargo_mass(fleet) -> int:
     ))
 
 
+def _feed_room(planet, race, owned) -> int:
+    """Colonists this world should still receive.
+
+    Fill every livable world to 25% of its current capacity before topping
+    any of them toward the one-third growth peak. A world already past the
+    peak is full.
+    """
+    pop = int(planet.population or 0)
+    someone_under = any(
+        int(other.id) != int(planet.id)
+        and not bool((other.native or {}).get("is_homeworld"))
+        and int(other.habitability or 0) >= 30
+        and int(other.population or 0) < snowball_population(other, race)
+        for other in owned
+    )
+    under_here = pop < snowball_population(planet, race)
+    ceiling = snowball_population(planet, race) if someone_under or under_here else growth_peak_population(planet, race)
+    return max(0, int(ceiling) - pop)
+
+
 def _receiver_score(state, planet, hub) -> float:
     cap = max(1, int(getattr(hub, "capacity", 1) or 1))
     frac = int(planet.population or 0) / cap
@@ -159,7 +190,56 @@ def _receiver_score(state, planet, hub) -> float:
     score += 0.40 * strategic
     if bool(getattr(hub, "designated_layer1", False)):
         score += 2.0
+    feed = feed_habitability(planet, state)
+    if feed >= HIGH_HAB_JUMPSTART:
+        # A world that is 70% now, or 40% now and 70% after terraforming,
+        # grows the people it is given. It jumps the queue ahead of a
+        # mediocre hub that is merely closer to graduation.
+        score += 6.0 + 0.08 * (feed - HIGH_HAB_JUMPSTART)
     return score
+
+
+def _travel_years(distance_ly: float, warp: int) -> int:
+    """Years a loaded freighter spends producing nothing.
+
+    Stars! moves warp squared light-years in a year. A shipment that leaves
+    this year does not arrive in the same year.
+    """
+    if distance_ly <= 0:
+        return 0
+    yearly = max(1, int(warp)) ** 2
+    return max(1, int(math.ceil(float(distance_ly) / float(yearly))))
+
+
+def _shipment_roi(state, row, planets, freighters, owned) -> int:
+    """Ten-year resource gain of the next hold we could actually send."""
+    _score, target, need, _hub, parent_id = row
+    source = planets.get(int(parent_id))
+    if source is None:
+        return 0
+    carriers = []
+    for fleet in freighters:
+        here = _planet_under_fleet(fleet, owned)
+        if here is not None and int(here.id) == int(parent_id):
+            carriers.append(fleet)
+    if not carriers:
+        return 0
+    fleet = max(carriers, key=lambda item: int((item.native or {}).get("cargo_capacity", 0) or 0))
+    cargo = int((fleet.native or {}).get("cargo_capacity", 0) or 0)
+    surplus = max(0, int(source.population or 0) - breeder_hold(source, state.race))
+    colonists = min(int(need), cargo * COLONISTS_PER_KT, surplus)
+    colonists = (colonists // COLONISTS_PER_KT) * COLONISTS_PER_KT
+    if colonists <= 0:
+        return 0
+    years = _travel_years(
+        distance(source.position, target.position),
+        mission_warp(fleet, target.position, "transport"),
+    )
+    energy = int(getattr(getattr(state, "tech", None), "energy", 0) or 0)
+    roi = ten_year_transfer_roi(
+        source, target, state.race, colonists, years, energy_tech=energy, state=state,
+    )
+    return int(roi["score"])
 
 
 def _available_empty_population_freighters(state):
@@ -219,23 +299,47 @@ def plan_population_redistribution(
     receivers = []
     for hub in network.hubs:
         parent_id = hub.parent_exporter_id
-        need = int(hub.import_population_to_25 or 0)
-        if parent_id is None or need < COLONISTS_PER_KT:
-            continue
         p = planets.get(int(hub.planet_id))
-        parent = planets.get(int(parent_id))
+        parent = None if parent_id is None else planets.get(int(parent_id))
         if p is None or parent is None or (p.habitability is not None and int(p.habitability) <= 0):
             continue
-        if not may_receive_homeworld_population(parent, p, state.race):
+        need = min(int(hub.import_population_to_25 or 0), _feed_room(p, state.race, owned))
+        if need < COLONISTS_PER_KT:
+            continue
+        if not may_receive_homeworld_population(parent, p, state.race, state):
             continue
         receivers.append((_receiver_score(state, p, hub), p, need, hub, int(parent_id)))
-    receivers.sort(key=lambda row: (-row[0], row[3].ring, row[1].id))
+    receiver_ids = {int(row[1].id) for row in receivers}
+    home = next((p for p in owned if bool((p.native or {}).get("is_homeworld"))), None)
+    for planet in owned:
+        feed = feed_habitability(planet, state)
+        if feed < HIGH_HAB_JUMPSTART or int(planet.id) in receiver_ids:
+            continue
+        if bool((planet.native or {}).get("is_homeworld")):
+            continue
+        need = _feed_room(planet, state.race, owned)
+        if need < COLONISTS_PER_KT or home is None:
+            continue
+        if not may_receive_homeworld_population(home, planet, state.race, state):
+            continue
+        parent_hub = hubs.get(int(home.id))
+        if parent_hub is None:
+            continue
+        child_hub = hubs.get(int(planet.id))
+        receivers.append((
+            8.0 + feed / 10.0,
+            planet,
+            need,
+            child_hub or parent_hub,
+            int(home.id),
+        ))
     if not receivers:
         return []
 
     freighters = _available_empty_population_freighters(state)
     if not freighters:
         return []
+    receivers.sort(key=lambda row: (-_shipment_roi(state, row, planets, freighters, owned), -row[0], row[1].id))
 
     source_outbound: dict[int, int] = {}
     source_dispatches: dict[int, int] = {}
@@ -249,14 +353,21 @@ def plan_population_redistribution(
         status = statuses.get(parent_id)
         source_hub = hubs.get(parent_id)
         source = planets.get(parent_id)
-        if status is None or source_hub is None or source is None or not status.ready_now:
+        target_feed = feed_habitability(target, state)
+        if source_hub is None or source is None:
+            continue
+        protected = breeder_hold(source, state.race)
+        if status is not None:
+            protected = max(protected, int(status.protected_floor))
+            if not status.ready_now and target_feed < HIGH_HAB_JUMPSTART:
+                continue
+        elif target_feed < HIGH_HAB_JUMPSTART:
+            continue
+        if int(source.population or 0) - protected < COLONISTS_PER_KT:
             continue
         remaining_need = int(raw_need) - int(planned_to.get(int(target.id), 0))
         already_outbound = int(source_outbound.get(parent_id, 0) or 0)
-        source_available = min(
-            max(0, int(status.exportable_population) - already_outbound),
-            max(0, int(source.population or 0) - int(status.protected_floor) - already_outbound),
-        )
+        source_available = max(0, int(source.population or 0) - protected - already_outbound)
 
         choices = []
         for fleet in freighters:
@@ -277,28 +388,38 @@ def plan_population_redistribution(
             export_kt = export_colonists // COLONISTS_PER_KT
             if export_kt <= 0:
                 continue
-            if int(source.population or 0) - already_outbound - export_colonists < int(status.protected_floor):
+            if int(source.population or 0) - already_outbound - export_colonists < protected:
                 continue
             if not mission_reachable_with_planned_cargo(
                 fleet, target.position, "transport", {"population": export_kt}
             ):
                 continue
             travel = distance(source.position, target.position)
-            # For a tied target, send the carrier that can deliver more of its
-            # actual remaining need first.
+            warp = int(mission_warp(fleet, target.position, "transport"))
+            years = _travel_years(travel, warp)
+            energy = int(getattr(getattr(state, "tech", None), "energy", 0) or 0)
+            roi = ten_year_transfer_roi(
+                source, target, state.race, export_colonists, years, energy_tech=energy, state=state,
+            )
+            # A trip that loses resources over ten years, transit included,
+            # is not a grower. Leave the people where they are.
+            if int(roi["score"]) <= 0:
+                continue
             choices.append((
-                receiver_score - travel / 500.0,
+                int(roi["score"]),
+                int(roi["population_delta"]),
                 export_colonists,
                 -int(fleet.id),
                 fleet,
                 cargo_cap,
                 export_kt,
+                years,
             ))
 
         if not choices:
             continue
-        score, export_colonists, _, fleet, cargo_cap, export_kt = max(
-            choices, key=lambda row: row[:3]
+        score, _population_delta, export_colonists, _, fleet, cargo_cap, export_kt, travel_years = max(
+            choices, key=lambda row: row[:4]
         )
 
         # Use the otherwise-unused cargo hold for the recipient's real mineral
@@ -388,7 +509,7 @@ def plan_population_redistribution(
             destination_ring=int(target_hub.ring),
             source_population_before=before,
             source_population_after=after,
-            source_protected_floor=int(status.protected_floor),
+            source_protected_floor=int(protected),
             mineral_load=mineral_load,
             native_experiment=native_experiment,
             reason=(
@@ -396,7 +517,9 @@ def plan_population_redistribution(
                 f"(ring {target_hub.ring}): load {export_colonists:,} colonists "
                 f"({export_kt} kT) into {fleet.name} ({cargo_cap} kT hold)"
                 f"; minerals I/B/G={mineral_load['ironium']}/{mineral_load['boranium']}/{mineral_load['germanium']} kT. "
-                f"Projected source {before:,}->{after:,}; protected floor={status.protected_floor:,}. "
+                f"Projected source {before:,}->{after:,}; protected floor={protected:,}. "
+                f"Transit {travel_years} year(s). Ten-year return {int(score):+,}. "
+                f"against leaving these colonists on {source.name}. "
                 f"Source dispatch #{source_dispatches[parent_id]} this turn; aggregate source load remains above "
                 "the protected floor. Loaded cargo "
                 "flies normally; after destination unload the empty hull returns/repositions for future work."

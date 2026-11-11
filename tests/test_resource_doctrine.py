@@ -90,6 +90,78 @@ def test_saturated_border_raids_a_low_value_world_and_does_not_secure_it():
     assert 20 in state.native["raid_only_planet_ids"]
 
 
+def test_a_light_scout_pushes_a_high_value_alternate_reality_fort():
+    state = GameState(
+        "paper", 2425, 1, RaceProfile(), Tech(),
+        [
+            _world(id=0, name="Home", position=Position(0, 0)),
+            Planet(
+                9, "Soft Green", Position(50, 0), owner=6, observed=True,
+                habitability=90, population=0, defenses=0,
+                native={"owner_prt_id": 8, "owner_prt_name": "Alternate Reality",
+                        "starbase_capabilities": {"is_orbital_fort": True}},
+            ),
+            Planet(
+                10, "Red Fort", Position(40, 0), owner=6, observed=True,
+                habitability=20, population=0, defenses=0,
+                native={"owner_prt_id": 8},
+            ),
+        ],
+        [
+            Fleet(1, "Battle", 1, Position(0, 0), role="combat", combat_power=400),
+            Fleet(2, "Scout", 1, Position(0, 0), role="scout", combat_power=5, native={"weapon_count": 1}),
+        ],
+    )
+    orders = OrderSet("paper", 2425, 1)
+
+    add_military_orders(state, orders, BalancedPersona().build_plan(state))
+
+    attacks = [order for order in orders.orders if order.payload.get("paper_tiger")]
+    assert len(attacks) == 1
+    attack = attacks[0]
+    assert attack.payload["fleet_id"] == 2
+    assert attack.payload["destination_planet_id"] == 9
+    assert attack.payload["mission"] == "attack"
+    assert attack.payload["secure_after_attack"] is True
+    assert state.native["paper_tiger_claims"] == [9]
+    assert 9 not in (state.native.get("raid_only_planet_ids") or [])
+
+
+def test_two_light_ships_cover_two_forts_and_a_warship_stays_home():
+    state = GameState(
+        "paper", 2425, 1, RaceProfile(), Tech(),
+        [
+            _world(id=0, name="Home", position=Position(0, 0)),
+            Planet(
+                9, "Soft Green", Position(50, 0), owner=6, observed=True,
+                habitability=90, population=0, defenses=0,
+                native={"starbase_capabilities": {"is_orbital_fort": True}},
+            ),
+            Planet(
+                11, "Second Green", Position(0, 60), owner=6, observed=True,
+                habitability=80, population=0, defenses=0,
+                native={"starbase_capabilities": {"is_orbital_fort": True}},
+            ),
+        ],
+        [
+            Fleet(1, "Battle", 1, Position(0, 0), role="combat", combat_power=400),
+            Fleet(2, "Scout", 1, Position(0, 0), role="scout", combat_power=5, native={"weapon_count": 1}),
+            Fleet(3, "Scout Two", 1, Position(0, 0), role="scout", combat_power=6, native={"weapon_count": 1}),
+            Fleet(4, "Already There", 1, Position(10, 0), role="scout", combat_power=5,
+                  destination_planet_id=9, native={"weapon_count": 1}),
+        ],
+        native={},
+    )
+    orders = OrderSet("paper", 2425, 1)
+
+    add_military_orders(state, orders, BalancedPersona().build_plan(state))
+
+    attacks = [order for order in orders.orders if order.payload.get("paper_tiger")]
+    assert [order.payload["fleet_id"] for order in attacks] == [2]
+    assert attacks[0].payload["destination_planet_id"] == 11
+    assert 1 not in [order.payload["fleet_id"] for order in attacks]
+
+
 def test_worlds_outside_the_layer1_cap_still_receive_a_population_parent():
     worlds = [
         Planet(0, "Home", Position(0, 0), owner=1, habitability=100, population=800_000, factories=200,

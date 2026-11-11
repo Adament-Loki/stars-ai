@@ -224,11 +224,12 @@ def create_starbase_design_blocks(
 ) -> list[NativeBlock]:
     """Create a starbase design using the captured Player-4 transaction.
 
-    A native P4 refit of slot ``n`` first sends ``<owner> Bn`` containing a
-    *populated*, same-hull baseline design, then applies the requested fitted
-    body through ``<owner> 7n``.  Both bodies retain normal DesignBlock bit 0.
-    An empty staging body or a second ``Bn`` record is not client-equivalent
-    and corrupts host processing.
+    A same-hull refit of slot ``n`` first sends ``<owner> Bn`` containing a
+    populated baseline, then the fitted body through ``<owner> 7n``. A first
+    design on a hull that has no populated design uses those same controls
+    with an empty baseline body of the new hull. Both bodies retain normal
+    DesignBlock bit 0 and the five-byte ``Base NN`` name. Ship-style ``A0``
+    controls leave the X file unconsumed. A second ``Bn`` record is not used.
     """
     if not design.is_starbase:
         raise ValueError("Starbase design writer received a ship design")
@@ -240,15 +241,14 @@ def create_starbase_design_blocks(
     if not 0 <= slot < 10:
         raise ValueError("Starbase design slot must be 0..9")
     if baseline_design is None:
-        raise ValueError("Starbase creation requires a populated same-hull client baseline")
+        raise ValueError("Starbase creation requires a same-hull baseline body")
     if not baseline_design.is_starbase:
         raise ValueError("Starbase creation baseline must be a starbase design")
     if int(baseline_design.hull_id) != int(design.hull_id):
         raise ValueError("Starbase creation baseline must use the requested hull")
     if len(baseline_design.slots) != len(design.slots):
         raise ValueError("Starbase creation baseline must use the requested hull slot geometry")
-    if not any(int(component.count) > 0 for component in baseline_design.slots):
-        raise ValueError("Starbase creation baseline must be populated")
+    populated_baseline = any(int(component.count) > 0 for component in baseline_design.slots)
 
     owner_byte = _design_change_owner_byte(player_id)
     create_control = bytes([owner_byte, 0xB0 | slot])
@@ -283,7 +283,7 @@ def create_starbase_design_blocks(
     )
 
     baseline_body = encode_type27_design_body(
-        baseline, empty_slots=False,
+        baseline, empty_slots=not populated_baseline,
         clear_type27_bit0=False,
     )
     final_body = encode_type27_design_body(
@@ -305,6 +305,23 @@ def delete_existing_ship_design_block(slot: int, *, player_id: int = 2) -> Nativ
     if not 0 <= int(slot) <= 15:
         raise ValueError("Ship design slot must be 0..15")
     payload = bytes([_design_change_owner_byte(player_id) & 0xF0, int(slot) & 0x0F])
+    return NativeBlock(27, len(payload), payload)
+
+
+def delete_existing_starbase_design_block(slot: int, *, player_id: int = 2) -> NativeBlock:
+    """Delete one starbase design slot.
+
+    The ship delete form puts the slot in the low nibble. Bit 4 of that same
+    byte marks a starbase, which is how a delete payload is parsed. On a
+    disposable letstest copy, Player 1 ``00 11`` removed starbase slot 1 and
+    the next year generated.
+    """
+    if not 0 <= int(slot) <= 9:
+        raise ValueError("Starbase design slot must be 0..9")
+    payload = bytes([
+        _design_change_owner_byte(player_id) & 0xF0,
+        0x10 | (int(slot) & 0x0F),
+    ])
     return NativeBlock(27, len(payload), payload)
 
 
@@ -333,6 +350,41 @@ def _live_ship_count(state: Any, slot: int) -> int:
             continue
         if 0 <= int(slot) < len(counts):
             total += int(counts[int(slot)] or 0)
+    return total
+
+
+def same_turn_queued_ship_count(orders: Any, slot: int) -> int:
+    """Count hulls this turn's outgoing production orders build in one ship slot.
+
+    The saved M-file queue is not enough. A delete and a new queue that builds
+    the same slot are legal separately, and Stars! then writes a turn no
+    player file can open.
+    """
+    total = 0
+    for order in getattr(orders, "orders", []) or []:
+        if getattr(order, "kind", None) != "set_planet_queue":
+            continue
+        for item in (getattr(order, "payload", {}) or {}).get("queue") or []:
+            if item.get("item") != "ship_design":
+                continue
+            if int(item.get("design_slot", -1)) != int(slot):
+                continue
+            total += max(0, int(item.get("quantity", item.get("count", 0)) or 0))
+    return total
+
+
+def same_turn_queued_starbase_count(orders: Any, slot: int) -> int:
+    """Count starbases this turn's outgoing production orders build in one slot."""
+    total = 0
+    for order in getattr(orders, "orders", []) or []:
+        if getattr(order, "kind", None) != "set_planet_queue":
+            continue
+        for item in (getattr(order, "payload", {}) or {}).get("queue") or []:
+            if item.get("item") != "starbase_design":
+                continue
+            if int(item.get("design_slot", -1)) != int(slot):
+                continue
+            total += max(0, int(item.get("quantity", item.get("count", 0)) or 0))
     return total
 
 
@@ -467,6 +519,33 @@ def assert_free_starbase_design_slot(state: Any, slot: int) -> StarbaseDesignSlo
             f"Starbase design slot {safety.slot} is not free: exists={safety.design_exists}, "
             f"installed={safety.installed_starbase_count}, queued={safety.queued_starbase_count}."
         )})
+        raise UnsafeShipDesignMutationError(diagnostic)
+    return safety
+
+
+def assert_deletable_starbase_design_slot(state: Any, slot: int) -> StarbaseDesignSlotSafety:
+    """A starbase blueprint can be deleted only while nothing is using it."""
+    safety = starbase_design_slot_safety(state, slot)
+    if not safety.design_exists:
+        diagnostic = safety.to_dict()
+        diagnostic.update({
+            "operation": "delete_starbase_design",
+            "result": "BLOCK",
+            "reason": f"Starbase design slot {slot} has no existing design to delete.",
+        })
+        raise UnsafeShipDesignMutationError(diagnostic)
+    if safety.installed_starbase_count or safety.queued_starbase_count or safety.total_remaining:
+        diagnostic = safety.to_dict()
+        diagnostic.update({
+            "operation": "delete_starbase_design",
+            "result": "BLOCK",
+            "reason": (
+                f"Refusing to delete starbase design slot {slot}: "
+                f"installed={safety.installed_starbase_count}, "
+                f"queued={safety.queued_starbase_count}, "
+                f"total_remaining={safety.total_remaining}."
+            ),
+        })
         raise UnsafeShipDesignMutationError(diagnostic)
     return safety
 

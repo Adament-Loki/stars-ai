@@ -75,7 +75,9 @@ def test_standard_terraforming_values_current_tech_and_long_term_habitability():
 
     fleet = Fleet(0, "Colony", 1, Position(0, 0), role="colony")
     ranked = score_colony_candidates(state, fleet)
-    assert ranked == []
+    assert [candidate.planet_name for candidate in ranked] == ["Marginal"]
+    assert ranked[0].selection_basis == "eventual_habitability_gamble"
+    assert "research-artifact" in ranked[0].explanation
 
 
 def test_positive_current_habitability_remains_eligible_with_future_terraforming():
@@ -99,6 +101,68 @@ def test_zero_current_habitability_is_not_a_colony_target():
 
     fleet = Fleet(0, "Colony", 1, Position(0, 0), role="colony")
     assert score_colony_candidates(state, fleet) == []
+
+
+def test_risky_world_stays_ranked_behind_a_livable_claim():
+    home = _world(0, "Home", 0, owner=1, hab=100, env=(50, 50, 50), pop=40_000)
+    risky = _world(1, "Risky", 30, hab=12)
+    decent = _world(2, "Decent", 50, hab=55)
+    red = _world(3, "Red", 40, hab=-1, env=(29, 50, 50))
+    fleet = Fleet(0, "Colony", 1, Position(0, 0), role="colony")
+    state = _state(
+        [home, risky, decent, red], [fleet],
+        tech=Tech(propulsion=1, biotechnology=1),
+    )
+
+    ranked = score_colony_candidates(state, fleet)
+    names = [candidate.planet_name for candidate in ranked]
+
+    assert {"Risky", "Decent", "Red"} <= set(names)
+    assert names.index("Decent") < names.index("Risky")
+    red_row = next(candidate for candidate in ranked if candidate.planet_name == "Red")
+    assert red_row.selection_basis == "eventual_habitability_gamble"
+    assert red_row.score < next(
+        candidate for candidate in ranked if candidate.planet_name == "Decent"
+    ).score
+
+
+def test_thin_start_colonizes_an_eventually_livable_world():
+    home = _world(0, "Home", 0, owner=1, hab=100, env=(50, 50, 50), pop=40_000)
+    red = _world(1, "Red", 40, hab=-1, env=(29, 50, 50))
+    fleet = Fleet(
+        11, "Idle", 1, Position(0, 0), role="colony",
+        native={"position_object_id": 0},
+    )
+    state = _state(
+        [home, red], [fleet],
+        tech=Tech(propulsion=1, biotechnology=1),
+    )
+    orders = OrderSet("g", state.year, 1)
+
+    add_economic_orders(state, orders)
+
+    colony = [order for order in orders.orders if order.kind == "colony_operation"]
+    assert [order.payload["destination_planet_id"] for order in colony] == [1]
+
+
+def test_decent_world_is_settled_ahead_of_the_research_artifact_gamble():
+    home = _world(0, "Home", 0, owner=1, hab=100, env=(50, 50, 50), pop=40_000)
+    decent = _world(2, "Decent", 36, hab=55)
+    red = _world(3, "Red", 40, hab=-1, env=(29, 50, 50))
+    fleet = Fleet(
+        11, "Idle", 1, Position(0, 0), role="colony",
+        native={"position_object_id": 0},
+    )
+    state = _state(
+        [home, decent, red], [fleet],
+        tech=Tech(propulsion=1, biotechnology=1),
+    )
+    orders = OrderSet("g", state.year, 1)
+
+    add_economic_orders(state, orders)
+
+    colony = [order for order in orders.orders if order.kind == "colony_operation"]
+    assert [order.payload["destination_planet_id"] for order in colony] == [2]
 
 
 def test_total_terraforming_uses_biotechnology_only():

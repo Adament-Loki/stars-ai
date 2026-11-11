@@ -172,6 +172,116 @@ def _cheapest_support_design(state) -> dict | None:
     )
 
 
+def _planet_is_key_world(state, planet, network) -> bool:
+    """A world worth a defensive starbase hub, not a cheap fuel stop."""
+    native = planet.native or {}
+    if bool(native.get("is_homeworld")):
+        return True
+    if world_faces_hostile(state, planet):
+        return True
+    hub = next((item for item in network.hubs if int(item.planet_id) == int(planet.id)), None)
+    if hub is not None and (hub.designated_layer1 or int(getattr(hub, "ring", 9) or 9) <= 1):
+        return True
+    return int(planet.population or 0) >= 250_000
+
+
+def _planet_attack_pressure(state, planet, territorial) -> int:
+    """How often this world is the one enemies are actually leaning on."""
+    planet_id = int(planet.id)
+    violations = getattr(territorial, "violations", ()) or ()
+    anchored = sum(
+        1 for violation in violations
+        if int(getattr(violation, "anchor_planet_id", -1)) == planet_id
+    )
+    native = planet.native or {}
+    lost = 3 if native.get("recently_lost_by_player") else 0
+    facing = 2 if world_faces_hostile(state, planet) else 0
+    return anchored * 2 + lost + facing
+
+
+def _lacks_shipyard_hub(planet) -> bool:
+    caps = (planet.native or {}).get("starbase_capabilities") or {}
+    return not (bool(caps.get("can_refuel")) and bool(caps.get("can_build_ships")))
+
+
+def _is_alternate_reality_player(state) -> bool:
+    race = getattr(state, "race", None)
+    native = getattr(race, "native", {}) or {}
+    try:
+        prt_id = int(native.get("prt_id", -1))
+    except (TypeError, ValueError):
+        prt_id = -1
+    prt = str(getattr(race, "primary_trait", "") or "").casefold()
+    return prt_id == 8 or "alternate reality" in prt
+
+
+REFUEL_FORT_MIN_POPULATION = 10_000
+
+
+def _armed_refuel_fort(state) -> dict | None:
+    """An Orbital Fort whose weapons are what make it a fuel stop."""
+    chosen = None
+    for profile in (state.native or {}).get("starbase_profiles", []) or []:
+        if profile_is_blocked(state, profile, is_starbase=True):
+            continue
+        if int(profile.get("hull_id", -1) or -1) != 32:
+            continue
+        if not bool((profile.get("capabilities") or {}).get("can_refuel")):
+            continue
+        chosen = profile
+    return chosen
+
+
+def _queue_refuel_forts(state, builds: list[SupportBaseBuild]) -> list[SupportBaseBuild]:
+    """Put an armed Orbital Fort on a non-AR colony that can already grow.
+
+    An empty dock or station is not a fuel stop. The fort waits until a
+    jump-start has put 10,000 people on a livable world, then two of those
+    worlds may start one per turn.
+    """
+    if _is_alternate_reality_player(state):
+        return builds
+    design = _armed_refuel_fort(state)
+    if design is None:
+        return builds
+    claimed = {int(item.planet_id) for item in builds}
+    worlds = []
+    for planet in state.planets:
+        if planet.owner != state.player_id or int(planet.id) in claimed:
+            continue
+        if bool((planet.native or {}).get("is_homeworld")):
+            continue
+        caps = (planet.native or {}).get("starbase_capabilities") or {}
+        if bool(caps.get("can_refuel")) or bool(caps.get("can_build_ships")):
+            continue
+        if _queued_starbase_item(state, int(planet.id)) is not None:
+            continue
+        pop = int(planet.population or 0)
+        hab = int(planet.habitability or 0)
+        if pop < REFUEL_FORT_MIN_POPULATION or hab < 40:
+            continue
+        worlds.append((hab, pop, planet))
+    worlds.sort(key=lambda row: (-row[0], -row[1], int(row[2].id)))
+    out = list(builds)
+    added = 0
+    for hab, pop, planet in worlds:
+        if added >= MAX_NEW_SUPPORT_BASES_PER_TURN:
+            break
+        out.append(SupportBaseBuild(
+            planet_id=int(planet.id),
+            design_slot=int(design["design_number"]),
+            design_name=str(design.get("name") or "Refuel Fort"),
+            hull_name=str(design.get("hull_name") or "Orbital Fort"),
+            priority=158,
+            reason=(
+                f"{planet.name} is {hab}% habitable with {pop:,} people and no fuel stop. "
+                "An armed Orbital Fort refuels here. An empty starbase would not."
+            ),
+        ))
+        added += 1
+    return out
+
+
 def _starbase_weapon_count(profile: dict | None) -> int:
     """Return fitted orbital weapons, rather than treating hull size as defense."""
     return sum(
@@ -231,7 +341,132 @@ def _alternate_reality_habitat_gain(planet, current_hull: int, target_hull: int,
     }
 
 
-def _defensive_design_for_world(state, planet, *, installed_slot: int | None) -> tuple[dict | None, dict]:
+def _profile_is_torpedo_fortress(profile: dict) -> bool:
+    """True when the station's weapons are at least Delta Torpedo."""
+    from .critical_assets import profile_meets_fortress_weapon
+
+    return profile_meets_fortress_weapon(profile)
+
+
+def _torpedo_fortress_design(state) -> dict | None:
+    from .critical_assets import FORTRESS_WEAPONS
+
+    if int(getattr(state.tech, "weapons", 0) or 0) < FORTRESS_WEAPONS:
+        return None
+    designs = [
+        design for design in _support_designs(state).values()
+        if _profile_is_torpedo_fortress(design)
+    ]
+    if not designs:
+        return None
+    return max(
+        designs,
+        key=lambda design: (
+            int(design.get("hull_id", -1) or -1),
+            -int(design.get("design_number", 999) or 999),
+        ),
+    )
+
+
+def _planet_fortress_patience(state, planet) -> int:
+    """How many years this world can wait for a better station.
+
+    A valuable, quiet world can wait for a larger hull. A small or threatened
+    world takes the armed hull it can finish now. Twenty years is never acceptable.
+    """
+    native = planet.native or {}
+    pop = int(planet.population or 0)
+    if world_faces_hostile(state, planet):
+        return 3
+    if bool(native.get("is_homeworld")) or pop >= 200_000:
+        return 8
+    if pop >= 100_000:
+        return 6
+    return 4
+
+
+def _profile_completion_years(state, planet, profile, resource_turns: int | None = None) -> int:
+    from .critical_assets import fortress_funding_years
+
+    cost = support_base_design_cost(profile)
+    stock = mineral_surface_stock(planet)
+    deficit = {
+        mineral: max(0, int(cost.get(mineral, 0) or 0) - int(stock.get(mineral, 0) or 0))
+        for mineral in ("ironium", "boranium", "germanium")
+    }
+    mineral_years = fortress_funding_years(state, planet, deficit)
+    if resource_turns is None:
+        economy = decode_race_economy(state.race)
+        produced = int(
+            estimated_operating_resources(
+                planet, economy, energy_tech=int(state.tech.energy or 0),
+            ).get("estimated_resources") or 0
+        )
+        resources = int(cost.get("resources", 0) or 0)
+        resource_turns = 99 if produced <= 0 else max(1, int(math.ceil(resources / produced)))
+    if mineral_years is None:
+        mineral_years = 99 if any(deficit.values()) else 0
+    return max(int(resource_turns), int(mineral_years))
+
+
+def _profile_weapon_rank(profile: dict) -> tuple[int, int, int, int]:
+    """Missile, weapon tech, slot count, hull size. Larger is the later plan."""
+    database = stock_component_database()
+    missile = 0
+    tech = 0
+    count = 0
+    for slot in profile.get("slots") or []:
+        category = int(slot.get("category", 0) or 0)
+        filled = int(slot.get("count", 0) or 0)
+        if filled <= 0 or not (category & 0x0020) or (category & 0x0010):
+            continue
+        spec = database.component(category, int(slot.get("item_id", 0) or 0))
+        count = max(count, filled)
+        if spec is None:
+            continue
+        tech = max(tech, int(spec.tech_required[1] or 0))
+        if "missile" in spec.name.casefold():
+            missile = 1
+    return missile, tech, count, int(profile.get("hull_id", -1) or -1)
+
+
+def _fortress_design_for_planet(state, planet) -> dict | None:
+    """Pick the station this world should build, not the largest one in the catalog.
+
+    Among designs that finish inside the world's patience, prefer a capital
+    missile, then a larger hull, then a thicker fit. If nothing finishes in
+    time, take the armed design that finishes soonest. An Orbital Fort this
+    year beats a Space Station that is still twenty years away.
+    """
+    from .critical_assets import FORTRESS_WEAPONS
+
+    if int(getattr(state.tech, "weapons", 0) or 0) < FORTRESS_WEAPONS:
+        return None
+    designs = [
+        design for design in _support_designs(state).values()
+        if _profile_is_torpedo_fortress(design)
+    ]
+    if not designs:
+        return None
+    patience = _planet_fortress_patience(state, planet)
+    ranked = []
+    for design in designs:
+        years = _profile_completion_years(state, planet, design)
+        missile, tech, count, hull = _profile_weapon_rank(design)
+        ranked.append((years <= patience, years, missile, tech, hull, count, design))
+    fitting = [row for row in ranked if row[0]]
+    if fitting:
+        return max(fitting, key=lambda row: (row[2], row[3], row[4], row[5], -row[1]))[-1]
+    return min(ranked, key=lambda row: (row[1], -row[2], -row[3], -row[4]))[-1]
+
+
+def _defensive_design_for_world(
+    state,
+    planet,
+    *,
+    installed_slot: int | None,
+    torpedo_only: bool = False,
+) -> tuple[dict | None, dict]:
     """Choose the defensive refit with the best protection-ready-time value.
 
     A larger base is not automatically better at a threatened world: the old
@@ -257,7 +492,9 @@ def _defensive_design_for_world(state, planet, *, installed_slot: int | None) ->
         slot = int(profile.get("design_number", -1) or -1)
         if slot < 0 or slot == installed_slot or _starbase_weapon_count(profile) <= 0:
             continue
-        cost = support_base_design_cost(profile)
+        if torpedo_only and not _profile_is_torpedo_fortress(profile):
+            continue
+        cost = recycled_starbase_cost(profile, installed)
         build_turns = max(1, int(math.ceil(int(cost["resources"]) / resources)))
         strength = _starbase_defense_strength(profile)
         habitat_value, habitat = _alternate_reality_habitat_gain(
@@ -270,15 +507,28 @@ def _defensive_design_for_world(state, planet, *, installed_slot: int | None) ->
         # time the existing orbital cover must carry the world on its own. AR
         # capacity is a first-class economic gain, not a cosmetic tie-breaker.
         readiness = (strength - current_strength + habitat_value) / build_turns
-        candidates.append((readiness, strength, -build_turns, -int(cost["resources"]), profile, build_turns, habitat))
+        candidates.append((
+            readiness, strength, -build_turns, -int(cost["resources"]), -slot,
+            profile, build_turns, habitat,
+        ))
     if not candidates:
         return None, {
             "current_strength": current_strength,
             "resources": resources,
             "reason": "no armed, already-defined support-base refit is available",
         }
-    _readiness, strength, _neg_turns, _neg_cost, profile, build_turns, habitat = max(candidates)
-    if _readiness <= 0:
+    if torpedo_only:
+        patience = _planet_fortress_patience(state, planet)
+        def _patient(row):
+            profile = row[5]
+            years = _profile_completion_years(state, planet, profile, resource_turns=row[6])
+            missile, tech, count, hull = _profile_weapon_rank(profile)
+            fits = years <= patience
+            return (fits, missile, tech, hull, count, -years if fits else -10_000 - years)
+        _readiness, strength, _neg_turns, _neg_cost, _slot, profile, build_turns, habitat = max(candidates, key=_patient)
+    else:
+        _readiness, strength, _neg_turns, _neg_cost, _slot, profile, build_turns, habitat = max(candidates)
+    if not torpedo_only and _readiness <= 0:
         return None, {
             "current_strength": current_strength,
             "resources": resources,
@@ -288,7 +538,7 @@ def _defensive_design_for_world(state, planet, *, installed_slot: int | None) ->
         "current_strength": current_strength,
         "target_strength": strength,
         "build_turns": build_turns,
-        "resource_cost": int(support_base_design_cost(profile)["resources"]),
+        "resource_cost": int(cost["resources"]),
         "resources": resources,
         "readiness_gain": _readiness,
         "alternate_reality_habitat": habitat,
@@ -447,7 +697,7 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
         prefer_defensive=bool(exposure.defensive_base_priority >= 180),
     )
     if preferred is None:
-        return []
+        return _queue_refuel_forts(state, [])
 
     owned = [p for p in state.planets if p.owner == state.player_id]
     operational = _operational_support_worlds(state)
@@ -499,6 +749,17 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
     # current-tech design.  The latter is what lets a mature empire retire a
     # starter station with obsolete lasers/shields instead of treating any
     # already-armed base as permanently good enough.
+    from .critical_assets import (
+        FORTRESS_PLAN_TURN,
+        clock_turn,
+        fortress_research_demand,
+        publish_critical_planets,
+    )
+    critical_planets = publish_critical_planets(state) if clock_turn(state) >= FORTRESS_PLAN_TURN else []
+    if critical_planets:
+        fortress_research_demand(state)
+    critical_ids = {int(planet.id) for planet in critical_planets}
+    fortress_hold = bool(critical_ids and (state.native or {}).get("fortress_research_hold"))
     if owned:
         upgrades = []
         for planet in owned:
@@ -507,12 +768,21 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
             native = planet.native or {}
             if not bool(native.get("has_starbase", native.get("starbase", False))):
                 continue
-            if allied_player_ids(state) and not world_faces_hostile(state, planet):
+            # A key world is worth a better station even when the neighbor is
+            # an ally. Upgrading recycles the base already in orbit, so the
+            # incremental bill is the useful comparison, not a new hull.
+            if critical_ids:
+                if int(planet.id) not in critical_ids:
+                    continue
+            elif not _planet_is_key_world(state, planet, network):
+                continue
+            if fortress_hold and not _lacks_shipyard_hub(planet):
                 continue
             installed_slot = native.get("starbase_design")
             installed_slot = None if installed_slot is None else int(installed_slot)
             defensive_design, assessment = _defensive_design_for_world(
                 state, planet, installed_slot=installed_slot,
+                torpedo_only=int(planet.id) in critical_ids,
             )
             if defensive_design is None:
                 continue
@@ -524,35 +794,47 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
                 if int(planet.id) in exposed_world_ids else 0.0
             )
             upgrades.append((
+                _planet_attack_pressure(state, planet, territorial) if int(planet.id) in critical_ids else 0,
                 float(assessment["readiness_gain"]) + local_exposure_bonus,
                 int(planet.population or 0),
+                int(planet.id),
                 planet,
                 defensive_design,
                 assessment,
             ))
-        if upgrades:
-            _gain, _population, planet, defensive_design, assessment = max(upgrades)
+        upgrades.sort(reverse=True)
+        # Initial forts come first. Once every critical world has a shipyard,
+        # upgrades go to the worlds enemies are actually attacking, with no
+        # two-per-turn cap. Quiet worlds wait.
+        if critical_ids and any(_lacks_shipyard_hub(planet) for planet in critical_planets):
+            upgrade_rows = []
+        elif critical_ids:
+            attacked = [row for row in upgrades if row[0] > 0]
+            upgrade_rows = attacked or upgrades[:1]
+        else:
+            upgrade_rows = upgrades[:2]
+        for _attack, _gain, _population, _planet_id, planet, defensive_design, assessment in upgrade_rows:
             slot = int(defensive_design["design_number"])
             emergency = bool(territorial.needs_response or exposure.defensive_base_priority)
+            queued_planets.add(int(planet.id))
             out.append(SupportBaseBuild(
                 planet_id=int(planet.id),
                 design_slot=slot,
                 design_name=str(defensive_design.get("name") or defensive_design.get("hull_name") or f"Starbase #{slot + 1}"),
                 hull_name=str(defensive_design.get("hull_name") or "Defensive starbase"),
-                priority=max(
-                    190 if territorial.needs_response else 160,
-                    int(exposure.defensive_base_priority or 0),
-                ) if emergency else 160,
+                priority=220 if int(planet.id) in critical_ids else (198 if emergency else 186),
                 reason=(
-                    f"{'defensive' if emergency else 'current-tech'} starbase refit at {planet.name}: retain the installed base as orbital cover "
+                    ("critical asset " if int(planet.id) in critical_ids else "")
+                    + f"{'defensive' if emergency else 'current-tech'} starbase refit at {planet.name}: retain the installed base as orbital cover "
                     f"while building this armed replacement. Protection score "
                     f"{assessment['current_strength']:.1f}->{assessment['target_strength']:.1f}; "
                     f"estimated build time={assessment['build_turns']} turn(s) at "
-                    f"{assessment['resources']} resources/turn, design resource cost={assessment['resource_cost']}. "
+                    f"{assessment['resources']} resources/turn, upgrade resource cost="
+                    f"{assessment['resource_cost']} after crediting the installed starbase. "
                     + (
                         f"Selected for protection gained per construction turn; {territorial.reason}"
                         if emergency else
-                        "Selected as the strongest ready current-tech replacement; keep one modernization in progress before considering another."
+                        "A better station at a key world is cheaper than a new hull because the installed base is recycled."
                     )
                     + (
                         f" Alternate Reality habitat capacity "
@@ -564,6 +846,82 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
                     )
                 ),
             ))
+
+    # Key worlds get an armed station even after the cheap relay quota is met.
+    # Two starts a turn keeps the bill from swallowing every yard.
+    # Critical worlds wait for a torpedo station. A laser starter is not that station.
+    torpedo_fortress = _torpedo_fortress_design(state) if critical_ids else None
+    defensive_design = (
+        torpedo_fortress
+        if critical_ids else
+        _preferred_support_design(state, prefer_defensive=True) or preferred
+    )
+    key_missing = [
+        planet for planet in owned
+        if int(planet.id) not in queued_planets
+        and _planet_is_key_world(state, planet, network)
+        and _lacks_shipyard_hub(planet)
+        and (
+            bool((planet.native or {}).get("is_homeworld"))
+            or int(planet.population or 0) >= 40_000
+        )
+    ]
+    if critical_ids:
+        # The vital list is the build list. An older key-world rule must not
+        # leave one of those planets out, and a short research wait must not
+        # stop a world that still has no shipyard.
+        key_missing = [
+            planet for planet in owned
+            if int(planet.id) in critical_ids
+            and int(planet.id) not in queued_planets
+            and _lacks_shipyard_hub(planet)
+        ]
+    key_missing.sort(key=lambda planet: (
+        not bool((planet.native or {}).get("is_homeworld")),
+        not world_faces_hostile(state, planet),
+        -int(planet.population or 0),
+        int(planet.id),
+    ))
+    key_hub_starts = 0
+    # Every critical world starts its station once a torpedo design exists.
+    # The old two-per-turn cap left the rest of the vital planets empty.
+    # A laser starter does not count, so those worlds wait for the real station.
+    new_hubs = [] if defensive_design is None and not critical_ids else (
+        key_missing if critical_ids else key_missing[:MAX_NEW_SUPPORT_BASES_PER_TURN]
+    )
+    for planet in new_hubs:
+        chosen_design = _fortress_design_for_planet(state, planet) if int(planet.id) in critical_ids else defensive_design
+        if chosen_design is None:
+            continue
+        defensive_slot = int(chosen_design["design_number"])
+        defensive_name = str(chosen_design.get("name") or chosen_design.get("hull_name") or f"Starbase #{defensive_slot + 1}")
+        defensive_hull = str(chosen_design.get("hull_name") or "Defensive starbase")
+        years = _profile_completion_years(state, planet, chosen_design) if int(planet.id) in critical_ids else None
+        patience = _planet_fortress_patience(state, planet) if int(planet.id) in critical_ids else None
+        queued_planets.add(int(planet.id))
+        out.append(SupportBaseBuild(
+            planet_id=int(planet.id),
+            design_slot=defensive_slot,
+            design_name=defensive_name,
+            hull_name=defensive_hull,
+            priority=220 if int(planet.id) in critical_ids else 210,
+            reason=(
+                (
+                    f"critical asset at {planet.name}: invest this world's minerals in {defensive_name} ({defensive_hull}). "
+                    + (
+                        f"It finishes in about {years} year(s), inside this world's {patience}-year patience. "
+                        if years is not None and patience is not None and years <= patience else
+                        f"It is the armed station that finishes soonest, about {years} year(s). "
+                        f"A larger hull does not fit this world's {patience}-year patience. "
+                    )
+                    if int(planet.id) in critical_ids else
+                    f"defensive hub at key world {planet.name}: build {defensive_name} ({defensive_hull}) "
+                )
+                + "before ordinary ships. The station secures the world and covers the fleet that fights there. "
+                + f"Support-base milestone={len(operational)} operational + {len(queued_planets)} queued / target {target}."
+            ),
+        ))
+        key_hub_starts += 1
 
     deficit = max(0, int(target) - len(operational) - len(queued_planets))
     # A dense border crisis may need a new defensive hub even after the normal
@@ -588,7 +946,7 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
     if deficit <= 0 and remote_fort_needs_upgrade:
         deficit=1
     if deficit <= 0:
-        return out
+        return _queue_refuel_forts(state, out)
 
     candidates = []
     for planet in owned:
@@ -629,7 +987,7 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
         candidates.append((score, planet, detail))
 
     candidates.sort(key=lambda row: row[0], reverse=True)
-    starts = min(MAX_NEW_SUPPORT_BASES_PER_TURN, deficit, len(candidates))
+    starts = min(max(0, MAX_NEW_SUPPORT_BASES_PER_TURN - key_hub_starts), deficit, len(candidates))
     slot = int(preferred["design_number"])
     design_name = str(preferred.get("name") or preferred.get("hull_name") or f"Starbase #{slot + 1}")
     hull_name = str(preferred.get("hull_name") or "Support starbase")
@@ -700,7 +1058,7 @@ def plan_support_base_builds(state, plan=None) -> list[SupportBaseBuild]:
                     "The shared allied side does not need this base."
                 ),
             ))
-    return out
+    return _queue_refuel_forts(state, out)
 
 
 def _outward_fuel_world(state, owned, operational, queued_planets):
@@ -772,6 +1130,41 @@ def _raw_slot_value(slot, key: str, default: int = 0) -> int:
         return int(default)
 
 
+def recycled_starbase_cost(new_profile: dict, installed_profile: dict | None) -> dict[str, int]:
+    """Bill only the difference. Stars! credits the starbase already in orbit.
+
+    Resources and each mineral are reduced by what the installed base already
+    cost, and never go below zero. A world with no base pays the full design.
+    """
+
+    gross = support_base_design_cost(new_profile)
+    if not installed_profile:
+        return gross
+    credited = support_base_design_cost(installed_profile)
+    return {
+        key: max(0, int(gross.get(key, 0) or 0) - int(credited.get(key, 0) or 0))
+        for key in ("resources", "ironium", "boranium", "germanium")
+    }
+
+
+def _installed_starbase_profile(state, planet) -> dict | None:
+    native = getattr(planet, "native", {}) or {}
+    if not bool(native.get("has_starbase", native.get("starbase", False))):
+        return None
+    slot = native.get("starbase_design")
+    if slot is None:
+        hull_id = int((native.get("starbase_capabilities") or {}).get("hull_id", -1) or -1)
+        if hull_id < 0:
+            return None
+        return {"hull_id": hull_id, "slots": [], "design_number": -1}
+    slot = int(slot)
+    for profile in (state.native or {}).get("starbase_profiles", []) or []:
+        if int(profile.get("design_number", -1)) == slot:
+            return profile
+    hull_id = int((native.get("starbase_capabilities") or {}).get("hull_id", -1) or -1)
+    return {"hull_id": hull_id, "slots": [], "design_number": slot} if hull_id >= 0 else None
+
+
 def support_base_design_cost(profile: dict) -> dict[str, int]:
     """Return the exact stock hull + fitted-component bill where slots exist.
 
@@ -811,7 +1204,16 @@ def plan_support_base_material_demands(state, plan=None) -> list[SupportBaseMate
         profile = profiles.get(int(request.design_slot))
         if planet is None or profile is None:
             continue
-        cost = support_base_design_cost(profile)
+        installed = _installed_starbase_profile(state, planet)
+        same_design = (
+            installed is not None
+            and int(installed.get("design_number", -2)) == int(profile.get("design_number", -1))
+        )
+        cost = (
+            support_base_design_cost(profile)
+            if installed is None or same_design
+            else recycled_starbase_cost(profile, installed)
+        )
         completion = min(100, max(0, int(request.complete_percent or 0)))
         # The native queue reports whole-percent completion.  Round remaining
         # material up so a 99% record cannot be treated as already funded.
@@ -831,6 +1233,38 @@ def plan_support_base_material_demands(state, plan=None) -> list[SupportBaseMate
             for mineral in mineral_required
         }
         ready = not any(deficit.values())
+        outlook = ""
+        if bool((planet.native or {}).get("critical_asset")) and not ready:
+            from .critical_assets import FORTRESS_BUILD_SPAN, fortress_construction_outlook
+
+            window = fortress_construction_outlook(
+                state, planet, deficit, int(math.ceil(int(cost["resources"]) * remaining_fraction)),
+            )
+            donors = ", ".join(window["import_from"]) or "no donor in range"
+            mineral = window["mineral_years"]
+            resources = window["resource_years"]
+            span = window["window_years"]
+            mineral_text = "undated" if mineral is None else f"{mineral} year(s)"
+            resource_text = "undated" if resources is None else f"{resources} year(s)"
+            if span is None:
+                timing = (
+                    f" Resources are {resource_text} and imported minerals are {mineral_text}, "
+                    "so the construction window cannot be dated yet."
+                )
+            elif span <= FORTRESS_BUILD_SPAN:
+                timing = (
+                    f" Resources take {resource_text} and imported minerals take {mineral_text}. "
+                    f"The construction window is {span} year(s)."
+                )
+            else:
+                timing = (
+                    f" Resources take {resource_text} and imported minerals take {mineral_text}. "
+                    f"That is {span} years, past the {FORTRESS_BUILD_SPAN}-year fortification span."
+                )
+            outlook = (
+                timing
+                + f" Import from {donors}. Do not queue more mines on {planet.name}."
+            )
         shortage = "/".join(
             f"{mineral[0].upper()}={deficit[mineral]}"
             for mineral in ("ironium", "boranium", "germanium") if deficit[mineral]
@@ -851,6 +1285,7 @@ def plan_support_base_material_demands(state, plan=None) -> list[SupportBaseMate
                 f"working-stock target I/B/G={mineral_required['ironium']}/{mineral_required['boranium']}/{mineral_required['germanium']} kT; "
                 f"shortage {shortage}. "
                 + ("Queue may proceed." if ready else "Hold the base queue and route minerals before construction resumes.")
+                + outlook
             ),
         ))
     return out

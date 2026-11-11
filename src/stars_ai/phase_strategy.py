@@ -207,11 +207,14 @@ def _near_owned(planet: Any, owned: list[Any], radius: float = 120.0) -> bool:
 def assign_planet_roles(state: Any, *, full: bool) -> dict[int, str]:
     """Give each owned world one midgame job.
 
-    A world with a hostile nearby holds the line. Quiet worlds that are still
-    short of the factories their population can run keep industrializing.
-    Worlds already near that cap either build ships for the rest of the empire
-    or spend their resources on research.
+    A risky high-value world holds the line. Safe and moderate growth or
+    industrial worlds that are still short of the factories their population
+    can run keep industrializing. Worlds already near that cap either build
+    ships for the rest of the empire or spend their resources on research.
+    Outposts stay on industry and are not promoted into shipyards.
     """
+
+    from .empire_optimizer import classify_planet_role
 
     owned = [
         planet for planet in getattr(state, "planets", []) or []
@@ -219,12 +222,20 @@ def assign_planet_roles(state: Any, *, full: bool) -> dict[int, str]:
     ]
     roles: dict[int, str] = {}
     quiet: list[Any] = []
+    outposts: list[Any] = []
     for planet in owned:
-        if getattr(planet, "position", None) is not None and world_faces_hostile(state, planet):
+        classified = classify_planet_role(planet, state)
+        if classified.role == "FORTIFY":
             roles[int(planet.id)] = "hold_line"
+        elif classified.role in ("OUTPOST", "SKIP"):
+            outposts.append(planet)
         else:
             quiet.append(planet)
-    if not full or not quiet:
+    if not full:
+        return roles
+    for planet in outposts:
+        roles[int(planet.id)] = "industrialize"
+    if not quiet:
         return roles
 
     from .planet_economy import decode_race_economy, installation_caps
@@ -332,48 +343,103 @@ def planet_meets_preference(
     return score >= threshold
 
 
+# The clock is a roadmap, not a promise that every race looks the same.
+# A start that is already under pressure bunkers. An ally is not a border.
+CLOCK_EXPLORE_END = 25
+CLOCK_DEVELOP_END = 50
+CLOCK_FORTIFY_END = 100
+
+
+def _clock_turn(state: Any) -> int:
+    year = getattr(state, "year", None)
+    if year is None:
+        return 0
+    return max(0, int(year) - 2400)
+
+
+def _start_should_bunker(turn: int, assessment: FrontierAssessment) -> bool:
+    """A thin home with a real hostile on it does not spend the opening planting.
+
+    Allies are excluded from ``hostile_pressure`` already. Sharing a border
+    with an ally is not a reason to bunker, and not every ally is nearby.
+    """
+
+    return (
+        turn <= CLOCK_DEVELOP_END
+        and assessment.owned_planets <= 3
+        and assessment.hostile_pressure >= 0.5
+    )
+
+
 class StrategicPhaseManager:
     """
     Shared phase controller.
 
-    All personas begin with aggressive explore/expand behavior. Once the map
-    becomes constrained by neighboring empires or the remaining open frontier
-    shrinks, the persona's transition_style determines what comes next.
+    The internal clock is the default plan: explore and expand through turn
+    25, develop and strengthen through turn 50, fortify and industrialize
+    through turn 100, then grow by combat effectiveness and area of control.
+    A pressed start can bunker early. The clock does not assume allies share
+    a border.
     """
 
     def decide(self, state: Any, persona: Any) -> PhaseDecision:
         a = assess_frontier(state)
+        turn = _clock_turn(state)
+        bunker = _start_should_bunker(turn, a)
 
-        # Shared opening doctrine.
-        min_opening_planets = int(getattr(persona, "opening_min_planets", 8))
-        midgame_planets = int(getattr(persona, "midgame_planets", 12))
-        saturation_threshold = float(getattr(persona, "expansion_saturation_threshold", 0.55))
-
-        if a.owned_planets < min_opening_planets:
+        if bunker:
+            phase = StrategicPhase.FORTIFICATION
+            reason = (
+                f"Turn {turn}: the start is already under pressure and the empire "
+                "has little depth. Bunker on the worlds we hold. An ally nearby "
+                "is not that pressure."
+            )
+        elif turn <= CLOCK_EXPLORE_END:
             phase = StrategicPhase.EARLY_EXPANSION
             reason = (
-                "Opening doctrine: claim worlds before the border hardens. "
-                "Hostile contact does not end early expansion."
+                f"Turn {turn} of 0-25: explore and expand the nearby region. "
+                "A hostile on the frontier does not end this clock."
             )
-        elif (
-            a.owned_planets < midgame_planets
-            and a.hostile_worlds > 0
-            and a.expansion_saturation < saturation_threshold
-        ):
-            phase = StrategicPhase.FRONTIER_CONTACT
+        elif turn <= CLOCK_DEVELOP_END:
+            phase = StrategicPhase.INDUSTRIAL_BUILDOUT
             reason = (
-                f"{a.hostile_worlds} owned world(s) have a hostile fleet or colony nearby. "
-                "Hold those worlds and keep planting everywhere else."
+                f"Turn {turn} of 25-50: develop and strengthen the region. "
+                "Expansion is no longer the primary job."
+            )
+        elif turn <= CLOCK_FORTIFY_END:
+            phase = StrategicPhase.FORTIFICATION
+            reason = (
+                f"Turn {turn} of 50-100: fortify, research, and industrialize "
+                "so the region can survive into strategic growth."
             )
         else:
-            phase = StrategicPhase.MIDGAME
+            phase = StrategicPhase.OPPORTUNISTIC_WAR
             reason = (
-                "Early expansion is over. Industrialize worlds that are short of their "
-                "factory cap, put research on mature quiet worlds, build ships where a "
-                "yard can support the empire, and hold the line where a hostile is close."
+                f"Turn {turn} is past 100: strategic growth. Maximize combat "
+                "effectiveness and area of control."
             )
 
         policy = self._policy_for(phase, a)
+        if bunker:
+            policy.develop_weight = max(policy.develop_weight, 1.40)
+            policy.fortify_weight = max(policy.fortify_weight, 1.80)
+            policy.expand_weight = min(policy.expand_weight, 0.55)
+            policy.attack_weight = min(policy.attack_weight, 0.50)
+            policy.notes.append("Bunker: hold and strengthen the pressed home region.")
+        elif CLOCK_DEVELOP_END < turn <= CLOCK_FORTIFY_END:
+            policy.explore_weight = 0.50
+            policy.expand_weight = 0.40
+            policy.develop_weight = 1.55
+            policy.fortify_weight = 1.75
+            policy.attack_weight = 0.45
+            policy.research_weight = 1.55
+        elif turn > CLOCK_FORTIFY_END:
+            policy.explore_weight = 0.45
+            policy.expand_weight = 1.20
+            policy.develop_weight = 0.90
+            policy.fortify_weight = 1.10
+            policy.attack_weight = 1.75
+            policy.research_weight = 1.05
         return PhaseDecision(phase=phase, assessment=a, policy=policy, reason=reason)
 
     def _policy_for(self, phase: StrategicPhase, assessment: FrontierAssessment) -> PhasePolicy:

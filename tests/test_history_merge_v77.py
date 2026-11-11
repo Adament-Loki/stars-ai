@@ -7,6 +7,7 @@ import pytest
 from stars_ai.adapters.stars_native import NativeBlock, parse_planet_block, read_blocks
 from stars_ai.native.history_merge import (
     HistoryMergeError,
+    _file_player_and_designs,
     inspect_history_coverage,
     merge_history_file,
 )
@@ -88,6 +89,91 @@ def _partial_design(*, number: int, starbase: bool = False) -> NativeBlock:
 
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _summary_player(*, player: int, ships: int, starbases: int) -> NativeBlock:
+    data = bytearray(8)
+    data[0] = player - 1
+    data[1] = ships
+    data[5] = (starbases & 0x0F) << 4
+    data[6] = 0x03
+    data[7] = 1
+    data += b"\x01\x11\x01\x11"
+    return NativeBlock(6, len(data), bytes(data))
+
+
+def test_own_m_file_accepts_a_stale_design_count_after_a_delete():
+    blocks = [
+        _summary_player(player=2, ships=0, starbases=3),
+        _partial_design(number=1, starbase=True),
+        _partial_design(number=2, starbase=True),
+    ]
+
+    _players, designs = _file_player_and_designs(blocks, from_m=True)
+
+    assert len(designs) == 2
+
+
+def _file_owner_player(*, player: int, ships: int, starbases: int) -> NativeBlock:
+    data = bytearray(0x80)
+    data[0] = player - 1
+    data[1] = ships
+    data[5] = (starbases & 0x0F) << 4
+    data[6] = 0x03
+    data[7] = 1
+    data[8:12] = b"\x01\x11\x01\x11"
+    return NativeBlock(6, len(data), bytes(data))
+
+
+def _owned_design(*, number: int, starbase: bool) -> NativeBlock:
+    data = bytearray(19)
+    data[0] = 0x04
+    data[1] = 1 | (number << 2) | (0x40 if starbase else 0)
+    data[2] = 34 if starbase else 4
+    data[17:19] = b"\x01\x11"
+    return NativeBlock(26, len(data), bytes(data))
+
+
+def test_scanned_starbase_count_does_not_steal_the_file_owners_station():
+    blocks = [
+        _summary_player(player=2, ships=1, starbases=1),
+        _file_owner_player(player=3, ships=1, starbases=1),
+        _partial_design(number=0, starbase=False),
+        _owned_design(number=0, starbase=True),
+    ]
+
+    _players, designs = _file_player_and_designs(blocks, from_m=True)
+
+    assert (1, False, 0) in designs
+    assert (2, True, 0) in designs
+
+
+def test_scanned_opponent_does_not_reject_a_stale_design_count():
+    blocks = [
+        _summary_player(player=2, ships=4, starbases=2),
+        _summary_player(player=7, ships=0, starbases=0),
+        _partial_design(number=0, starbase=False),
+        _partial_design(number=1, starbase=False),
+        _partial_design(number=2, starbase=False),
+        _partial_design(number=3, starbase=False),
+        _partial_design(number=1, starbase=True),
+    ]
+
+    _players, designs = _file_player_and_designs(blocks, from_m=True)
+
+    assert len(designs) == 5
+
+
+def test_multi_player_history_still_rejects_a_design_count_mismatch():
+    blocks = [
+        _summary_player(player=2, ships=0, starbases=3),
+        _summary_player(player=3, ships=0, starbases=1),
+        _partial_design(number=1, starbase=True),
+        _partial_design(number=2, starbase=True),
+    ]
+
+    with pytest.raises(HistoryMergeError, match="design counters"):
+        _file_player_and_designs(blocks, from_m=False)
 
 
 def test_native_merge_adds_discovery_updates_turns_and_never_changes_m(tmp_path):

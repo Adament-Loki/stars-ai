@@ -22,6 +22,7 @@ from .population_invasion import population_capture_targets
 from .scout_policy import enemy_contact_summary, custom_scout_missions
 from .territorial_defense import assess_territorial_defense, hostile_colonies_inside_claimed_area
 from .planet_economy import decode_race_economy, working_mineral_reserve
+from .starsapi_items import remote_miner_package_ready
 from .capability_execution import capability_status, design_capability_id, profile_is_blocked
 from .turn_state import mapping as turn_mapping
 
@@ -31,8 +32,10 @@ from .turn_state import mapping as turn_mapping
 # twenty-ship Mayflower backlog was a twenty-ship colony force.  Only the next
 # small horizon can reasonably affect the current strategic decision.
 IMMEDIATE_SHIP_QUEUE_HORIZON = 2
-LOW_TECH_ESCORT_WEAPONS = 6
-LOW_TECH_ESCORT_CAP = 2
+# Before Weapons 12 a fighter or attack force stays inside a handful, and only
+# when a specific situation calls for it. Weapons 12 is when that force may grow.
+FIGHTER_HANDFUL = 4
+FIGHTER_GROWTH_WEAPONS = 12
 # A new weapon/hull generation needs a tiny real-world proving force, but it
 # must not authorize a second full fleet while the prior generation remains
 # available.  The rest of the force turns over through losses, retirement, and
@@ -42,6 +45,9 @@ MODERNIZATION_SEED_HULLS = 2
 # ``native.colony_pipeline_cap`` to a tighter or broader program without
 # changing the source-backed claim invariant below.
 DEFAULT_COLONY_PIPELINE_CAP = 24
+# A colony ship with no destination is idle. Two cover the next launches.
+# Anything beyond that is a hull waiting at a yard while claims go unset.
+MAX_IDLE_COLONY_SHIPS = 2
 
 
 def _watchdog(state):
@@ -333,6 +339,28 @@ def _pick(state,role,*,mission: str="survey"):
     return max(ds,key=lambda d:(_design_generation(d),int(d.get('hull_id',0) or 0)))
 
 
+OPENING_SCOUT_TURN = 25
+OPENING_SCOUT_CAP = 6
+# The first production year sends out a screen, not a single probe. Four
+# hulls cover different directions while the homeworld is still the only yard.
+TURN_ONE_SCOUT_FORCE = 4
+
+
+def _opening_turn(state) -> int:
+    return max(0, int(getattr(state, "year", 2400) or 2400) - 2400)
+
+
+def _cap_opening_scouts(state, desired: int) -> int:
+    """Keep the first 25 turns to a small screen.
+
+    A large map's unknown-world count otherwise asks for 24 scouts. Those
+    hulls consume the factories, mines, and colony ships the opening needs.
+    """
+    if _opening_turn(state) <= OPENING_SCOUT_TURN:
+        return min(int(desired), OPENING_SCOUT_CAP)
+    return int(desired)
+
+
 def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
     watchdog=_watchdog(state); milestone=watchdog.get('milestone') or {}
     unknown=sum(1 for p in state.planets if not p.observed)
@@ -355,6 +383,7 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
         # stops treating every foreign sighting as an expansion-race demand.
         phase_floor=2 if late_posture else 4 if midgame else 8
         desired=min(24,max(phase_floor if unknown>0 else 0,required,coverage))
+        desired=_cap_opening_scouts(state, desired)
         purposes=", ".join(str(m["id"]) for m in custom_missions[:6]) or "open-frontier coverage"
         return desired,(
             "foreign contact is established; maintain an expansion-race scout screen for "
@@ -392,8 +421,11 @@ def _desired_scout_force(state,plan,current_scout_assets:int)->tuple[int,str]:
     opportunity_force=math.ceil(unknown/6)
     minimum=2 if late_posture else 4 if midgame else 8
     desired=min(24,max(minimum,int(desired),opportunity_force)); desired=min(desired,unknown)
-    return desired,(f"exploration milestone needs {gap} more known worlds by T{deadline} (~{required_rate:.2f}/turn); "
-                    f"measured scout productivity ~{productivity:.2f} discoveries/scout-turn; target scout force={desired}")
+    desired=_cap_opening_scouts(state, desired)
+    return desired, (
+        f"exploration milestone needs {gap} more known worlds by T{deadline} (~{required_rate:.2f}/turn); "
+        f"measured scout productivity ~{productivity:.2f} discoveries/scout-turn; target scout force={desired}"
+    )
 
 
 def _colony_pipeline_capacity(state, viable) -> dict:
@@ -441,6 +473,12 @@ def _colony_pipeline_capacity(state, viable) -> dict:
         sustainable_population_packets,
     )
     desired=max(committed_claims,desired)
+    working,idle=_colony_disposition(state)
+    if not uncommitted_claim_ids:
+        idle_capped=working+idle
+    else:
+        idle_capped=working+min(MAX_IDLE_COLONY_SHIPS, idle+len(uncommitted_claim_ids))
+    desired=min(int(desired), int(idle_capped))
     return {
         "claim_count":len(viable_ids),
         "phase_eligible_claim_ids":sorted(viable_ids),
@@ -454,8 +492,34 @@ def _colony_pipeline_capacity(state, viable) -> dict:
         "sustainable_uncommitted_packets":sustainable_uncommitted,
         "sustainable_population_packets":sustainable_population_packets,
         "configured_cap":configured_cap,
+        "idle_colony_hulls":int(idle),
+        "working_colony_hulls":int(working),
+        "idle_colony_cap":MAX_IDLE_COLONY_SHIPS,
         "desired_colony_pipeline":int(desired),
     }
+
+
+def _colony_disposition(state) -> tuple[int, int]:
+    """Return (working hulls, idle hulls) for owned colony ships.
+
+    A hull with a destination is doing a job. A hull without one is idle,
+    including every extra copy stacked in that fleet.
+    """
+    working = 0
+    idle = 0
+    for fleet in state.fleets:
+        if int(getattr(fleet, "owner", -1)) != int(state.player_id):
+            continue
+        if str(getattr(fleet, "role", "") or "") != "colony":
+            continue
+        counts = (getattr(fleet, "native", {}) or {}).get("ship_count") or []
+        hulls = sum(max(0, int(count or 0)) for count in counts)
+        hulls = max(1, hulls)
+        if getattr(fleet, "destination_planet_id", None) is not None:
+            working += hulls
+        else:
+            idle += hulls
+    return working, idle
 
 
 def _desired_colony_force(state,viable,plan)->tuple[int,str]:
@@ -475,6 +539,7 @@ def _desired_colony_force(state,viable,plan)->tuple[int,str]:
             f"milestone needs {settlement_gap} more colonies by T{deadline} (~{required_rate:.2f}/turn); {pipeline['loaded_colony_packets']} colony ships already loaded; "
             f"pipeline invariant=min(claims={pipeline['claim_count']}, sustainable packets={pipeline['sustainable_population_packets']} "
             f"({pipeline['committed_colony_fleets']} committed + {pipeline['sustainable_uncommitted_packets']} source-backed uncommitted), cap={pipeline['configured_cap']}); "
+            f"idle colony ships={pipeline.get('idle_colony_hulls', 0)} of {MAX_IDLE_COLONY_SHIPS}; "
             f"target concurrent colony force={desired}")
     return int(desired),reason
 
@@ -651,13 +716,18 @@ def _remote_mining_pressure_policy(state,plan,remote_targets) -> dict:
         real_pressure and pressure_ratio>=REMOTE_MINING_SEVERE_PRESSURE_RATIO
     )
     is_ar=_is_alternate_reality(state)
+    package_ready=remote_miner_package_ready(state)
 
-    if not real_pressure:
+    if not package_ready:
+        # A cheap miner built before the top hull and robot exist spends a
+        # design slot on the wrong ship. Wait while those are still researchable.
         desired=0
     elif is_ar and turn>=REMOTE_MINING_LATE_TURN:
-        # AR late-game doctrine: once real pressure exists, build a fleet rather
-        # than one or two token miners for homeworld remote-mining leverage.
+        # The homeworld's mining rate stays above the colonies. Once the top
+        # package exists, park a fleet of remote miners on that world.
         desired=min(16,max(6,6+int(round(pressure_ratio*10))))
+    elif not real_pressure:
+        desired=0
     else:
         target_count=len(remote_targets)
         base=min(5,max(1,(target_count+1)//2)) if target_count else 0
@@ -677,12 +747,13 @@ def _remote_mining_pressure_policy(state,plan,remote_targets) -> dict:
         "stressed_worlds":stressed_worlds,
         "owned_worlds":len(owned),
         "observed_remote_targets":len(remote_targets),
+        "top_tier_package_ready":bool(package_ready),
         "desired_miners":int(desired),
         "world_diagnostics":per_world,
         "policy":(
-            "Do not build remote miners merely because rich targets are visible. "
-            "Require a mature empire plus real working-reserve mineral pressure. "
-            "Late-game AR may scale to a large homeworld mining fleet after that gate opens."
+            "Do not build remote miners until the top legal miner hull and mining robot "
+            "are researched. After that, require real mineral pressure, except an "
+            "Alternate Reality empire, which mines its homeworld with a fleet."
         ),
     }
 
@@ -747,13 +818,25 @@ def plan_objective_ship_builds(state,plan=None):
         # size of the unexplored frontier set the protected survey screen; a
         # large map can therefore sustain its full required scout force while
         # a small one does not create a speculative probe backlog.
-        frontier_screen=math.ceil(math.sqrt(max(0,unknown)))
+        frontier_screen=4 if _opening_turn(state) <= OPENING_SCOUT_TURN else math.ceil(math.sqrt(max(0,unknown)))
         scout_cap=max(_role_count(ds,cur,'scout'),min(desired_scouts,frontier_screen))
+        if _opening_turn(state) <= OPENING_SCOUT_TURN:
+            scout_cap=min(scout_cap, 4)
         if desired_scouts>scout_cap:
             desired_scouts=scout_cap
             scout_reason+=(
                 f" Colony-compatible frontier screen={scout_cap}: {colony_launch_shortfall} "
                 "colony hull(s) are still missing from the live/imminent pipeline."
+            )
+    if _opening_turn(state) <= 1 and unknown:
+        # A known colony claim is queued ahead of these hulls. The screen
+        # itself stays large enough to leave the homeworld in more than one
+        # direction on the first turn.
+        floor=min(TURN_ONE_SCOUT_FORCE, unknown)
+        if desired_scouts<floor:
+            desired_scouts=floor
+            scout_reason+=(
+                f" Turn-1 scout screen={floor}: build the opening range before factories."
             )
     scout_build_authorized=bool(unknown)
     if scout_build_authorized and (d:=_pick(state,'scout')):
@@ -777,7 +860,15 @@ def plan_objective_ship_builds(state,plan=None):
         priority=196 if pressure>=1.75 else 186 if pressure>=1.45 else 172 if pressure>=1.20 else 160
         if scout_contact["enemy_contact"] and scout_custom_missions:
             priority=max(priority,max(int(m.get("priority",110) or 110) for m in scout_custom_missions))
-        req.append(BuildRequest('scout',int(d['design_number']),d['name'],min(6,scout_gap),priority,
+        if _opening_turn(state) <= 1:
+            scout_quantity=min(TURN_ONE_SCOUT_FORCE, scout_gap)
+            priority=max(priority, 190)
+        elif _opening_turn(state) <= OPENING_SCOUT_TURN:
+            scout_quantity=1
+            priority=min(priority, 150)
+        else:
+            scout_quantity=min(6, scout_gap)
+        req.append(BuildRequest('scout',int(d['design_number']),d['name'],scout_quantity,priority,
             f"{unknown} worlds remain unknown; {scout_reason}; live/imminent={scout_assets}. "
             f"Survey-scout selection favors usable Warp-7 range, scanner capability, efficient cruise, and low cost/mass; {generation_reason}."))
 
@@ -981,12 +1072,17 @@ def plan_objective_ship_builds(state,plan=None):
             f"exposure target={exposure.minelayer_force_target}."
         ))
 
-    # Build a limited territorial bomber element after the design exists.
-    hostile_colonies=hostile_colonies_inside_claimed_area(state,plan)
+    # Bombers are useless without a planet to bomb. Authorization alone does
+    # not create a target. Four hulls are the strike element for one campaign.
+    from .invasion import bomber_campaign_targets
+    bomber_targets=bomber_campaign_targets(state, plan, territorial)
+    invade=bool(bomber_targets)
+    hostile_colonies=tuple(bomber_targets)
     bomber_assets=_role_count(ds,counts,'bomber')
-    desired_bombers=min(6,max(2,2*len(hostile_colonies))) if hostile_colonies else 0
+    desired_bombers=4 if invade else 0
     bomber_gap=max(0,desired_bombers-bomber_assets)
     bomber_design=_pick(state,'bomber')
+    state.native["bomber_builds_authorized"]=invade
     state.native["bomber_capability_demand"]={
         "target_planet_ids":[int(planet.id) for planet in hostile_colonies],
         "desired_bombers":desired_bombers,
@@ -994,65 +1090,89 @@ def plan_objective_ship_builds(state,plan=None):
         "design_available":bool(bomber_design is not None),
         "execution_status":capability_status(state,design_capability_id("bomber")),
         "blocked_native":capability_status(state,design_capability_id("bomber")) == "BLOCKED_NATIVE",
-        "policy":"Prepare a small escorted bombing capability only for hostile/opposed colonies inside claimed territory.",
+        "invasion_authorized":invade,
+        "policy":"Build bombers only when an invasion has a planet to bomb. Otherwise leave them off the queue.",
     }
-    if bomber_gap and bomber_design is not None:
+    if invade and bomber_gap and bomber_design is not None:
+        source=getattr(territorial.source_escalation, "source_planet_name", None) or "the authorized source world"
         req.append(BuildRequest(
             'bomber',int(bomber_design['design_number']),bomber_design['name'],
-            min(3,bomber_gap),184,
-            f"{len(hostile_colonies)} hostile/opposed colony world(s) are inside the claimed area; "
-            f"bombers available/queued={bomber_assets}, desired strike capability={desired_bombers}. "
-            "Build a limited escorted bomber element; design capability was seeded separately."
+            min(2,bomber_gap),184,
+            f"Invasion of {source} is authorized; "
+            f"bombers available/queued={bomber_assets}, strike element={desired_bombers}. "
+            "Do not build bombers except for this campaign."
         ))
 
-    # Escort is a mission assigned to the shared combat architecture, not a
-    # separate design family.  Once another empire is observed, retain a small
-    # real combat force instead of endlessly designing Frigate variants that
-    # never reach a production queue.
-    military_contact=enemy_contact_summary(state)
+    # Fighters are not a quota. Before Weapons 12 they stay inside a handful
+    # and only appear for a reason: a hostile fleet to meet, pressure on
+    # traffic or a base, or a planet being attacked. Not every freighter
+    # gets an escort, and not every starbase gets a screen.
     combat_assets=_role_count(ds,counts,'combat')
-    owned_count=sum(1 for planet in state.planets if planet.owner==state.player_id)
-    # Seeing a distant foreign ship is intelligence, not a reason to queue an
-    # eight-hull defense program ahead of an empty colony pipeline. Explicit
-    # territorial violations below still get the required response.
     phase_name=str(getattr(plan,'phase','') or '')
-    hold_line_worlds=sum(
-        1 for role in (getattr(plan,'planet_actions',{}) or {}).values() if role=='hold_line'
+    weapons_level=int(state.tech.weapons or 0)
+    early_fighters=weapons_level < FIGHTER_GROWTH_WEAPONS
+    patrols=int(territorial.desired_patrols)
+    losses=int(exposure.recent_planet_losses)
+    under_pressure=bool(
+        losses
+        or exposure.emergency_active
+        or float(exposure.sustained_pressure) >= 1.0
+        or patrols > 0
     )
-    phase_force_floor=(
-        min(8,max(4,2*hold_line_worlds))
-        if phase_name=='midgame' and hold_line_worlds
-        else min(24,max(4,math.ceil(owned_count*0.75)))
-        if phase_name=='fortification'
-        else min(24,max(6,owned_count))
-        if phase_name=='opportunistic_war'
-        else 0
+    transports=[
+        fleet for fleet in state.fleets
+        if fleet.owner==state.player_id and str(fleet.role or "") in {"colony","freighter"}
+    ]
+    threatened_bases=sum(
+        1 for planet in state.planets
+        if planet.owner==state.player_id
+        and bool((planet.native or {}).get("has_starbase"))
+        and under_pressure
     )
-    contact_only_deferral=bool(
-        military_contact['enemy_contact']
-        and colony_launch_shortfall
-        and not territorial.needs_response
-        and owned_count<8
-        and phase_force_floor<=0
-    )
-    baseline_combat=(
-        min(24,max(8,math.ceil(owned_count/2)))
-        if military_contact['enemy_contact'] and not contact_only_deferral else 0
-    )
-    desired_combat=max(
-        baseline_combat,
-        phase_force_floor,
-        min(24, 4 + 2 * int(territorial.desired_patrols)) if territorial.needs_response else 0,
-        int(exposure.combat_reserve_target),
-    )
-    low_tech_escort_doctrine=int(state.tech.weapons or 0)<LOW_TECH_ESCORT_WEAPONS
-    if low_tech_escort_doctrine and phase_force_floor<=0 and not exposure.emergency_active:
-        desired_combat=min(LOW_TECH_ESCORT_CAP,desired_combat)
+    fighter_reasons=[]
+    desired_combat=0
+    attack_force=0
+    patrol_force=0
+    transport_escort=0
+    starbase_screen=0
+    if invade:
+        attack_force=FIGHTER_HANDFUL if early_fighters else min(8, FIGHTER_HANDFUL + 2)
+        desired_combat=max(desired_combat, attack_force)
+        fighter_reasons.append("a planetary attack has a target")
+    if patrols > 0:
+        patrol_force=2 if early_fighters else min(12, FIGHTER_HANDFUL + patrols // 3)
+        desired_combat=max(desired_combat, patrol_force)
+        fighter_reasons.append(f"{patrols} hostile fleet(s) need a small patrol")
+    elif under_pressure and transports:
+        transport_escort=2 if early_fighters else min(6, 2 + len(transports) // 4)
+        desired_combat=max(desired_combat, transport_escort)
+        fighter_reasons.append("traffic is under pressure, so a few escorts are warranted")
+    elif under_pressure and threatened_bases:
+        starbase_screen=2 if early_fighters else min(6, 2 + threatened_bases)
+        desired_combat=max(desired_combat, starbase_screen)
+        fighter_reasons.append("a pressured starbase needs a few fighters")
+    elif losses or exposure.emergency_active:
+        response=2 if early_fighters else FIGHTER_HANDFUL
+        desired_combat=max(desired_combat, response)
+        fighter_reasons.append("a recent loss calls for a small fighter response")
+    if early_fighters:
+        desired_combat=min(2 if weapons_level < 10 else FIGHTER_HANDFUL, desired_combat)
+        if weapons_level < 10 and not (invade or patrols > 0 or losses or exposure.emergency_active):
+            desired_combat=0
+            fighter_reasons=[]
+    phase_force_floor=0
+    contact_only_deferral=False
+    low_tech_escort_doctrine=early_fighters
+    state.native["fighter_build_desired"]=int(desired_combat)
     state.native['objective_combat_policy']={
         'phase':phase_name or 'unclassified',
         'phase_force_floor':phase_force_floor,
         'contact_only_deferral':contact_only_deferral,
         'low_tech_escort_doctrine':low_tech_escort_doctrine,
+        'starbase_screen':starbase_screen,
+        'transport_escort':transport_escort,
+        'patrol_force':patrol_force,
+        'attack_force':attack_force,
         'desired_combat':desired_combat,
         'execution_status':capability_status(state,design_capability_id('combat')),
         'blocked_native':capability_status(state,design_capability_id('combat')) == 'BLOCKED_NATIVE',
@@ -1066,19 +1186,17 @@ def plan_objective_ship_builds(state,plan=None):
         combat_gap=0
         generation_reason=""
     if combat_gap and (d:=_pick(state,'combat')):
+        fighter_priority=190 if (patrol_force or attack_force or losses) else 164
+        packet=2 if early_fighters else 4
+        reason_text="; ".join(fighter_reasons) if fighter_reasons else "no specific fighter job"
         req.append(BuildRequest(
-            'combat',int(d['design_number']),d['name'],min(8 if exposure.emergency_active else 6,combat_gap),
-            max(170, 190 if exposure.emergency_active else 0),
-            f"{('phase='+phase_name+' requires a standing combat force' if phase_force_floor else 'foreign contact is established')} "
-            f"(fleets={military_contact['foreign_fleet_count']}, planets={military_contact['foreign_planet_count']}); shared combat/escort hulls "
-            f"live/imminent={combat_assets}, desired defensive force={desired_combat}; "
-            f"territorial patrol objectives={territorial.desired_patrols}; empire exposure reserve="
-            f"{exposure.combat_reserve_target} (pressure={exposure.sustained_pressure:.2f}, "
-            f"recent losses={exposure.recent_planet_losses}); {generation_reason}."
-            +(
-                f" Low-tech escort doctrine holds the fleet at {LOW_TECH_ESCORT_CAP} hulls until "
-                f"Weapons {LOW_TECH_ESCORT_WEAPONS}; research efficiency takes precedence over a mass early-fighter build."
-                if low_tech_escort_doctrine else ""
+            'combat',int(d['design_number']),d['name'],min(packet,combat_gap),
+            fighter_priority,
+            (
+                f"Before Weapons {FIGHTER_GROWTH_WEAPONS} fighter and attack fleets stay sparse "
+                f"and only for a specific reason. Weapons now={weapons_level}. Reason: {reason_text}. "
+                f"Desired={desired_combat} (handful={FIGHTER_HANDFUL}), live/imminent={combat_assets}. "
+                f"{generation_reason}."
             )
         ))
 

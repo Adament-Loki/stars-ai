@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, asdict, fields
 from pathlib import Path
 from typing import Any
 
+from ..diplomacy import allied_player_ids
 from ..capability_execution import (
     BLOCKED_NATIVE,
     EMITTED,
@@ -21,6 +22,25 @@ from ..capability_execution import (
 
 def _safe_list(value):
     return list(value) if isinstance(value, (list, tuple)) else None
+
+
+def _sticky_design_block(reason: str) -> bool:
+    """True when a skipped design is an encoding failure, not a deferral.
+
+    A duplicate architecture, a turn that already used its one Type27, and a
+    hull that is not legal yet must be retried. Marking those skips
+    ``BLOCKED_NATIVE`` froze the role for the rest of the game.
+    """
+
+    text = reason.casefold()
+    deferred = (
+        "only one native type27",
+        "cannot be compiled",
+        "already exists",
+        "dead-slot recycle",
+        "wait for next-m",
+    )
+    return not any(marker in text for marker in deferred)
 
 
 def _safe_int(value):
@@ -281,7 +301,7 @@ class AgentMemory:
             "loss_events":events,
         }
 
-    def _capture_planet(self, planet, year: int, player_id: int) -> None:
+    def _capture_planet(self, planet, year: int, player_id: int, allies: set[int] | None = None) -> None:
         key = str(int(planet.id))
         prior = self.planet_intel.get(key, {})
         first_seen = prior.get("first_seen_year")
@@ -356,10 +376,16 @@ class AgentMemory:
         if planet.habitability is not None:
             self.planet_scores[key] = float(planet.habitability)
 
-        if planet.owner not in (None, player_id):
+        allies = allies or set()
+        hostile = (
+            planet.owner not in (None, player_id)
+            and int(planet.owner) not in allies
+        )
+        if hostile:
             self.known_enemy_planets[key] = int(planet.owner)
-        elif key in self.known_enemy_planets and planet.owner in (None, player_id):
-            # Current observation supersedes stale enemy ownership.
+        elif key in self.known_enemy_planets and not hostile:
+            # Current observation supersedes stale enemy ownership, including
+            # an allied world that an older turn stored as an enemy.
             self.known_enemy_planets.pop(key, None)
 
         if (
@@ -506,7 +532,13 @@ class AgentMemory:
                     if planet is not None and planet.owner not in (None,state.player_id)
                     else "current_m_unowned"
                 )
-            if planet is not None and planet.owner not in (None,state.player_id):
+            lost_allies = allied_player_ids(state)
+            lost_to_hostile = (
+                planet is not None
+                and planet.owner not in (None, state.player_id)
+                and int(planet.owner) not in lost_allies
+            )
+            if lost_to_hostile:
                 self.known_enemy_planets[key]=int(planet.owner)
             else:
                 self.known_enemy_planets.pop(key,None)
@@ -552,7 +584,7 @@ class AgentMemory:
                     p.owner not in (None, state.player_id)
                     and int(prior.get("last_known_owner", -1) or -1) == int(state.player_id)
                 )
-                self._capture_planet(p, year, int(state.player_id))
+                self._capture_planet(p, year, int(state.player_id), allied_player_ids(state))
                 if recently_lost:
                     p.native["recently_lost_by_player"] = True
                     p.native["tactical_population_estimate"] = max(
@@ -854,12 +886,18 @@ class AgentMemory:
         for item in skipped:
             if str(item.get("kind","")) not in DESIGN_CREATION_KINDS:
                 continue
+            reason=str(item.get("reason") or "Native writer could not emit this design.")
+            # A duplicate fitting, a busy Type27 slot, and a not-yet-legal hull
+            # are "not this turn." Recording them as BLOCKED_NATIVE froze the
+            # whole role, so a later weapons level never produced a new ship.
+            if not _sticky_design_block(reason):
+                continue
             descriptor=design_descriptor(item.get("payload") or {})
             if descriptor is None:
                 continue
             self._transition_capability(
                 descriptor,BLOCKED_NATIVE,year,
-                reason=str(item.get("reason") or "Native writer could not emit this design."),
+                reason=reason,
             )
         for item in emitted:
             if str(item.get("kind","")) not in DESIGN_CREATION_KINDS:
@@ -1485,6 +1523,18 @@ class AgentMemory:
                 "checked_year":int(state.year),
                 "message":message,
             }
+            previously_reported=(
+                str(expectation.get("last_status") or "") in {"WARNING","UNVERIFIED"}
+                and int(expectation.get("last_checked_year",-1))<int(state.year)
+            )
+            if previously_reported and status in {"WARNING","UNVERIFIED"}:
+                # The due year already recorded the miss. Later turns must not
+                # keep reprinting it as the current major warning.
+                outcome["status"]="EXPIRED"
+                outcome["resolved_year"]=int(state.year)
+                self._archive_action_outcome(outcome)
+                self.action_expectations.pop(key,None)
+                continue
             outcomes.append(outcome)
             if status=="COMPLETED":
                 outcome["resolved_year"]=int(state.year)

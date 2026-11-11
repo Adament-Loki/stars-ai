@@ -28,13 +28,23 @@ def _contact_state(*, mission=False):
     )
 
 
+def test_allied_homeworlds_are_not_enemy_contact():
+    state=_contact_state()
+    state.native["configured_allies"]=[2]
+    contact=enemy_contact_summary(state)
+    assert contact["enemy_contact"] is False
+    assert contact["foreign_owner_ids"]==[]
+    _desired, reason=_desired_scout_force(state, None, 0)
+    assert "foreign contact is established" not in reason
+
+
 def test_foreign_contact_keeps_expansion_race_scout_force():
     state=_contact_state()
     contact=enemy_contact_summary(state)
     assert contact["enemy_contact"] is True
     assert custom_scout_missions(state)==[]
     desired,reason=_desired_scout_force(state,None,0)
-    assert desired==8
+    assert desired==6
     assert "uncontested exploration and border intelligence" in reason
     requests=[r for r in plan_objective_ship_builds(state) if r.role=="scout"]
     assert len(requests)==1
@@ -46,11 +56,25 @@ def test_foreign_contact_keeps_expansion_race_scout_force():
 def test_foreign_contact_includes_named_custom_missions_in_scout_screen():
     state=_contact_state(mission=True)
     desired,reason=_desired_scout_force(state,None,0)
-    assert desired==8
+    assert desired==6
     assert "border-lane-7" in reason
     requests=[r for r in plan_objective_ship_builds(state) if r.role=="scout"]
     assert len(requests)==1
     assert "expansion-race scout screen" in requests[0].reason
+
+
+def test_turn_one_queues_a_four_scout_screen():
+    state=_contact_state()
+    state.year=2400
+    state.planets.extend(
+        Planet(10+i, f"Far {i}", Position(120+i*15, 0), owner=None, observed=False)
+        for i in range(8)
+    )
+
+    requests=[r for r in plan_objective_ship_builds(state) if r.role=="scout"]
+
+    assert requests and requests[0].quantity==4
+    assert requests[0].priority>=190
 
 
 def test_colony_launch_shortfall_keeps_a_frontier_sized_scout_screen():
@@ -65,5 +89,5 @@ def test_colony_launch_shortfall_keeps_a_frontier_sized_scout_screen():
 
     requests=[r for r in plan_objective_ship_builds(state) if r.role=="scout"]
 
-    assert requests and requests[0].quantity==6
+    assert requests and requests[0].quantity==1
     assert "Colony-compatible frontier screen" in requests[0].reason

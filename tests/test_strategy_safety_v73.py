@@ -60,16 +60,17 @@ def test_exploration_route_can_extend_beyond_owned_support_radius():
     orders=OrderSet("g",state.year,1)
     add_exploration_orders(state,orders,None)
     scan=next(x for x in orders.orders if x.payload.get("mission")=="scan")
-    # A nearby unexplored world is cleared as a one-stop route first.  This
-    # prevents a stale outer waypoint chain from delaying local intelligence.
-    assert scan.payload["route_planet_ids"] == [1]
+    # Both worlds inside 400 ly are queued before the route leaves the
+    # home neighborhood.  The world beyond that radius waits.
+    assert scan.payload["route_planet_ids"] == [1, 2]
+    assert 3 not in scan.payload["route_planet_ids"]
     assert len(scan.payload["route_waypoints"])==len(scan.payload["route_planet_ids"])
     assert len(scan.payload["route_waypoints"])<=7
 
-    # Once that ring is clear, exploration is still allowed to cross beyond
-    # an owned support radius; locality is a scheduling priority, not a wall.
+    # Once that neighborhood is clear, a fuel-safe route may leave it.
     planets[1].observed=True
-    next_orders=OrderSet("g",state.year+1,1)
-    add_exploration_orders(state,next_orders,None)
-    next_scan=next(x for x in next_orders.orders if x.payload.get("mission")=="scan")
-    assert 3 in next_scan.payload["route_planet_ids"]
+    planets[2].observed=True
+    outer_orders=OrderSet("g",state.year+1,1)
+    add_exploration_orders(state,outer_orders,None)
+    outer_scan=next(x for x in outer_orders.orders if x.payload.get("mission")=="scan")
+    assert 3 in outer_scan.payload["route_planet_ids"]

@@ -22,7 +22,11 @@ def state():
 
 def test_empire_optimizer_and_base_network():
     s=state()
-    assert classify_planet_role(s.planets[1]).role in ("BREEDER","DEVELOPING")
+    young = classify_planet_role(s.planets[1], s)
+    assert young.role == "GROWTH"
+    assert young.zone == "MODERATE"
+    assert young.habit_band == "HIGH"
+    assert young.development_band == "COLONY"
     transfers=optimize_population_transfers(s)
     assert transfers
     assert transfers[0].population==2500

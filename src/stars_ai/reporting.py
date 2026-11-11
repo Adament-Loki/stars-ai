@@ -242,9 +242,13 @@ def build_turn_report_model(
 
     owned_planets = [planet for planet in state.planets if planet.owner == state.player_id]
     own_fleets = [fleet for fleet in state.fleets if fleet.owner == state.player_id]
+    from .diplomacy import allied_player_ids
+    allies = allied_player_ids(state)
     known_enemy = [
         planet for planet in state.planets
-        if planet.owner not in (None, state.player_id) and bool(planet.observed)
+        if planet.owner not in (None, state.player_id)
+        and int(planet.owner) not in allies
+        and bool(planet.observed)
     ]
     context = getattr(decision_or_agent, "context", None)
     plan = (

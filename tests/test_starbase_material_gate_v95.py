@@ -2,9 +2,22 @@ from stars_ai.models import OrderSet
 from stars_ai.starbase_planner import (
     plan_support_base_builds,
     plan_support_base_material_demands,
+    recycled_starbase_cost,
+    support_base_design_cost,
 )
 from stars_ai.strategy.economy import add_economic_orders
 from tests.test_starbase_network_v83 import _state
+
+
+def test_upgrade_credits_the_installed_starbase():
+    station = {"hull_id": 34, "slots": []}
+    death_star = {"hull_id": 36, "slots": []}
+    gross = support_base_design_cost(death_star)
+    net = recycled_starbase_cost(death_star, station)
+    credited = support_base_design_cost(station)
+    assert gross["resources"] > credited["resources"] > 0
+    assert net["resources"] == gross["resources"] - credited["resources"]
+    assert net["germanium"] == max(0, gross["germanium"] - credited["germanium"])
 
 
 def test_unfunded_support_base_is_visible_but_does_not_block_development_queue():

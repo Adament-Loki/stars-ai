@@ -9,10 +9,11 @@ from .util import distance
 
 
 def allied_player_ids(state: Any) -> set[int]:
-    """Seats this player should treat as a shared border, not a threat.
+    """Seats this player does not treat as a hostile.
 
-    Configured alliance groups and a Friend relation already stored in the
-    turn file both count. The seat itself is never included.
+    An ally is not assumed to share a border. Configured alliance groups and
+    a Friend relation already stored in the turn file both count. The seat
+    itself is never included.
     """
 
     native = getattr(state, "native", {}) or {}
@@ -200,7 +201,7 @@ class DiplomacyPolicy:
             int(seat)
             for seat in ((getattr(state, "native", {}) or {}).get("configured_allies") or [])
         }
-        if player_id in configured and ally_allowed:
+        if player_id in configured:
             attitude = PlayerAttitude.ALLIED
             reason = (
                 "Configured co-operative ally. This seat shares its sightings "
@@ -220,7 +221,7 @@ class DiplomacyPolicy:
             )
             return PlayerDiplomacyView(
                 player_id=player_id,
-                is_human=False,
+                is_human=self.is_human(player_id),
                 attitude=attitude,
                 trust=1.0,
                 threat=0.0,

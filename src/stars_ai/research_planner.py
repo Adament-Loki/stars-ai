@@ -14,16 +14,21 @@ from .persona import StrategicPlan
 from .planet_economy import decode_race_economy, estimated_operating_resources, projected_population_growth
 from .research_capabilities import ResearchCapability, stock_capability_catalog
 from .research_cost import field_cost_label, field_cost_percent, research_turns, resources_to_requirements
+from .research_preferences import preference_points
 from .starsapi_items import (
     BEAM,
     ELECTRICAL,
     TORPEDO,
-    MINING_ROBOT,
     component_spec,
+    hull_available_to_race,
+    hull_unlocked,
     prt_id,
     lrts,
     proven_available_components,
+    remote_miner_package_ready,
     stock_component_database,
+    stock_hulls,
+    top_remote_miner_package,
 )
 from .terraforming import evaluate_terraforming
 from .turn_state import mapping as turn_mapping
@@ -32,6 +37,11 @@ from .util import distance
 
 FIELDS = ("energy", "weapons", "propulsion", "construction", "electronics", "biotechnology")
 EXPANSION_CATEGORIES = {"expansion", "logistics", "terraforming"}
+# Battle hulls worth a construction program once the Large Freighter exists.
+# Ordered by the stock construction gate: Cruiser 9, Galleon 11, Battleship 13,
+# Nubian 26. The planner chases only the next locked one.
+BATTLE_HULLS = ("Cruiser", "Galleon", "Battleship", "Nubian")
+BATTLE_HULL_MIN_CONSTRUCTION = 8
 ONION_NETWORK_TAG = "onion_network"
 OPENING_GROWTH_TURNS = 10
 
@@ -406,8 +416,13 @@ def _external_demands(state: GameState) -> list[ResearchDemand]:
     return out
 
 
-def _remote_miner_research_demand(state: GameState, designs: list[dict]) -> ResearchDemand | None:
-    """Return the first legal mining-robot unlock when real remote work exists."""
+def _remote_miner_research_demand(state: GameState, _designs: list[dict]) -> ResearchDemand | None:
+    """Ask for the top miner hull and robot, not the first cheap unlock."""
+    if remote_miner_package_ready(state):
+        return None
+    hull,robot=top_remote_miner_package(state)
+    if hull is None or robot is None:
+        return None
     targets=[]
     for planet in state.planets:
         concentrations=(planet.native or {}).get("mineral_concentrations") or []
@@ -417,57 +432,66 @@ def _remote_miner_research_demand(state: GameState, designs: list[dict]) -> Rese
             and sum(max(0,int(value)) for value in concentrations[:3]) >= 150
         ):
             targets.append(planet)
-    if not targets or any(str(design.get("role", "")) == "miner" for design in designs):
-        return None
-
-    race_prt=(state.race.native or {}).get("prt_id")
-    race_lrts={str(value).upper() for value in ((state.race.native or {}).get("lrts", []) or [])}
-    candidates=[]
-    for (category,item_id), raw in stock_component_database().components.items():
-        if int(category) != MINING_ROBOT:
-            continue
-        spec=component_spec(category,item_id)
-        if spec.required_prt is not None and int(race_prt if race_prt is not None else -1) != int(spec.required_prt):
-            continue
-        if spec.required_lrt is not None and str(spec.required_lrt).upper() not in race_lrts:
-            continue
-        requirements={
-            field:int(level) for field,level in zip(FIELDS,raw.tech_required)
-            if int(level) > 0
-        }
-        remaining=sum(max(0,int(level)-int(getattr(state.tech,field,0) or 0)) for field,level in requirements.items())
-        candidates.append((remaining,sum(requirements.values()),int(item_id),raw,spec,requirements))
-    if not candidates:
-        return None
-    remaining,_total,_item,raw,spec,requirements=min(candidates,key=lambda row:row[:3])
-    if remaining <= 0:
-        # The design synthesis path will handle the now-available component.
-        return None
-    capability=ResearchCapability(
-        capability_id=f"component:remote_miner:{int(raw.item_id)}",
-        name=spec.name,
-        category="logistics",
-        requirements=requirements,
-        post_unlock_action="Create and queue one race-legal remote miner for observed unowned mineral worlds.",
-        source="bundled StarsAPI UNEDITED.MOD mining-robot requirement",
-        tags=("remote_mining", "expansion_enabler"),
-        unlocks=(spec.name,),
-        enables_roles=("miner",),
-        requires_production_plan=True,
+    alternate=prt_id(state)==8 or "alternate reality" in str(getattr(state.race,"primary_trait","") or "").casefold()
+    homeworld=any(
+        planet.owner==state.player_id and bool((planet.native or {}).get("is_homeworld"))
+        for planet in state.planets
     )
+    if not targets and not (alternate and homeworld):
+        return None
+    robot_ready=robot.key() in proven_available_components(state)
+    if not robot_ready:
+        requirements={
+            field:int(level) for field,level in zip(FIELDS,robot.tech_required) if int(level)>0
+        }
+        capability=ResearchCapability(
+            capability_id=f"component:remote_miner:{int(robot.item_id)}",
+            name=robot.name,
+            category="logistics",
+            requirements=requirements,
+            post_unlock_action=(
+                f"Wait to build remote miners until {robot.name} and {hull.name} are both researched."
+            ),
+            source="bundled StarsAPI UNEDITED.MOD mining-robot requirement",
+            tags=("remote_mining", "expansion_enabler"),
+            unlocks=(robot.name,),
+            enables_roles=("miner",),
+            requires_production_plan=True,
+        )
+        subject=robot.name
+    else:
+        requirements={
+            field:int(level) for field,level in zip(FIELDS,hull.tech_required) if int(level)>0
+        }
+        capability=ResearchCapability(
+            capability_id=f"hull:{int(hull.hull_id)}",
+            name=hull.name,
+            category="logistics",
+            requirements=requirements,
+            post_unlock_action=(
+                f"{robot.name} is researched. Unlock {hull.name} before building remote miners."
+            ),
+            source="bundled data_hulls.mod miner hull requirement",
+            tags=("remote_mining", "hull"),
+            unlocks=(hull.name,),
+            enables_roles=("miner",),
+            requires_production_plan=True,
+        )
+        subject=hull.name
     concentration=sum(
         sum(max(0,int(value)) for value in (planet.native or {}).get("mineral_concentrations", [])[:3])
         for planet in targets
     )
     return ResearchDemand(
         capability=capability,
-        need=min(3.0,1.0+len(targets)*0.55),
+        need=min(3.0,1.0+max(1,len(targets))*0.55),
         urgency=1.45,
         utilization=1.0,
         value=min(3.0,1.2+concentration/450.0),
         explanation=(
-            f"{len(targets)} observed unowned remote-mining target(s), combined concentration={concentration}; "
-            f"{spec.name} is the first component legal for this race, with remaining research {requirements}."
+            f"Remote miners wait for the top legal package. Next gate is {subject}, "
+            f"remaining {requirements}. Unowned targets={len(targets)}, combined concentration={concentration}."
+            + (" Alternate Reality will then mine its homeworld." if alternate else "")
         ),
     )
 
@@ -499,6 +523,124 @@ def _next_weapon_upgrade(state: GameState, current_weapon_tier: int) -> tuple[in
         if upgrades:
             return level, tuple(upgrades)
     return None
+
+
+def _next_battle_hull_demand(state: GameState) -> ResearchDemand | None:
+    """Chase the next Cruiser, Galleon, Battleship, or Nubian.
+
+    These hulls are the construction levels that turn a freighter empire into
+    one that can fight. Gravity terraforming spends the same years on
+    propulsion, so this demand exists only after construction 8, when the
+    Large Freighter is already available.
+    """
+    if int(state.tech.construction or 0) < BATTLE_HULL_MIN_CONSTRUCTION:
+        return None
+    locked: list[tuple[int, int, Any]] = []
+    for hull in stock_hulls().values():
+        if hull.name not in BATTLE_HULLS or hull.is_starbase:
+            continue
+        if not hull_available_to_race(hull, state) or hull_unlocked(hull, state):
+            continue
+        locked.append((
+            int(hull.tech_required[3]),
+            BATTLE_HULLS.index(hull.name),
+            hull,
+        ))
+    if not locked:
+        return None
+    hull = sorted(locked)[0][2]
+    construction = int(hull.tech_required[3])
+    return ResearchDemand(
+        ResearchCapability(
+            capability_id=f"hull:{hull.hull_id}",
+            name=hull.name,
+            category="combat",
+            requirements={"construction": construction},
+            post_unlock_action=(
+                f"Create a combat design on the {hull.name} and queue it from a shipyard "
+                "once the next M-file confirms the hull."
+            ),
+            source="stock battle-hull construction ladder",
+            tags=("combat_hull", "hull"),
+            unlocks=(hull.name,),
+            enables_roles=("combat",),
+            expiry_condition="A heavier race-legal battle hull becomes the next construction goal.",
+        ),
+        need=2.6,
+        urgency=2.2,
+        utilization=1.0,
+        value=2.8,
+        explanation=(
+            f"{hull.name} is the next battle hull and needs Construction {construction}. "
+            "That hull gives the empire a real combat slot layout; another gravity "
+            "terraform step would spend the same research on propulsion."
+        ),
+    )
+
+
+def _death_star_demand(state: GameState) -> ResearchDemand | None:
+    """Offer the Death Star as a construction candidate for a race that can build it.
+
+    Preference points, not a fixed second place, decide whether it is next.
+    """
+    hull = next((item for item in stock_hulls().values() if item.name == "Death Star"), None)
+    if hull is None or not hull_available_to_race(hull, state) or hull_unlocked(hull, state):
+        return None
+    construction = int(hull.tech_required[3])
+    return ResearchDemand(
+        ResearchCapability(
+            capability_id=f"hull:{hull.hull_id}",
+            name=hull.name,
+            category="combat",
+            requirements={"construction": construction},
+            post_unlock_action=(
+                "Design a Death Star once Construction reaches the hull and a shipyard can fund it."
+            ),
+            source="stock Death Star construction gate",
+            tags=("combat_hull", "hull"),
+            unlocks=(hull.name,),
+            enables_roles=("starbase",),
+        ),
+        need=2.6,
+        urgency=2.0,
+        utilization=1.0,
+        value=2.8,
+        explanation=(
+            f"Death Star needs Construction {construction}. "
+            "For Alternate Reality that hull is the construction payoff after Energy."
+        ),
+    )
+
+
+def _weapon_parity_demand(state: GameState) -> ResearchDemand | None:
+    """Offer weapons research up to one level above the fleets we can actually see."""
+    from .research_preferences import observed_enemy_weapon_level
+    enemy = observed_enemy_weapon_level(state)
+    if enemy is None:
+        return None
+    target = int(enemy) + 1
+    if int(state.tech.weapons or 0) >= target:
+        return None
+    return ResearchDemand(
+        ResearchCapability(
+            capability_id=f"military:weapon_parity:{target}",
+            name=f"Weapons {target} to match enemy fleets",
+            category="combat",
+            requirements={"weapons": target},
+            post_unlock_action="Refit combat designs once weapons match or slightly exceed the observed enemy fleet.",
+            source="observed enemy weapon level",
+            tags=("weapon_parity",),
+            expiry_condition="Observed enemy weapon tech is no longer above our own.",
+        ),
+        need=2.4,
+        urgency=2.2,
+        utilization=1.0,
+        value=2.2,
+        explanation=(
+            f"Observed enemy weapons are {enemy}. "
+            f"The matching target is Weapons {target}, one level above that fleet."
+        ),
+    )
 
 
 def _combat_weapon_upgrade_demand(
@@ -564,6 +706,19 @@ def _combat_weapon_upgrade_demand(
                 category, int(component.get("item_id", 0) or 0),
             ).tech_required[1]))
     current=max(int(state.tech.weapons or 0), fitted_tier)
+    from .research_preferences import observed_enemy_weapon_level
+    enemy_weapons = observed_enemy_weapon_level(state)
+    # One level above a fleet we have actually seen. With no scanned weapon
+    # slots, one step past the guns already fitted is enough; the next years
+    # go back to growth and hulls instead of a weapons ladder.
+    if enemy_weapons is not None:
+        ceiling = int(enemy_weapons) + 1
+    elif fitted_tier > 0:
+        ceiling = int(fitted_tier) + 1
+    else:
+        ceiling = None
+    if ceiling is not None and int(state.tech.weapons or 0) >= ceiling:
+        return None
     next_upgrade = _next_weapon_upgrade(state, current)
     if next_upgrade is None:
         return None
@@ -721,17 +876,17 @@ def _build_demands(
                     False,
                     "ISB race has no operational shipyard/refuel base; Space Dock is its cheap frontier hub hull.",
                 ))
-            elif hull_id == 35 and operational_bases > 0 and int(state.year) >= 2430:
-                # Ultra Station is also ISB-only and is deliberately deferred
-                # until after the opening expansion window.
+            elif hull_id == 35 and operational_bases > 0 and int(state.year) >= 2425:
+                # Ultra Station is ISB-only. Key worlds should grow into it
+                # once a shipyard exists; the upgrade credits the old base.
                 demands.append(ResearchDemand(
                     capability,
-                    0.8,
-                    0.8,
-                    0.45,
-                    1.3,
+                    2.2,
+                    1.7,
+                    0.80,
+                    2.4,
                     False,
-                    "After the opening expansion window, an ISB empire can consider Ultra Station when stronger network demands are satisfied.",
+                    "ISB key worlds should become Ultra Stations. Upgrading credits the starbase already in orbit.",
                 ))
             continue
         if capability.category == "terraforming":
@@ -768,6 +923,27 @@ def _build_demands(
             ))
 
     demands.extend(expansion_demands)
+    battle_hull = _next_battle_hull_demand(state)
+    if battle_hull is not None:
+        demands.append(battle_hull)
+    death_star = _death_star_demand(state)
+    if death_star is not None:
+        demands.append(death_star)
+    from .critical_assets import (
+        capital_missile_demand,
+        fortress_research_demand,
+        publish_critical_planets,
+    )
+    publish_critical_planets(state)
+    fortress = fortress_research_demand(state)
+    if fortress is not None:
+        demands.append(fortress)
+    missile = capital_missile_demand(state)
+    if missile is not None:
+        demands.append(missile)
+    weapon_parity = _weapon_parity_demand(state)
+    if weapon_parity is not None:
+        demands.append(weapon_parity)
 
     threats = _nearby_threats(state, plan)
     weapon_upgrade=_combat_weapon_upgrade_demand(state, designs, threats)
@@ -795,33 +971,45 @@ def _build_demands(
                 and int(item.get("item_id", -1) or -1) in combat_slots
             )
         emergency=combat_assets < 3
-        level = int(state.tech.weapons or 0) + 1
-        capability = ResearchCapability(
-            capability_id=f"military:weapons_readiness:{level}",
-            name=f"Weapons readiness {level}",
-            category="military",
-            requirements={"weapons": level},
-            post_unlock_action="Re-score combat designs and local defensive production against the nearby threat.",
-            source="nearby hostile-fleet emergency breakpoint",
-            tags=("military",),
-            enables_roles=("combat", "starbase_defense"),
-            requires_production_plan=True,
-            expiry_condition="The local defensive force is restored or the hostile fleet leaves the defense radius.",
-        )
-        demands.append(ResearchDemand(
-            capability,
-            min(3.0, 1.0 + len(threats) * 0.5),
-            2.0 if emergency else 0.75,
-            1.0,
-            2.0,
-            emergency,
-            (
-                f"{len(threats)} hostile fleet(s) are inside the defense radius; "
-                f"combat/escort hulls live or queued={combat_assets}. "
-                + ("Emergency readiness remains below the minimum defensive force." if emergency
-                   else "Production has met the minimum defensive force, so this is no longer an emergency research lock.")
-            ),
-        ))
+        from .research_preferences import observed_enemy_weapon_level
+        seen_weapons = observed_enemy_weapon_level(state)
+        # Readiness is the gap to a fleet we have actually scanned. With no
+        # scanned weapon it is not a standing order to take the next level.
+        our_weapons = int(state.tech.weapons or 0)
+        if seen_weapons is not None and our_weapons < int(seen_weapons) + 1:
+            level = int(seen_weapons) + 1
+        elif seen_weapons is None and our_weapons < 1:
+            level = 1
+        else:
+            level = None
+        if level is not None:
+            capability = ResearchCapability(
+                capability_id=f"military:weapons_readiness:{level}",
+                name=f"Weapons readiness {level}",
+                category="military",
+                requirements={"weapons": level},
+                post_unlock_action="Re-score combat designs and local defensive production against the nearby threat.",
+                source="nearby hostile-fleet emergency breakpoint",
+                tags=("military",),
+                enables_roles=("combat", "starbase_defense"),
+                requires_production_plan=True,
+                expiry_condition="The local defensive force is restored or the hostile fleet leaves the defense radius.",
+            )
+            demands.append(ResearchDemand(
+                capability,
+                min(3.0, 1.0 + len(threats) * 0.5),
+                2.0 if emergency else 0.75,
+                1.0,
+                2.0,
+                emergency,
+                (
+                    f"{len(threats)} hostile fleet(s) are inside the defense radius; "
+                    f"observed enemy weapons are {seen_weapons}. "
+                    f"combat/escort hulls live or queued={combat_assets}. "
+                    + ("Emergency readiness remains below the minimum defensive force." if emergency
+                       else "Production has met the minimum defensive force, so this is no longer an emergency research lock.")
+                ),
+            ))
 
     computer = _battle_computer_demand(state, designs)
     if computer is not None:
@@ -989,11 +1177,6 @@ def _score(
         score += 100.0
     elif "explicit_goal" in demand.capability.tags:
         score += 160.0
-    elif "race_resource" in demand.capability.tags:
-        # Alternate Reality's Energy level is the resource term other races get
-        # from factories. It stays ahead of a generic hull while the empire is
-        # still opening.
-        score *= 1.7
     elif opening_network_debt:
         # Before ~T30 the default research problem is expansion infrastructure:
         # range, freighter throughput, legal frontier bases, and useful gates.
@@ -1039,6 +1222,12 @@ def _score(
         # factor also prevents speculative military tech from crowding out a
         # usable economy/logistics capability.
         score *= 0.20 + 0.80 * max(0.0,min(1.0,demand.production_readiness))
+    preference_total, preference_rows = preference_points(state, demand.capability)
+    score += preference_total
+    trace = state.native.setdefault("preference_trace", {})
+    trace[demand.capability.capability_id] = [
+        {"name": name, "points": points} for name, points in preference_rows
+    ]
     return round(score, 3)
 
 
@@ -1228,6 +1417,7 @@ def plan_research(
     # but no sprint (including a military-selected one) is allowed until turn
     # 10.  This is shared economic doctrine, not a persona preference.
     opening_growth_lock = turn < OPENING_GROWTH_TURNS
+    state.native["preference_trace"] = {}
 
     candidates = sorted(
         (
@@ -1257,6 +1447,25 @@ def plan_research(
         if chosen_score < incumbent[1] * 1.25 and not chosen.military_emergency:
             chosen, chosen_score = incumbent
             hysteresis_note = " Incumbent retained because the challenger was less than 25% stronger."
+
+    ar_energy_opening = (
+        decode_race_economy(state.race).alternate_reality and turn <= 10
+    )
+    if ar_energy_opening:
+        energy = next(
+            (
+                row for row in candidates
+                if "energy" in row[0].capability.requirements
+                and "race_resource" in row[0].capability.tags
+            ),
+            None,
+        )
+        if energy is not None:
+            chosen, chosen_score = energy
+            hysteresis_note += (
+                " Alternate Reality spends the first 10 turns on Energy and leaves "
+                "half of production for ships."
+            )
 
     remaining = chosen.capability.remaining(state.tech)
     estimated_turns, resource_cost, yearly_budget = research_turns(state, chosen.capability.requirements)
@@ -1307,6 +1516,15 @@ def plan_research(
     )
     if opening_growth_lock:
         sprint = False
+    # Alternate Reality turns Energy into resources. Every other race gets
+    # those resources from factories and mines, so the first 25 turns stay at
+    # a low research rate and do not sprint.
+    industry_first = (
+        not decode_race_economy(state.race).alternate_reality
+        and turn <= 25
+    )
+    if industry_first:
+        sprint = False
     if emergency:
         posture = ResearchPosture.MILITARY_EMERGENCY
         sprint = True
@@ -1322,6 +1540,10 @@ def plan_research(
         posture = ResearchPosture.MATURE_SURGE
     else:
         posture = ResearchPosture.TARGETED
+    if industry_first:
+        sprint = False
+        if posture == ResearchPosture.SPRINT:
+            posture = ResearchPosture.EXPANSION_FIRST
 
     current_field, next_field = _field_sequence(chosen.capability, state, plan)
     contributors, protected = _contributors(
@@ -1348,7 +1570,12 @@ def plan_research(
             "No mature non-emergency contributor has positive expected resources; "
             "deferred the high-commitment sprint instead of reporting an unfunded 25% allocation."
         )
-    allocation = 25 if sprint else 15
+    allocation = 10 if industry_first else (25 if sprint else 15)
+    if ar_energy_opening and "energy" in chosen.capability.requirements:
+        allocation = 50
+        sprint = False
+        if posture == ResearchPosture.SPRINT:
+            posture = ResearchPosture.EXPANSION_FIRST
     commitment=(
         "DEFERRED" if sprint_blocked_reason or sprint_execution_failure
         else "RECOVERY_HIGH" if emergency and sprint
@@ -1384,13 +1611,30 @@ def plan_research(
             f" OPENING ECONOMY: turn {turn} keeps research at 15% until turn "
             f"{OPENING_GROWTH_TURNS}; mines, factories, and colony hulls have first claim on production."
         )
+    if industry_first:
+        reason += (
+            f" INDUSTRY FIRST: a non-Alternate-Reality empire keeps research at 10% through "
+            f"turn 25 and does not sprint. Factories and mines take the resources an "
+            f"Alternate Reality race spends on Energy."
+        )
+    if ar_energy_opening and allocation == 50:
+        reason += (
+            " ALTERNATE REALITY OPENING: Energy is 50% through turn 10 so the other "
+            "half of resources still builds the scout screen and colony hulls."
+        )
     if sprint_stalled:
         reason += " WARNING - prior sprint exceeded its horizon without measurable tech progress; 15% recovery posture selected."
     if execution_failure_reason:
         reason += f" EXECUTION FAILURE: {execution_failure_reason}"
     if sprint_blocked_reason:
         reason += f" SPRINT DEFERRED: {sprint_blocked_reason}"
+    chosen_preferences = (state.native.get("preference_trace") or {}).get(chosen.capability.capability_id) or []
+    if chosen_preferences:
+        reason += " Preferences: " + ", ".join(
+            f"{row['name']} {row['points']:+.0f}" for row in chosen_preferences
+        ) + "."
 
+    preference_trace = state.native.get("preference_trace") or {}
     state.native["research_goals"] = [
         {
             "capability_id": demand.capability.capability_id,
@@ -1399,7 +1643,7 @@ def plan_research(
                 "race_resource" if "race_resource" in demand.capability.tags
                 else "growth" if "growth_unlock" in demand.capability.tags
                 else "short_unlock" if "short_unlock" in demand.capability.tags
-                else "fleet" if demand.capability.category in {"military", "logistics", "expansion"}
+                else "fleet" if demand.capability.category in {"military", "logistics", "expansion", "combat"}
                 else "general"
             ),
             "requirements": dict(demand.capability.requirements),
@@ -1412,6 +1656,7 @@ def plan_research(
             },
             "turns": research_turns(state, demand.capability.requirements)[0],
             "score": goal_score,
+            "preferences": list(preference_trace.get(demand.capability.capability_id) or []),
         }
         for demand, goal_score in candidates[:6]
     ]

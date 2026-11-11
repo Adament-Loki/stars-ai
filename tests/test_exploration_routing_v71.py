@@ -155,7 +155,7 @@ def test_persistent_scout_routes_clear_home_neighborhood_before_frontier():
         for i in range(1,6)
     ]
     distant=[
-        Planet(20+i,f"Distant {i}",Position(350+i*10,10),observed=False)
+        Planet(20+i,f"Distant {i}",Position(520+i*10,10),observed=False)
         for i in range(6)
     ]
     scouts=[
@@ -168,17 +168,23 @@ def test_persistent_scout_routes_clear_home_neighborhood_before_frontier():
     add_exploration_orders(state,orders,memory=AgentMemory())
 
     scans=[order for order in orders.orders if order.payload.get("mission")=="scan"]
-    local_route=next(order for order in scans if order.payload["home_neighborhood_clearance"])
-    assert set(local_route.payload["route_planet_ids"]).issubset({planet.id for planet in local})
-    assert local_route.payload["destination_planet_id"] in {planet.id for planet in local}
-    assert len(local_route.payload["route_planet_ids"]) == 2
+    local_ids={planet.id for planet in local}
+    local_routes=[order for order in scans if order.payload["home_neighborhood_clearance"]]
+    covered=set()
+    for order in local_routes:
+        route_ids=set(order.payload["route_planet_ids"])
+        assert route_ids<=local_ids
+        assert order.payload["destination_planet_id"] in local_ids
+        covered|=route_ids
+    assert len(local_routes)==2
+    assert len(covered)>=3
 
 
 def test_local_backlog_cancels_an_active_outer_scout_route_before_it_consumes_more_turns():
     home=Planet(0,"Home",Position(0,0),owner=1,observed=True,habitability=100,
                 native={"is_homeworld":True})
     local=Planet(1,"Local",Position(60,0),observed=False)
-    outer=Planet(2,"Outer",Position(300,0),observed=False)
+    outer=Planet(2,"Outer",Position(520,0),observed=False)
     scout=Fleet(
         0,"Probe",1,Position(20,0),role="scout",destination_planet_id=2,
         native={"waypoint_count":1},
@@ -319,3 +325,23 @@ def test_promotion_targets_identify_successive_p1_to_p4_relay_rings():
     assert exploration_promotion_target(state,p2_candidate)["label"]=="P2"
     assert exploration_promotion_target(state,p3_candidate)["label"]=="P3"
     assert exploration_promotion_target(state,p4_candidate)["label"]=="P4"
+
+
+def test_only_scout_hulls_explore_and_early_fighters_are_capped():
+    home=Planet(0,"Home",Position(0,0),owner=1,observed=True,native={"is_homeworld":True})
+    nearby=[Planet(i,f"Near {i}",Position(30+i*15,0),observed=False) for i in range(1,6)]
+    fleets=[
+        Fleet(1,"Colony",1,Position(0,0),role="unknown"),
+        Fleet(2,"Fighter A",1,Position(0,0),role="combat"),
+        Fleet(3,"Fighter B",1,Position(0,0),role="combat"),
+        Fleet(4,"Fighter C",1,Position(0,0),role="combat"),
+        Fleet(5,"Scout",1,Position(0,0),role="scout"),
+    ]
+    state=GameState("opening",2412,1,RaceProfile(),Tech(),[home,*nearby],fleets)
+    orders=OrderSet("opening",2412,1)
+
+    add_exploration_orders(state,orders)
+
+    scans=[order for order in orders.orders if order.payload.get("mission")=="scan"]
+    assert {int(order.payload["fleet_id"]) for order in scans}=={2,3,5}
+    assert not any(int(order.payload.get("fleet_id",-1))==1 for order in orders.orders)

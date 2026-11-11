@@ -80,6 +80,7 @@ def plan_native_ai_turn(
     xy_path: str | Path,
     persona_name: str = "Balanced",
     friend_player_ids: list[int] | None = None,
+    human_player_ids: list[int] | None = None,
     state_store: AIStateStore | None = None,
 ) -> PlannedNativeAITurn:
     """Decode a native turn and produce semantic orders without writing an X file."""
@@ -112,11 +113,15 @@ def plan_native_ai_turn(
     )
     prior_scout_routes = deepcopy(memory.scout_routes)
     prior_scan_history = deepcopy(memory.scan_target_history)
+    persona = _persona(persona_name)
+    if human_player_ids:
+        persona.with_human_players(*human_player_ids)
+        state.native["human_player_ids"] = [int(seat) for seat in human_player_ids]
     decision = StarsAI().run_turn(TurnInput(
         state=state,
         player_id=int(player_id),
         memory=memory,
-        persona=_persona(persona_name),
+        persona=persona,
     ))
 
     # Record what strategy requested before native gating resolves its result.
@@ -222,6 +227,7 @@ def execute_native_ai_turn(
     client_x_path: str | Path | None = None,
     persona_name: str = "Balanced",
     friend_player_ids: list[int] | None = None,
+    human_player_ids: list[int] | None = None,
     state_store: AIStateStore | None = None,
     trace_path: str | Path | None = None,
 ) -> NativeAITurnExecution:
@@ -233,6 +239,7 @@ def execute_native_ai_turn(
         xy_path=xy_path,
         persona_name=persona_name,
         friend_player_ids=friend_player_ids,
+        human_player_ids=human_player_ids,
         state_store=state_store,
     )
     native_result = write_native_orders(

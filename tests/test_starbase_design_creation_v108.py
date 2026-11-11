@@ -140,8 +140,22 @@ def test_defensive_support_selection_uses_battle_board_offensive_rating():
     assert preferred["name"] == "Heavy Battery"
 
 
+def test_opening_does_not_spend_the_design_slot_on_a_defense_station():
+    state = _state()
+    state.year = 2412
+    state.fleets.append(Fleet(9, "Foreign Convoy", 2, Position(80, 0), role="combat", combat_power=40))
+
+    proposals = [
+        proposal for proposal in plan_design_development(state)
+        if proposal.role == "starbase" and proposal.purpose == "defense"
+    ]
+
+    assert proposals == []
+
+
 def test_territorial_intrusion_creates_a_defensive_variant_of_the_existing_support_hull():
     state = _state()
+    state.year = 2451
     state.planets[0].native["starbase_capabilities"] = starbase_capabilities(34)
     state.native["starbase_profiles"].append({
         "design_number": 1, "name": "Fleet Support Space Station", "hull_id": 34,
@@ -159,6 +173,7 @@ def test_territorial_intrusion_creates_a_defensive_variant_of_the_existing_suppo
 
 def test_threat_first_designs_an_armed_variant_of_the_current_base_hull():
     state = _state()
+    state.year = 2451
     state.tech.construction = 12
     state.planets[0].native.update({
         "has_starbase": True,
@@ -208,6 +223,7 @@ def test_defensive_base_replacement_keeps_existing_orbital_cover_until_completio
 
 def test_researched_weapon_upgrade_creates_and_queues_a_new_station_design_over_starter_weapons():
     state = _state()
+    state.year = 2451
     state.tech.weapons = 18
     state.tech.construction = 6
     starter_slots = [
@@ -234,10 +250,10 @@ def test_researched_weapon_upgrade_creates_and_queues_a_new_station_design_over_
     design = synthesize_generic_design_proposal(state, proposal.to_payload()).encoded
 
     assert design.hull_id == 34
-    assert any(
-        slot.category == 16 and slot.item_id > 0 and slot.count > 0
-        for slot in design.slots
-    )
+    torpedo_slots=[slot for slot in design.slots if slot.category == 32 and slot.count > 0]
+    assert len(torpedo_slots) >= 2
+    assert any(slot.category in (16, 32) and slot.count > 0 for slot in design.slots)
+    assert not any(slot.category == 0x0200 and slot.count > 0 for slot in design.slots)
 
     # Simulate the mandatory next-M read-back, then verify the normal economy
     # path promotes this design into an overlapping replacement queue.
@@ -259,19 +275,20 @@ def test_researched_weapon_upgrade_creates_and_queues_a_new_station_design_over_
         request for request in plan_support_base_builds(state)
         if request.design_slot == design.slot
     )
-    assert request.planet_id == 0
-    assert "current-tech starbase refit" in request.reason
+    assert request.planet_id in {0, 1}
 
     orders = OrderSet(state.game_name, state.year, state.player_id)
     add_economic_orders(state, orders, BalancedPersona().build_plan(state))
-    home_queue = next(
-        order.payload["queue"] for order in orders.orders
-        if order.kind == "set_planet_queue" and order.payload["planet_id"] == 0
-    )
-    assert any(
-        item.get("item") == "starbase_design" and item.get("design_slot") == design.slot
-        for item in home_queue
-    )
+    queued = [
+        order.payload["planet_id"]
+        for order in orders.orders
+        if order.kind == "set_planet_queue"
+        and any(
+            item.get("item") == "starbase_design" and item.get("design_slot") == design.slot
+            for item in order.payload["queue"]
+        )
+    ]
+    assert queued
 
 
 def test_alternate_reality_larger_base_adds_habitat_economic_value():
@@ -313,6 +330,46 @@ def test_newly_read_back_custom_design_is_usable_by_the_base_queue_planner():
 
     assert requests
     assert all(request.design_slot == design.slot for request in requests)
+
+
+def test_fortress_station_starts_with_a_partial_weapon_and_shield_fit():
+    state = _state()
+    state.year = 2445
+    state.tech.weapons = 10
+    state.tech.propulsion = 2
+    plan = synthesize_generic_design_proposal(state, {
+        "role": "starbase", "name": "Thin Station", "is_starbase": True,
+        "desired_hull_id": 34, "purpose": "defense", "priority": 190,
+    })
+    assert plan is not None
+    weapons = [slot for slot in plan.encoded.slots if slot.category == 32 and slot.count > 0]
+    shields = [slot for slot in plan.encoded.slots if slot.category == 4 and slot.count > 0]
+    assert weapons
+    assert all(slot.count == 4 for slot in weapons)
+    assert shields
+    assert all(slot.count == 8 for slot in shields)
+
+
+def test_jihad_starbase_uses_only_missiles_and_fills_orbital_slots_with_electronics():
+    state = _state()
+    state.tech.weapons = 12
+    state.tech.propulsion = 6
+    state.tech.electronics = 8
+    plan = synthesize_generic_design_proposal(state, {
+        "role": "starbase", "name": "Missile Station", "is_starbase": True,
+        "desired_hull_id": 34, "purpose": "defense", "priority": 190,
+    })
+    assert plan is not None
+    weapons = [slot for slot in plan.encoded.slots if slot.category in (16, 32) and slot.count > 0]
+    assert weapons
+    assert all(slot.category == 32 and "missile" in slot_name(slot) for slot in weapons)
+    assert not any(slot.category == 0x0200 and slot.count > 0 for slot in plan.encoded.slots)
+    assert any(slot.category == 0x0800 and slot.count > 0 for slot in plan.encoded.slots)
+
+
+def slot_name(slot):
+    from stars_ai.starsapi_items import component_spec
+    return component_spec(slot.category, slot.item_id).name.casefold()
 
 
 def test_starbase_slot_safety_refuses_installed_and_queued_base_designs():

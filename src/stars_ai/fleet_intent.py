@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .models import GameState, OrderSet
 from .util import distance
+from .empire_geometry import distance_from_homeworld
 from .colony_planner import (
     colonization_policy,
     reserved_colony_target_ids,
@@ -12,7 +13,11 @@ from .fuel_planner import mission_reachable
 from .population_units import COLONY_LOAD_COLONISTS
 from .expansion_network import evaluate_expansion_network
 
-RECON_ROLES = {"scout", "unknown"}
+RECON_ROLES = {"scout"}
+# A remote miner that spends the opening crossing the map never mines.
+# Keep the assignment inside a short trip from the homeworld.  Alternate
+# Reality has no planetary mines, so its homeworld is always a legal target.
+NEAR_HOME_MINING_RADIUS_LY = 150.0
 
 
 def _existing_fleet_order(orders: OrderSet, fleet_id: int):
@@ -91,32 +96,87 @@ def _ar_homeworld_ids(state: GameState) -> set[int]:
     }
 
 
-def _mining_candidates(state: GameState, fleet):
-    ranked=[]
-    ar_homeworlds=_ar_homeworld_ids(state)
-    policy=(state.native or {}).get("remote_mining_build_policy") or {}
-    ar_pressure_open=bool(
+def _planet_by_id(state: GameState, planet_id):
+    if planet_id is None:
+        return None
+    return next((p for p in state.planets if int(p.id)==int(planet_id)), None)
+
+
+def _is_ar_homeworld(state: GameState, planet) -> bool:
+    return bool(
         _is_alternate_reality(state)
-        and int(state.year)-2400>=30
-        and policy.get("real_mineral_pressure",True)
+        and planet.owner==state.player_id
+        and int(planet.id) in _ar_homeworld_ids(state)
     )
+
+
+def _mining_target_allowed(state: GameState, planet) -> bool:
+    """Unowned worlds near home, plus an Alternate Reality homeworld."""
+    if not planet.observed:
+        return False
+    conc=(planet.native or {}).get("mineral_concentrations")
+    if not conc or len(conc)<3 or any(v is None for v in conc[:3]):
+        return False
+    if _is_ar_homeworld(state, planet):
+        return True
+    if planet.owner is not None:
+        return False
+    return distance_from_homeworld(state, planet.position) <= NEAR_HOME_MINING_RADIUS_LY
+
+
+def _mining_candidates(state: GameState, fleet, excluded: set[int] | None = None):
+    excluded=set(excluded or ())
+    ranked=[]
     for p in state.planets:
-        is_unowned=bool(p.owner is None)
-        is_ar_homeworld=bool(
-            ar_pressure_open
-            and p.owner==state.player_id
-            and int(p.id) in ar_homeworlds
-        )
-        if (not is_unowned and not is_ar_homeworld) or not p.observed:
+        if int(p.id) in excluded or not _mining_target_allowed(state, p):
+            continue
+        if not mission_reachable(fleet,p.position,'reposition_for_remote_mining'):
             continue
         conc=(p.native or {}).get("mineral_concentrations")
-        if not conc or len(conc)<3 or any(v is None for v in conc[:3]): continue
-        mineral_score=sum(max(0,int(v)) for v in conc[:3]); travel=distance(fleet.position,p.position)
-        if not mission_reachable(fleet,p.position,'reposition_for_remote_mining'): continue
-        homeworld_bonus=100 if is_ar_homeworld else 0
-        ranked.append((mineral_score+homeworld_bonus-0.75*travel,p,mineral_score,travel))
-    ranked.sort(key=lambda x:x[0],reverse=True)
-    return ranked
+        mineral_score=sum(max(0,int(v)) for v in conc[:3])
+        travel=distance(fleet.position,p.position)
+        home_travel=distance_from_homeworld(state,p.position)
+        # AR mines its own homeworld first.  Other targets stay near home,
+        # closest first, then richest.
+        ranked.append((
+            0 if _is_ar_homeworld(state, p) else 1,
+            home_travel,
+            -mineral_score,
+            travel,
+            p,
+            mineral_score,
+        ))
+    ranked.sort(key=lambda row: row[:4])
+    return [(mineral_score - 0.75*travel, p, mineral_score, travel) for _,_,_,travel,p,mineral_score in ranked]
+
+
+def _cancel_active_route(orders: OrderSet, fleet, reason: str, priority: int) -> None:
+    waypoint_count=max(1, int(((fleet.native or {}).get("waypoint_count", 1) or 1)))
+    orders.add(
+        "cancel_scout_route",
+        {
+            "fleet_id":int(fleet.id),
+            "cancelled_destination_planet_id":int(fleet.destination_planet_id),
+            "waypoint_count":waypoint_count,
+            "reason":reason,
+        },
+        reason,
+        priority=priority,
+    )
+
+
+def _colony_route_should_continue(state: GameState, fleet) -> bool:
+    """Keep a real colonize, transport, or return.  Drop a survey waypoint."""
+    task=fleet.destination_task
+    if task in (1, 2):
+        return True
+    target=_planet_by_id(state, fleet.destination_planet_id)
+    return target is not None and target.owner==state.player_id
+
+
+def _mining_route_should_continue(state: GameState, fleet) -> bool:
+    target=_planet_by_id(state, fleet.destination_planet_id)
+    return target is not None and _mining_target_allowed(state, target)
 
 
 def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list[dict]:
@@ -147,6 +207,8 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                 ),
                 "lay_minefield":"LAY MINEFIELD / HOLD ANCHOR",
                 "cancel_scout_route":"CANCEL OUTER ROUTE / LOCAL RECON NEXT TURN",
+                "split_scout_fleet":"SPLIT STACK",
+                "split_fleet":"SPLIT STACK",
             }.get(existing.kind)
             if action is None:
                 if mission=="return_for_colonists": action="RETURN FOR COLONISTS"
@@ -165,6 +227,23 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
         if (fleet.native or {}).get('fuel_blocked'):
             intents.append({'fleet_id':fleet.id,'fleet_name':fleet.name,'role':fleet.role,'action':'HOLD / FUEL BLOCKED','reason':(fleet.native or {}).get('fuel_block_reason','No safe fuel route.'),'destination_planet_id':None}); continue
         if fleet.destination_planet_id is not None:
+            if fleet.role=="colony" and not _colony_route_should_continue(state, fleet):
+                reason=(
+                    f"Cancel survey waypoint to planet {fleet.destination_planet_id}: "
+                    "this hull is a colony ship and survey routes belong to scout hulls."
+                )
+                _cancel_active_route(orders, fleet, reason, priority=140)
+                intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"CANCEL SURVEY ROUTE","reason":reason,"destination_planet_id":fleet.destination_planet_id})
+                continue
+            if fleet.role=="miner" and not _mining_route_should_continue(state, fleet):
+                reason=(
+                    f"Cancel remote-mining waypoint to planet {fleet.destination_planet_id}: "
+                    f"miners stay within {NEAR_HOME_MINING_RADIUS_LY:.0f} ly of the homeworld, "
+                    "or on an Alternate Reality homeworld."
+                )
+                _cancel_active_route(orders, fleet, reason, priority=88)
+                intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"CANCEL DISTANT MINING ROUTE","reason":reason,"destination_planet_id":fleet.destination_planet_id})
+                continue
             intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"CONTINUE WAYPOINT","reason":f"Fleet already has active destination planet {fleet.destination_planet_id}; preserve current mission.","destination_planet_id":fleet.destination_planet_id}); continue
         existing_fleet_target=(fleet.native or {}).get("native_destination_fleet_id")
         if existing_fleet_target is not None:
@@ -277,7 +356,11 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
             intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"HOLD FOR LOGISTICS","reason":"No explicit cargo route was selected. Cargo ships do not reposition or scout merely to avoid idling.","destination_planet_id":None}); continue
 
         if fleet.role=="miner":
-            candidates=_mining_candidates(state,fleet)
+            homeworlds=_ar_homeworld_ids(state)
+            candidates=_mining_candidates(
+                state, fleet,
+                excluded={pid for pid in assigned_targets if int(pid) not in homeworlds},
+            )
             if candidates:
                 score,target,mineral_score,travel=candidates[0]
                 if _fleet_is_at_planet(fleet,target):
@@ -296,7 +379,7 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                 orders.add("move_fleet",{"fleet_id":fleet.id,"destination_planet_id":target.id,"warp":mission_warp(fleet,target.position,"reposition_for_remote_mining"),"mission":"reposition_for_remote_mining"},f"Move remote miner to observed mining target {target.name}; concentration sum={mineral_score}, distance={travel:.1f}, score={score:.1f}.",priority=66)
                 assigned_targets.add(target.id); intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"REPOSITION FOR REMOTE MINING","reason":f"Observed mineral target {target.name}; concentration sum={mineral_score}, distance={travel:.1f}.","destination_planet_id":target.id})
             else:
-                intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"HOLD FOR MINING TARGET","reason":"No eligible observed remote-mining target is known. Normal races require an unowned world; late-game AR may also use its homeworld after the mineral-pressure gate opens. Do not send a miner to an unknown world.","destination_planet_id":None})
+                intents.append({"fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":"HOLD FOR MINING TARGET","reason":f"No eligible observed remote-mining target is within {NEAR_HOME_MINING_RADIUS_LY:.0f} ly of the homeworld. Alternate Reality may also mine its homeworld. Do not send a miner to an unknown or distant world.","destination_planet_id":None})
             continue
 
         if fleet.role=="minelayer":

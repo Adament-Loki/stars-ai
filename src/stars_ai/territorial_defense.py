@@ -13,8 +13,14 @@ from dataclasses import asdict, dataclass
 import math
 from typing import Any
 
+from .rules.minefields import minefield_is_useful, standard_minefield_diameter_ly
 from .util import distance
 from .turn_state import mapping as turn_mapping
+
+# A minefield is worth laying only where a defensive fleet actually operates.
+# Outposts and fresh colonies are not those worlds.
+MINEFIELD_BASE_POPULATION = 100_000
+MINEFIELD_BASE_SNAP_LY = 120.0
 
 
 # A captured border world remains an emergency after the one turn in which the
@@ -201,8 +207,42 @@ def _claim_radius(plan: Any) -> float:
     return max(110.0, min(180.0, defense * 1.35))
 
 
+def _planet_is_minefield_base(planet: Any) -> bool:
+    """Homeworlds, shipyards, hubs, and developed colonies can host a field."""
+    native = getattr(planet, "native", None) or {}
+    if bool(native.get("is_homeworld")):
+        return True
+    capabilities = native.get("starbase_capabilities") or {}
+    if bool(native.get("has_starbase")) and (
+        bool(capabilities.get("can_build_ships")) or bool(capabilities.get("can_refuel"))
+    ):
+        return True
+    if bool(native.get("critical_asset")):
+        return True
+    if bool(native.get("designated_layer1")) or int(native.get("ring", 99) or 99) <= 1:
+        return True
+    return int(getattr(planet, "population", 0) or 0) >= MINEFIELD_BASE_POPULATION
+
+
+def _minefield_base(owned: list[Any], planet: Any) -> Any | None:
+    """Move a field off an unimportant world onto the nearest real base."""
+    if _planet_is_minefield_base(planet):
+        return planet
+    important = [world for world in owned if _planet_is_minefield_base(world)]
+    if not important:
+        return None
+    nearest = min(important, key=lambda world: distance(planet.position, world.position))
+    if distance(planet.position, nearest.position) > MINEFIELD_BASE_SNAP_LY:
+        return None
+    return nearest
+
+
 def _anchor_has_our_minefield(state: Any, anchor: Any) -> bool:
-    """Recognize a visible own field already protecting an anchor world."""
+    """A field covers its anchor only once it is wide enough to fight inside.
+
+    Stock standard radius is sqrt(mines), so a 100 ly diameter needs 2,500
+    mines. Anything smaller is still being laid and is not coverage.
+    """
     for obj in ((state.native or {}).get("objects", []) or []):
         kind = str(obj.get("object_kind", obj.get("kind", "")))
         if kind.casefold() != "minefield":
@@ -210,13 +250,16 @@ def _anchor_has_our_minefield(state: Any, anchor: Any) -> bool:
         if int(obj.get("owner", -1) or -1) != int(state.player_id):
             continue
         fields = obj.get("fields") or {}
-        if int(fields.get("mine_count", 0) or 0) <= 0:
+        mine_count = int(fields.get("mine_count", 0) or 0)
+        if not minefield_is_useful(mine_count):
             continue
         x = obj.get("x")
         y = obj.get("y")
         if x is None or y is None:
             continue
-        if distance(anchor.position, type("Point", (), {"x": float(x), "y": float(y)})()) <= 80.0:
+        center = type("Point", (), {"x": float(x), "y": float(y)})()
+        radius = standard_minefield_diameter_ly(mine_count) / 2.0
+        if distance(anchor.position, center) <= min(10.0, radius):
             return True
     return False
 
@@ -600,12 +643,19 @@ def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefen
         anchor=min(owned,key=lambda planet:distance(colony.position,planet.position))
         edge_anchor_ids.append(int(anchor.id))
 
-    candidate_anchor_ids=list(dict.fromkeys(
+    raw_anchor_ids=list(dict.fromkeys(
         [
             int(violation.anchor_planet_id)
             for violation in violations
             if violation.requires_minefield
         ] + edge_anchor_ids
+    ))
+    owned_by_id={int(planet.id): planet for planet in owned}
+    candidate_anchor_ids=list(dict.fromkeys(
+        int(base.id)
+        for planet_id in raw_anchor_ids
+        for base in [_minefield_base(owned, owned_by_id.get(int(planet_id)))]
+        if base is not None
     ))
     covered={
         planet_id
@@ -615,10 +665,23 @@ def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefen
             next(planet for planet in owned if int(planet.id)==int(planet_id)),
         )
     }
-    uncovered=tuple(
-        planet_id for planet_id in candidate_anchor_ids
-        if planet_id not in covered
-    )
+    from .critical_assets import fortress_program_active, publish_critical_planets
+    critical_ids=[]
+    if fortress_program_active(state):
+        critical_ids=[
+            int(planet.id) for planet in publish_critical_planets(state)
+            if _planet_is_minefield_base(planet)
+            and not _anchor_has_our_minefield(state, planet)
+        ]
+    uncovered=tuple(dict.fromkeys(
+        [
+            planet_id for planet_id in candidate_anchor_ids
+            if planet_id not in covered
+        ] + [
+            planet_id for planet_id in critical_ids
+            if planet_id not in covered
+        ]
+    ))
     patrols=sum(1 for violation in violations if violation.requires_patrol)
     desired_minelayers=(
         min(4,max(1,math.ceil(len(uncovered)*0.75)))
@@ -635,6 +698,8 @@ def assess_territorial_defense(state: Any, plan: Any = None) -> TerritorialDefen
         base_minelayer_target=desired_minelayers,
     )
     desired_minelayers=max(desired_minelayers, exposure.minelayer_force_target)
+    if critical_ids:
+        desired_minelayers=max(desired_minelayers, min(6, len(critical_ids)))
     reason=(
         f"{len(violations)} non-friendly armed/transport territorial violation(s) inside the "
         f"{radius:.0f}-ly claim zone; patrol objectives={patrols}, "

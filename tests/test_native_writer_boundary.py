@@ -68,3 +68,37 @@ def test_native_writer_uses_adapter_m_provenance_for_current_x_header(tmp_path):
     assert x_header.game_id == m_header.game_id
     assert x_header.turn == m_header.turn
     assert x_header.player_index == 0
+
+
+def test_writer_drops_a_design_delete_queued_again_on_the_same_turn(tmp_path):
+    root = resource_path("sandboxes", "sandbox-native-reference")
+    m_path = root / "GAME.m1"
+    xy_path = root / "GAME.xy"
+    state = NativeCoreTurnAdapter(xy_path=xy_path).read_state(m_path, player_id=1)
+    orders = OrderSet(state.game_name, state.year, state.player_id)
+    orders.add("delete_ship_design", {"target_slot": 4}, "retire the colonizer")
+    orders.add(
+        "set_planet_queue",
+        {
+            "planet_id": 0,
+            "queue": [{
+                "item": "ship_design",
+                "design_slot": 4,
+                "quantity": 1,
+                "design_name": "Colonizer",
+            }],
+        },
+        "build the colonizer",
+    )
+    output = tmp_path / "GAME.x1"
+
+    result = writer.write_native_orders(
+        game_state=state,
+        orders=orders,
+        template_x_path=root / "backup" / "GAME.x1",
+        output_x_path=output,
+    )
+
+    _, blocks, _ = read_blocks(output)
+    assert all(block.type_id != 27 for block in blocks)
+    assert any("this turn's production queues 1" in item["reason"] for item in result.skipped)

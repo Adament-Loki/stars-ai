@@ -29,6 +29,15 @@ def test_human_player_can_never_ally():
     assert view.attitude != PlayerAttitude.ALLIED
 
 
+def test_configured_human_ally_stays_allied():
+    state = make_state()
+    state.native["configured_allies"] = [2]
+    policy = DiplomacyPolicy(human_player_ids=frozenset({2}))
+    view = policy.evaluate_player(state, 2)
+    assert view.is_human is True
+    assert view.attitude == PlayerAttitude.ALLIED
+
+
 def test_ai_friend_can_ally():
     state = make_state()
     policy = DiplomacyPolicy(human_player_ids=frozenset())

@@ -93,6 +93,10 @@ def _destination_priority(planet: Any, hub: Any | None, base_demand: Any | None)
     if base_demand is not None and not bool(getattr(base_demand, "ready", False)):
         deficit = sum(int(x or 0) for x in (getattr(base_demand, "mineral_deficit", {}) or {}).values())
         score += 1_500.0 + min(500.0, float(deficit))
+        # A critical planet that cannot pay for its starbase outranks ordinary
+        # freight. Homeworld surplus is the first place that shipment comes from.
+        if bool((getattr(planet, "native", {}) or {}).get("critical_asset")):
+            score += 8_000.0
     return score
 
 
@@ -100,6 +104,79 @@ def _order_priority(score: float) -> int:
     # Only controls native stream order; fleet assignment has already been
     # settled by the shared scheduler.  Keep it below diplomacy/design maxima.
     return max(110, min(185, int(round(105.0 + score / 22.0))))
+
+
+def _fortress_population_options(
+    state: Any,
+    fleet: Any,
+    source: Any,
+    *,
+    population_source_outbound: dict[int, int],
+    population_inbound: dict[int, int],
+) -> list[dict[str, Any]]:
+    """A finished fortress station feeds other worlds.
+
+    The world keeps its breeder floor. Colonists above that go to a critical
+    world that is still building, or to a nearby colony under a quarter of capacity.
+    """
+    native = getattr(source, "native", {}) or {}
+    if not bool(native.get("fortress_supplier")):
+        return []
+    from .planet_economy import breeder_export_floor, planet_population_capacity
+
+    floor = int(breeder_export_floor(source, state.race))
+    already = int(population_source_outbound.get(int(source.id), 0) or 0)
+    available = max(0, int(source.population or 0) - floor - already)
+    capacity_kt = _fleet_capacity(fleet)
+    if available < COLONISTS_PER_KT or capacity_kt <= 0:
+        return []
+    status = SimpleNamespace(protected_floor=floor, ready_now=True)
+    source_hub = SimpleNamespace(ring=0, planet_id=int(source.id))
+    out: list[dict[str, Any]] = []
+    for target in getattr(state, "planets", []) or []:
+        if getattr(target, "owner", None) != getattr(state, "player_id", None):
+            continue
+        if int(target.id) == int(source.id):
+            continue
+        if int(getattr(target, "habitability", 0) or 0) < 30:
+            continue
+        target_native = getattr(target, "native", {}) or {}
+        cap = max(1, int(planet_population_capacity(target, state.race)))
+        under_quarter = int(target.population or 0) < int(cap * 0.25)
+        if not under_quarter and not bool(target_native.get("critical_asset")):
+            continue
+        inbound = int(population_inbound.get(int(target.id), 0) or 0)
+        room = max(0, int(cap * 0.25) - int(target.population or 0) - inbound)
+        if bool(target_native.get("critical_asset")):
+            room = max(room, capacity_kt * COLONISTS_PER_KT)
+        export_colonists = min(available, room, capacity_kt * COLONISTS_PER_KT)
+        export_colonists = (export_colonists // COLONISTS_PER_KT) * COLONISTS_PER_KT
+        pop_kt = export_colonists // COLONISTS_PER_KT
+        if pop_kt <= 0:
+            continue
+        if int(source.population or 0) - already - export_colonists < floor:
+            continue
+        if not mission_reachable_with_planned_cargo(
+            fleet, target.position, "transport", {"population": pop_kt}
+        ):
+            continue
+        score = 3_500.0 - min(400.0, distance(source.position, target.position))
+        if bool(target_native.get("critical_asset")):
+            score += 800.0
+        out.append({
+            "kind": "population",
+            "score": score,
+            "source": source,
+            "target": target,
+            "source_hub": source_hub,
+            "target_hub": SimpleNamespace(ring=1, planet_id=int(target.id)),
+            "status": status,
+            "population_kt": pop_kt,
+            "population_colonists": export_colonists,
+            "source_already_dispatched": already,
+            "remaining_colonists": room,
+        })
+    return out
 
 
 def _population_options(
@@ -122,7 +199,11 @@ def _population_options(
     status = statuses.get(source_id)
     source_hub = hubs.get(source_id)
     if status is None or source_hub is None or not bool(status.ready_now):
-        return []
+        return _fortress_population_options(
+            state, fleet, source,
+            population_source_outbound=population_source_outbound,
+            population_inbound=population_inbound,
+        )
     already_dispatched = int(population_source_outbound.get(source_id, 0) or 0)
 
     out: list[dict[str, Any]] = []
@@ -134,7 +215,7 @@ def _population_options(
         if target is None or (target.habitability is not None and int(target.habitability) <= 0):
             continue
         from .planet_economy import may_receive_homeworld_population
-        if not may_receive_homeworld_population(source, target, state.race):
+        if not may_receive_homeworld_population(source, target, state.race, state):
             continue
         remaining_colonists = max(
             0,
@@ -364,6 +445,22 @@ def _mineral_options(
         material_pressure = min(250.0, float(cargo_plan.total))
         germanium_pressure = min(120.0, float(cargo_plan.germanium) * 0.8)
         score = _destination_priority(target, hub, base_demand) + material_pressure + germanium_pressure
+        source_native = getattr(source, "native", {}) or {}
+        target_native = getattr(target, "native", {}) or {}
+        from .critical_assets import FORTRESS_IMPORT_RANGE
+        near = distance(source.position, target.position) <= FORTRESS_IMPORT_RANGE
+        donor = (
+            bool(source_native.get("is_homeworld"))
+            or bool(source_native.get("fortress_supplier"))
+            or (near and not bool(source_native.get("critical_asset")))
+        )
+        if (
+            donor
+            and bool(target_native.get("critical_asset"))
+            and base_demand is not None
+            and not bool(getattr(base_demand, "ready", False))
+        ):
+            score += 2_000.0
         out.append({
             "kind": "minerals",
             "score": score,
