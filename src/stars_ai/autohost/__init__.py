@@ -14,24 +14,30 @@ from .bridges import (
 from .lifecycle import HostedTurnLifecycle, TurnArchiver, TurnLifecyclePhase
 from .configuration import load_windows_autohost_config
 from .models import (
+    DEFAULT_HUMAN_TURN_TIMEOUT_SECONDS,
     HistorySyncError,
+    HumanTurnTimeoutError,
     LiveGameValidationError,
     SeedValidationError,
     TurnExecution,
     ValidatedLiveGame,
     ValidatedSeedGame,
     WindowsAutoHostConfig,
+    normalize_human_turn_timeout,
 )
 
 __all__ = [
+    "DEFAULT_HUMAN_TURN_TIMEOUT_SECONDS",
     "ExternalCommandOrderBridge",
     "HistorySyncError",
     "HostedTurnLifecycle",
+    "HumanTurnTimeoutError",
     "IntegratedNativeOrderBridge",
     "LiveGameValidationError",
     "NativeOrderBridge",
     "NoopOrderBridge",
     "load_windows_autohost_config",
+    "normalize_human_turn_timeout",
     "SeedValidationError",
     "TurnExecution",
     "TurnArchiver",
