@@ -36,6 +36,7 @@ from stars_ai.native.population_transport import (
 )
 from stars_ai.planet_economy import theoretical_max_population, planet_population_capacity, population_capacity_fraction, projected_population_growth, projected_next_population
 from stars_ai.ship_design_synth import synthesize_generic_design_proposal
+from stars_ai.colony_planner import colonization_block_reason, planet_has_starbase
 from stars_ai.terraforming import evaluate_terraforming
 
 ORDER_BLOCK_TYPES = {
@@ -2371,6 +2372,32 @@ def write_native_orders(
                     skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
                     continue
                 destination_planet_id=int(o.payload["destination_planet_id"])
+                destination_planet=next(
+                    (planet for planet in state.planets if int(planet.id)==destination_planet_id),
+                    None,
+                )
+                colonization_block=(
+                    None if destination_planet is None
+                    else colonization_block_reason(state, destination_planet)
+                )
+                if (
+                    destination_planet is not None
+                    and colonization_block is None
+                    and planet_has_starbase(destination_planet)
+                ):
+                    colonization_block="starbase_present"
+                if colonization_block is not None:
+                    touched_fleets.add(fid)
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            "Refusing native colonization: the target is owned by another player "
+                            f"or still has a starbase ({colonization_block}). "
+                            "Paper-tiger forts are a military target, not a colonize order."
+                        ),
+                        "payload":{**o.payload,"colonization_block":colonization_block},
+                    })
+                    continue
                 current_habitability=_current_colony_target_habitability(
                     state,destination_planet_id
                 )

@@ -196,9 +196,50 @@ def _eligibility(
     return True,"viable_below_preferred_habitability"
 
 
+def planet_has_starbase(planet) -> bool:
+    """Whether Stars! still has a base on this world.
+
+    An Alternate Reality orbital fort is a starbase. The normalized record
+    often carries only ``is_orbital_fort`` and not ``has_starbase``.
+    """
+
+    native = getattr(planet, "native", None) or {}
+    if bool(native.get("has_starbase", native.get("starbase", False))):
+        return True
+    if bool(getattr(planet, "has_starbase", False)):
+        return True
+    capabilities = native.get("starbase_capabilities") or {}
+    if bool(capabilities.get("is_orbital_fort")):
+        return True
+    return native.get("starbase_design") is not None
+
+
+def colonization_block_reason(state:GameState, planet) -> str | None:
+    """Why a colonize order must not target this world.
+
+    Stars! rejects colonize against another player's planet and against any
+    world that still has a starbase. Worlds we already own stay on the
+    caller's already-owned path.
+    """
+
+    owner = getattr(planet, "owner", None)
+    player_id = int(getattr(state, "player_id", -1))
+    if owner is not None and int(owner) == player_id:
+        return None
+    foreign = owner is not None
+    starbase = planet_has_starbase(planet)
+    if foreign and starbase:
+        return "foreign_owned_with_starbase"
+    if foreign:
+        return "foreign_owned"
+    if starbase:
+        return "starbase_present"
+    return None
+
+
 def colony_planet_is_eligible(state:GameState, planet, plan=None) -> bool:
     """Shared target/build-demand eligibility without fleet-specific range."""
-    if planet.owner is not None or not planet.observed:
+    if planet.owner is not None or not planet.observed or planet_has_starbase(planet):
         return False
     policy=colonization_policy(state,plan)
     owned=[p for p in state.planets if p.owner==state.player_id]
@@ -302,9 +343,10 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
         claimed=int(p.id) in claims
         if not p.observed:
             continue
-        if p.owner is not None and not claimed:
-            continue
-        if p.owner is not None and int(p.owner)==int(state.player_id):
+        # Another player's world, and any world that still has a starbase,
+        # cannot be colonized. A paper-tiger fort stays on the military path
+        # until it is unowned and the base is gone.
+        if p.owner is not None or planet_has_starbase(p):
             continue
         if int(p.id) in {int(planet_id) for planet_id in (state.native.get("raid_only_planet_ids") or [])}:
             continue
@@ -339,6 +381,8 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             nearest_owned=nearest_owned,
             nearby_frontier=nearby_frontier,
         )
+        # A claim that reached this point is already unowned and baseless.
+        # Prefer settling that cleared world once it is a legal colony target.
         if not eligible and claimed and int(potential.current_habitability or p.habitability or 0) >= 55:
             eligible = True
             selection_basis = "paper_tiger_claim"
@@ -363,8 +407,8 @@ def score_colony_candidates(state:GameState, fleet, plan=None) -> list[ColonyCan
             home_penalty=home_distance*.05
             home_bonus=max(0.0,120.0-home_distance)*.04
         direction_bonus=_allied_frontier_bonus(state, p, owned)
-        # The armed scout is already clearing this fort. Rank it ahead of an
-        # ordinary empty world so a colonizer is inbound when the fort dies.
+        # The fort is already gone. Rank the cleared world ahead of an
+        # ordinary empty world so the colonizer takes it this turn.
         claim_bonus=250.0 if claimed else 0.0
 
         layer1_bonus=0.0
