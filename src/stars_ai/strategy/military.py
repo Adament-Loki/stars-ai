@@ -3,6 +3,7 @@
 from __future__ import annotations
 from ..models import GameState, OrderSet
 from ..persona import StrategicPlan
+from ..combat_engagement import engagement_allowed, offensive_posture, publish_turn_combat
 from ..invasion import (
     empire_ready_to_press_border,
     paper_tiger_colony,
@@ -139,6 +140,10 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
     ]
     defense_radius = plan.defense_radius if plan else 100.0
     required_ratio = plan.attack_strength_ratio if plan else 1.25
+    turn_combat = publish_turn_combat(state, plan)
+    orders.notes.append(
+        f"COMBAT DOCTRINE: {turn_combat['decision']} — {turn_combat['reason']}"
+    )
     # Higher risk tolerance permits engagement at a lower strength ratio.
     if plan:
         required_ratio *= max(0.55, 1.2 - plan.risk_tolerance * 0.65)
@@ -217,7 +222,10 @@ def add_military_orders(state: GameState, orders: OrderSet, plan: StrategicPlan 
             patrol = available_patrols.pop(0)
             enemy_power = max(float(intruder.combat_power or 0.0), 1.0)
             patrol_power = _defensive_power(patrol)
-            if patrol_power >= enemy_power * required_ratio:
+            if (
+                patrol_power >= enemy_power * required_ratio
+                and engagement_allowed(state, [patrol], [intruder])
+            ):
                 # A patrol defends the claim by tracking the violating fleet
                 # itself, not by guessing at the world it might visit next.
                 # The target-type-2 waypoint gives ordinary Stars! battle
@@ -445,6 +453,11 @@ def _add_paper_tiger_push(state, orders, plan, available_patrols) -> None:
     remove the ones on good worlds. A colonizer then claims the world.
     """
 
+    if not offensive_posture(state):
+        orders.notes.append(
+            "COMBAT DOCTRINE: paper-tiger raids wait; this turn is not an offensive posture."
+        )
+        return
     owned = [planet for planet in state.planets if planet.owner == state.player_id]
     if not owned:
         return
@@ -523,6 +536,8 @@ def _add_weak_colony_assault(state, orders, plan, available_patrols, required_ra
     Defense assignments consume patrols first. Allies and helpful partners are
     never targets. At most one world is approached per turn.
     """
+    if not offensive_posture(state):
+        return
 
     if not available_patrols:
         return
@@ -560,11 +575,20 @@ def _add_weak_colony_assault(state, orders, plan, available_patrols, required_ra
     patrol_power = _defensive_power(patrol)
     if local_enemy > 0.0 and patrol_power < local_enemy * required_ratio:
         return
+    local_fleets = [
+        fleet for fleet in state.fleets
+        if int(getattr(fleet, "owner", -1)) == int(planet.owner)
+        and abs(float(fleet.position.x) - float(planet.position.x)) <= 1.0
+        and abs(float(fleet.position.y) - float(planet.position.y)) <= 1.0
+    ]
+    if not engagement_allowed(state, [patrol], local_fleets):
+        return
     assessed = plan_invasion(
         planet,
         our_local_strength=patrol_power,
         enemy_local_strength=max(1.0, local_enemy),
         transport_capacity=0,
+        state=state,
     )
     if assessed.action not in {"CAPTURE", "NEUTRALIZE"}:
         return
@@ -600,6 +624,8 @@ def _add_border_pressure(state, orders, plan, available_patrols, required_ratio:
     colony is captured. Any other enemy world on the border is attacked and
     then left; the fleet is free to move on.
     """
+    if not offensive_posture(state):
+        return
 
     if not empire_ready_to_press_border(state, plan) or not available_patrols:
         return
@@ -636,6 +662,23 @@ def _add_border_pressure(state, orders, plan, available_patrols, required_ratio:
         patrol = available_patrols[0]
         patrol_power = _defensive_power(patrol)
         if local_enemy > 0.0 and patrol_power < local_enemy * required_ratio:
+            continue
+        local_fleets = [
+            fleet for fleet in state.fleets
+            if int(getattr(fleet, "owner", -1)) == owner
+            and abs(float(fleet.position.x) - float(planet.position.x)) <= 1.0
+            and abs(float(fleet.position.y) - float(planet.position.y)) <= 1.0
+        ]
+        if not engagement_allowed(state, [patrol], local_fleets):
+            continue
+        landing = plan_invasion(
+            planet,
+            our_local_strength=patrol_power,
+            enemy_local_strength=max(1.0, local_enemy),
+            transport_capacity=0,
+            state=state,
+        )
+        if landing.action == "BYPASS" and "starbase" in landing.reason.casefold():
             continue
         secure = worth_securing(planet)
         if int(planet.defenses or 0) > 30 and not secure:

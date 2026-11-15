@@ -16,7 +16,7 @@ Every native player turn now decodes its current type-45 score record (seat, ran
 | Supported native movement, colonization, production, research, relations, and submit forms | Implemented with feature-specific safety gates |
 | Stock hull/slot model, legality, mass/fuel, and race-aware role fitting | Implemented |
 | Fresh native Type27 ship-design creation | Player 1 host-accepted; owner-aware Player 2 encoding enabled, pending its own replay |
-| Exact Stars! combat simulation and all native order semantics | Not yet complete |
+| Combat chooser and approximate battle simulation on the turn; exact battle-board and several order types | Partial |
 
 The historical v8.8 implementation record reported 385 passing tests, 4 skips, and 10 pre-existing strategy-assertion failures; no cleanup-only change should be interpreted as a new test result. The known failures concern Layer-1 colony scoring, support-base thresholds, and legacy expansion-research expectations.
 
@@ -86,7 +86,7 @@ The strategic outcomes are:
 - `HOLD_AND_TECH` — retain a defensible position while closing a research gap.
 - `RETREAT_AND_PRESERVE` — do not trade irreplaceable fleets for low-value territory.
 
-Core and high-sunk-cost worlds can override deliberate sacrifice and force emergency defense. The evaluator is doctrine-aware, not yet an exact Stars! battle-board simulator; battle mechanics and component statistics remain the major fidelity gap.
+Core and high-sunk-cost worlds can override deliberate sacrifice and force emergency defense. `choose_modernization_plan` now runs on the turn. `FIGHT_NOW` and `BUILD_CURRENT` may intercept or attack; `TECH_THEN_REBUILD`, `HOLD_AND_TECH`, and `RETREAT_AND_PRESERVE` do not open new attacks and they cut warship production. When a fitted weapon design exists, `simulate_battle` vetoes an intercept or attack that leaves our ships at zero. The simulator is still an approximation of the battle board, and `set_battle_plan` stays blocked. A landing uses FAQ 4.10: effective troops are `attackers * (1 - 0.75 * defense coverage)`, attack 1.1 or War Monger 1.65, defense 1.0 or Inner Strength 2.0. An orbital starbase blocks the landing.
 
 ### Diplomacy, personas, and territorial value
 
