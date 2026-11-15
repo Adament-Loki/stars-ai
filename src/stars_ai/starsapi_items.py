@@ -510,3 +510,77 @@ def design_mass_and_fuel(hull_id:int,slots:Iterable[Any])->tuple[int,int,bool]:
         if count<=0: continue
         spec=component_spec(cat,item); mass+=spec.mass*count; fuel+=spec.fuel_bonus*count; exact=exact and spec.mass_exact
     return mass,fuel,exact
+
+
+# Armor rows store their DP in MOD column 13. Shield rows use that same column
+# for shield DP. Weapon rows do not: column 13 is range and column 14 is damage.
+_ARMOR_DP_COLUMN = 13
+
+# Bonus armor that is not an armor-category component. Captured client designs:
+# Medium Freighter hull 50 + one Croby Sharmor = 115; Large Freighter hull 150
+# + two Langston Shells + two Multi-Cargo Pods = 380.
+# Regenerating Shields (wiki.starsautohost.org/wiki/Regenerating_Shields) halves
+# armor-category DP only. Hull armor and this bonus armor stay whole. Captured
+# ship designs match integer division of the summed armor-component DP.
+_BONUS_ARMOR_DP = {
+    (SHIELD, 3): 65,       # Croby Sharmor
+    (SHIELD, 6): 65,       # Langston Shell
+    (MECHANICAL, 4): 50,   # Multi-Cargo Pod
+}
+
+
+def _slot_parts(raw: Any) -> tuple[int, int, int]:
+    if isinstance(raw, dict):
+        return (
+            int(raw.get("category", 0) or 0),
+            int(raw.get("item_id", 0) or 0),
+            int(raw.get("count", 0) or 0),
+        )
+    return (
+        int(getattr(raw, "category", 0) or 0),
+        int(getattr(raw, "item_id", 0) or 0),
+        int(getattr(raw, "count", 0) or 0),
+    )
+
+
+@lru_cache(maxsize=1)
+def armor_component_dp() -> dict[int, int]:
+    """Armor DP by native armor item id, from the bundled stock MOD."""
+    values: dict[int, int] = {}
+    path = native_resource_path("mod", "data_unedited.mod")
+    for parts in csv.reader(path.read_text(encoding="latin-1").splitlines()):
+        if not parts or parts[0] != "13":
+            continue
+        nums = [int(value) if value else 0 for value in parts[3:]]
+        if len(nums) <= _ARMOR_DP_COLUMN:
+            continue
+        values[int(parts[1]) - 1] = int(nums[_ARMOR_DP_COLUMN])
+    return values
+
+
+def design_armor_value(
+    hull_armor: int,
+    slots: Iterable[Any],
+    *,
+    regenerating_shields: bool = False,
+) -> int:
+    """Armor field a Stars! client writes into a full DesignBlock.
+
+    Hull armor plus fitted armor components, plus the verified bonus armor on
+    Croby Sharmor, Langston Shell, and the Multi-Cargo Pod. With Regenerating
+    Shields the armor-component total is halved (integer division of the sum).
+    Hull armor and non-armor bonus armor are not halved.
+    """
+    component = 0
+    bonus = 0
+    table = armor_component_dp()
+    for raw in slots:
+        category, item_id, count = _slot_parts(raw)
+        if count <= 0:
+            continue
+        if category == ARMOR:
+            component += int(table.get(item_id, 0)) * count
+        bonus += int(_BONUS_ARMOR_DP.get((category, item_id), 0)) * count
+    if regenerating_shields:
+        component //= 2
+    return max(0, int(hull_armor) + component + bonus)

@@ -134,7 +134,7 @@ The subsequent replay with the requested staging name (`SuperRabits Privateer`) 
 
 The failed AI design also was not an exact replay of the captured client Privateer: the client reference includes two ordinary shields in the shield/armor slot, while the AI wrote that slot empty. Fuel capacity, shield DP, mass, and resource cost are derived by the client from hull and slot components; only the aggregate armor field is carried directly in a full DesignBlock. Empty optional slots are normally legal, so this difference is a missing control variable rather than a demonstrated rejection cause.
 
-**Encoding gap found during review:** the current ship synthesizer writes hull base armor but does not add the armor supplied by fitted armor components (or the special armor-bearing shields/cargo pod). StarsAPI adds those values to the full DesignBlock armor field. The latest Fuel-Mizer Privateer is unaffected because it has no such component; any generated armor-bearing design remains unsafe until this is corrected and host-validated.
+**Armor field:** a full DesignBlock armor value is hull armor plus fitted armor-component DP from `UNEDITED.MOD`, plus bonus armor on Croby Sharmor (65), Langston Shell (65), and the Multi-Cargo Pod (50). Regenerating Shields halves the armor-component total only; hull armor and that bonus armor stay whole. Captured non-starbase designs in the test sandboxes match this sum, or the same sum with the armor-component total divided by two. The Fuel-Mizer Privateer is unchanged because it fits no armor. An armor-bearing Type 27 create still needs its own host replay; the capability status is unchanged.
 
 ### Player 1 Type27 client control (turn 2402, host-accepted)
 

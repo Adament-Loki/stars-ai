@@ -40,7 +40,7 @@ from .combat_doctrine import (
 from .fuel_planner import ENGINE_DATA, best_range_ly, design_fuel_profile
 from .starsapi_items import (
     stock_hulls as canonical_stock_hulls, hull_unlocked as canonical_hull_unlocked,
-    component_spec, proven_available_components, remote_miner_package_ready,
+    component_spec, design_armor_value, proven_available_components, remote_miner_package_ready,
     top_remote_miner_package, ENGINE, SCANNER, SHIELD, ARMOR, BEAM, TORPEDO,
     BOMB, MINING_ROBOT, MINE_LAYER, ORBITAL, ELECTRICAL, MECHANICAL,
 )
@@ -117,6 +117,19 @@ def stock_native_hulls() -> dict[int, HullNativeSpec]:
         )
         for hid,h in canonical_stock_hulls().items() if not h.is_starbase
     }
+
+
+def _encoded_armor(state, hull, slots) -> int:
+    """DesignBlock armor for this race, not the bare hull value."""
+    lrts = {
+        str(item).upper()
+        for item in ((getattr(getattr(state, "race", None), "native", {}) or {}).get("lrts") or [])
+    }
+    return design_armor_value(
+        int(hull.armor),
+        slots,
+        regenerating_shields="RS" in lrts,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -446,7 +459,7 @@ def synthesize_onion_privateer(state) -> NativeShipDesignPlan | None:
     if not _validate_candidate(state,hull,slots):
         return None
     design=EncodedShipDesign(
-        slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+        slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=_encoded_armor(state, hull, slots),
         turn_designed=max(0,int(state.year)-2400),slots=slots,
         name="Onion Privateer",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
     )
@@ -499,7 +512,7 @@ def synthesize_medium_population_transport(state) -> NativeShipDesignPlan | None
         if not _validate_candidate(state,hull,slots):
             continue
         design=EncodedShipDesign(
-            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=_encoded_armor(state, hull, slots),
             turn_designed=max(0,int(state.year)-2400),slots=slots,
             name="Population Shuttle",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
         )
@@ -536,7 +549,7 @@ def synthesize_freighter_upgrade(state) -> NativeShipDesignPlan | None:
         if not _validate_candidate(state,hull,slots):
             continue
         design=EncodedShipDesign(
-            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=_encoded_armor(state, hull, slots),
             turn_designed=max(0,int(state.year)-2400),slots=slots,
             name="Bulk Freighter AI",staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
         )
@@ -618,7 +631,7 @@ def synthesize_scout_upgrade(state) -> NativeShipDesignPlan | None:
         return None
     slot, replace = target_slot
     design = EncodedShipDesign(
-        slot=slot, hull_id=hull.hull_id, pic=hull.pic, armor=hull.armor,
+        slot=slot, hull_id=hull.hull_id, pic=hull.pic, armor=_encoded_armor(state, hull, slots_t),
         turn_designed=max(0, int(state.year) - 2400), slots=slots_t,
         name="Long Range Scout II", staging_name=_staging_shipclass_name(state,hull.name), replace_existing=replace,
     )
@@ -1455,7 +1468,7 @@ def synthesize_role_design(state,role:str,*,desired_hull_id:int|None=None,name:s
             "minelayer":"Mine Layer AI",
         }.get(role,f"{role.title()} AI")
         design=EncodedShipDesign(
-            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=_encoded_armor(state, hull, slots_t),
             turn_designed=max(0,int(state.year)-2400),slots=slots_t,
             name=design_name,staging_name=_staging_shipclass_name(state,hull.name),
             replace_existing=replace,
@@ -1552,7 +1565,7 @@ def synthesize_colony_upgrade(
             return None
         slot,replace=target
         design=EncodedShipDesign(
-            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=_encoded_armor(state, hull, slots_t),
             turn_designed=max(0,int(state.year)-2400),slots=slots_t,name=name,
             staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
         )
@@ -2039,7 +2052,7 @@ def synthesize_starbase_design_proposal(
     name = str(payload.get("name") or f"{hull.name} Support Base")
     priority = int(payload.get("priority", 100) or 100)
     design = EncodedShipDesign(
-        slot=int(slot), hull_id=hull.hull_id, pic=hull.pic, armor=hull.armor,
+        slot=int(slot), hull_id=hull.hull_id, pic=hull.pic, armor=_encoded_armor(state, hull, slots_t),
         turn_designed=max(0, int(state.year) - 2400), slots=slots_t, name=name,
         staging_name=_staging_shipclass_name(state, hull.name), is_starbase=True,
     )
@@ -2116,7 +2129,7 @@ def synthesize_generic_design_proposal(state,payload:dict[str,Any])->NativeShipD
             return None
         slot,replace=target
         design=EncodedShipDesign(
-            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=hull.armor,
+            slot=slot,hull_id=hull.hull_id,pic=hull.pic,armor=_encoded_armor(state, hull, slots),
             turn_designed=max(0,int(state.year)-2400),slots=slots,name=name,
             staging_name=_staging_shipclass_name(state,hull.name),replace_existing=replace,
         )
