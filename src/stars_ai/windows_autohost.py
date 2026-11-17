@@ -29,6 +29,7 @@ from .autohost import (
     ExternalCommandOrderBridge,
     HistorySyncError,
     HostedTurnLifecycle,
+    HumanTurnTimeoutError,
     IntegratedNativeOrderBridge,
     LiveGameValidationError,
     NativeOrderBridge,
@@ -39,6 +40,7 @@ from .autohost import (
     ValidatedLiveGame,
     ValidatedSeedGame,
     WindowsAutoHostConfig,
+    normalize_human_turn_timeout,
 )
 from .native_observer import (
     read_observer_turn, derive_turn_events, save_observer_turn, load_observer_turn,
@@ -1472,31 +1474,60 @@ def _human_order_status(path: Path, game_turn: int) -> tuple[bool, str]:
     return True, "submitted"
 
 
+# Repeat the "still waiting" line on this cadence so a long human turn does
+# not go silent, without printing once per host poll.
+_HUMAN_WAIT_LOG_SECONDS = 30.0
+
+
+def _human_wait_status(pending: list[str]) -> str:
+    if pending:
+        return (
+            "Still waiting. " + "; ".join(pending)
+            + ". Submit the turn, then close Stars!."
+        )
+    return "The turn is submitted. Close Stars! so the host can generate."
+
+
 def _wait_for_human_orders(cfg: WindowsAutoHostConfig, game: Path, basename: str) -> None:
     """Pause generation until each human seat has submitted this turn and Stars! is closed.
 
     The person opens their .m file in Stars!, submits, and exits. This does not
-    write or replace their X file. A timeout of None or 0 waits as long as it takes.
+    write or replace their X file.
+
+    ``human_turn_timeout_seconds`` limits the wait. ``None`` waits forever.
+    When the limit expires this raises ``HumanTurnTimeoutError`` instead of
+    returning. The host loop records that as a failed turn and stops. It does
+    not host without the human seat's orders and it does not invent them.
     """
     if not cfg.human_player_ids:
         return
     from .adapters.stars_native import read_blocks
+    timeout = normalize_human_turn_timeout(cfg.human_turn_timeout_seconds)
     header, _blocks, _extra = read_blocks(_live_game_file(game, basename, ".hst"))
     game_turn = int(header.turn)
     year = 2400 + game_turn
     seats = ", ".join(f"P{int(seat)}" for seat in cfg.human_player_ids)
+    if timeout is None:
+        limit = "Waiting until the turn is submitted (human_turn_timeout_seconds is forever)."
+    else:
+        limit = (
+            f"Waiting up to {timeout}s. "
+            "If that expires the turn is not hosted."
+        )
     print(
         f"[HUMAN] {seats} play year {year}. "
-        "Submit the turn, then close Stars! so the next year can generate.",
+        "Submit the turn, then close Stars! so the next year can generate. "
+        f"{limit}",
         flush=True,
     )
-    timeout = cfg.human_turn_timeout_seconds
-    deadline = None if not timeout else time.time() + float(timeout)
+    started = time.time()
+    deadline = None if timeout is None else started + float(timeout)
     announced: set[str] = set()
+    last_status_log = float("-inf")
     last_open_attempt = 0.0
     while True:
         pending_seats: list[int] = []
-        pending = []
+        pending: list[str] = []
         for seat in cfg.human_player_ids:
             path = game / f"{basename}.x{int(seat)}"
             ready, reason = _human_order_status(path, game_turn)
@@ -1507,8 +1538,18 @@ def _wait_for_human_orders(cfg: WindowsAutoHostConfig, game: Path, basename: str
         if not pending and not stars_open:
             print(f"[HUMAN] {seats} submitted year {year}. Generating the turn.", flush=True)
             return
-        if pending and not stars_open and cfg.open_human_turn and time.time() - last_open_attempt >= 3.0:
-            last_open_attempt = time.time()
+        now = time.time()
+        message = _human_wait_status(pending)
+        if deadline is not None and now >= deadline:
+            elapsed = max(0, int(now - started))
+            detail = (
+                f"Timed out after {elapsed}s waiting for {seats} to submit year {year} "
+                f"(limit {timeout}s). {message} The turn was not hosted."
+            )
+            print(f"[HUMAN] {detail}", flush=True)
+            raise HumanTurnTimeoutError(detail)
+        if pending and not stars_open and cfg.open_human_turn and now - last_open_attempt >= 3.0:
+            last_open_attempt = now
             seat = pending_seats[0]
             try:
                 opened = _open_human_turn(cfg, game, basename, seat)
@@ -1523,19 +1564,16 @@ def _wait_for_human_orders(cfg: WindowsAutoHostConfig, game: Path, basename: str
                     f"Open {basename}.m{seat} in {game} yourself.",
                     flush=True,
                 )
-            continue
-        if pending:
-            message = (
-                "Still waiting. " + "; ".join(pending)
-                + ". Submit the turn, then close Stars!."
-            )
+        elapsed_s = max(0, int(now - started))
+        if deadline is None:
+            progress = f"{elapsed_s}s elapsed, waiting forever"
         else:
-            message = "The turn is submitted. Close Stars! so the host can generate."
-        if message not in announced:
-            print(f"[HUMAN] {message}", flush=True)
+            remaining = max(0, int(deadline - now))
+            progress = f"{elapsed_s}s elapsed, {remaining}s remaining"
+        if message not in announced or now - last_status_log >= _HUMAN_WAIT_LOG_SECONDS:
+            print(f"[HUMAN] {message} ({progress})", flush=True)
             announced.add(message)
-        if deadline is not None and time.time() >= deadline:
-            raise RuntimeError(f"Timed out waiting for a human turn. {message}")
+            last_status_log = now
         time.sleep(max(0.5, float(cfg.host_poll_seconds)))
 
 

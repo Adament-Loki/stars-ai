@@ -6,6 +6,47 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+# One hour. Long enough for a person to play a turn, short enough that an
+# absent human cannot stall generation indefinitely.
+DEFAULT_HUMAN_TURN_TIMEOUT_SECONDS = 3600
+
+_HUMAN_TURN_TIMEOUT_ERROR = (
+    "human_turn_timeout_seconds must be a positive whole number of seconds, "
+    "null, or 'forever' to wait without a limit."
+)
+
+
+def normalize_human_turn_timeout(value: object) -> int | None:
+    """Return the human-seat wait in seconds, or None to wait forever.
+
+    ``None`` (JSON ``null``) and ``"forever"`` wait until the seat submits.
+    A positive whole number of seconds is the limit. Zero is rejected so
+    "forever" stays an explicit choice rather than a silent zero.
+    """
+
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text == "forever":
+            return None
+        try:
+            parsed: object = float(text) if "." in text else int(text)
+        except ValueError as exc:
+            raise ValueError(_HUMAN_TURN_TIMEOUT_ERROR) from exc
+        value = parsed
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(_HUMAN_TURN_TIMEOUT_ERROR)
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(_HUMAN_TURN_TIMEOUT_ERROR)
+        value = int(value)
+    seconds = int(value)
+    if seconds <= 0:
+        raise ValueError(_HUMAN_TURN_TIMEOUT_ERROR)
+    return seconds
+
+
 @dataclass
 class WindowsAutoHostConfig:
     """User-facing settings loaded from ``autoplay-config.json``."""
@@ -63,8 +104,11 @@ class WindowsAutoHostConfig:
     # Seats a person plays. The AI does not write their orders. The staged
     # host file is marked human, and generation waits for their submitted X file.
     human_player_ids: list[int] = field(default_factory=list)
-    # None or 0 waits until the human submits. A positive value is the limit.
-    human_turn_timeout_seconds: int | None = None
+    # Seconds to wait for those seats to submit and close Stars!. None (JSON
+    # null) or "forever" waits without a limit. The default is one hour so an
+    # absent player cannot stall the host loop. On expiry the controller stops
+    # without hosting and does not write that seat's orders.
+    human_turn_timeout_seconds: int | None = DEFAULT_HUMAN_TURN_TIMEOUT_SECONDS
     # After the AI finishes a turn, open Stars! on the human's new .m file.
     open_human_turn: bool = True
 
@@ -78,6 +122,9 @@ class WindowsAutoHostConfig:
         invalid = [seat for seat in self.human_player_ids if not 1 <= seat <= 16]
         if invalid:
             raise ValueError(f"Human player seats must be in 1..16; got {invalid}")
+        self.human_turn_timeout_seconds = normalize_human_turn_timeout(
+            self.human_turn_timeout_seconds
+        )
         self.allied_pairs = expand_alliances(self.allied_groups, self.allied_pairs)
 
     def report_personas(self) -> dict[str, str]:
@@ -183,3 +230,12 @@ class LiveGameValidationError(RuntimeError):
 
 class HistorySyncError(RuntimeError):
     """Automatic history merge or its semantic coverage check failed."""
+
+
+class HumanTurnTimeoutError(RuntimeError):
+    """A human seat did not submit before the configured wait elapsed.
+
+    The controller is fail-closed on this error: the turn is not hosted and
+    no orders are written for that seat. The autoplay loop records a failed
+    turn and stops, the same way it stops on any other turn failure.
+    """

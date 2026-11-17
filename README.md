@@ -167,7 +167,13 @@ Use `-Noop` to validate staging and host invocation while reusing existing X fil
 .\run-autoplay.ps1 -Config .\autoplay-config.json -Noop
 ```
 
-The default controller validates the seed and live files, keeps known-good X templates, snapshots native data, merges each player's new `.m#` knowledge into `.h#`, validates that history merge, writes archive manifests and hashes, and stops on unsafe or unverified conditions. While Stars! is hosting, it also dismisses small message boxes owned by that executable or by the ``otvdmw.exe`` wrapper Windows uses to launch it (OK, Yes, Continue, or Close). The usual “host file is in use” prompt is answered Yes. Dialogs with a text field, and Cancel or No, are left alone. `play_on: true` continues a validated live game instead of restaging the seed.
+`-HumanTurnTimeoutSeconds` overrides the JSON human-seat wait for this launch. Use a positive number of seconds, or `forever` to wait with no limit:
+
+```powershell
+.\run-autoplay.ps1 -Config .\autoplay-config.json -HumanTurnTimeoutSeconds forever
+```
+
+The default controller validates the seed and live files, keeps known-good X templates, snapshots native data, merges each player's new `.m#` knowledge into `.h#`, validates that history merge, writes archive manifests and hashes, and stops on unsafe or unverified conditions. A human seat that does not submit before `human_turn_timeout_seconds` stops the run the same way: the turn is not hosted, and no orders are written for that seat. While Stars! is hosting, it also dismisses small message boxes owned by that executable or by the ``otvdmw.exe`` wrapper Windows uses to launch it (OK, Yes, Continue, or Close). The usual “host file is in use” prompt is answered Yes. Dialogs with a text field, and Cancel or No, are left alone. `play_on: true` continues a validated live game instead of restaging the seed.
 
 Do not use a valuable game for initial native-order or Type27 design-creation experiments. Start with a disposable seed and retain the generated archive.
 
@@ -177,7 +183,9 @@ Do not use a valuable game for initial native-order or Type27 design-creation ex
 top-level object in `autoplay-config.json` directly into the native autoplay
 configuration. Paths are resolved relative to the configuration JSON, unknown
 fields are rejected, and omitted fields use the defaults in the application.
-Start from [autoplay-config.example.json](autoplay-config.example.json).
+`--human-turn-timeout-seconds` (and `run-autoplay.ps1 -HumanTurnTimeoutSeconds`)
+overrides `human_turn_timeout_seconds` for that launch; pass `forever` to wait
+with no limit. Start from [autoplay-config.example.json](autoplay-config.example.json).
 
 The controller always runs the live game beside `stars_exe`; there is no
 `live_dir` setting. `seed_dir` is the immutable source when starting a new run,
@@ -190,6 +198,9 @@ and `output_dir` holds reports, logs, archives, and copied native snapshots.
 | `output_dir` | required path | Destination for run logs, observer reports, archived snapshots, generated order copies, and `autoplay-result.json`. |
 | `game_name` | optional string; ignored for selection | Compatibility field only. The actual game basename is discovered and validated from `seed_dir`, then replaces this value. |
 | `player_ids` | integer array; `[1,2,3,4]` | Player seats controlled by the AI. Each listed player needs matching native files and receives an order file each turn. |
+| `human_player_ids` | integer array; `[]` | Seats a person plays. The AI does not write their orders. The host file is marked human, and generation waits until each of those seats has a submitted `.x#` for the current turn and Stars! is closed. A seat listed here must not also be in `player_ids`. |
+| `human_turn_timeout_seconds` | positive integer, `null`, or `"forever"`; `3600` | How long to wait for `human_player_ids` to submit and close Stars!. The default is one hour so an absent player cannot stall the host loop. `null` or `"forever"` waits without a limit. When the limit expires the controller stops the run and does not host that turn: it does not invent the missing orders. The failure is recorded like any other turn failure (`[AUTOPLAY FAILED]`, `success: false` in `autoplay-result.json`). |
+| `open_human_turn` | boolean; `true` | While waiting, open Stars! on the first pending human `.m#` file. |
 | `turns` | integer; `50` | Number of host generations to attempt. |
 | `play_on` | boolean; `false` | `false` stages a fresh live game from the seed. `true` validates and continues the existing live game for `turns` additional generations. |
 | `checkpoints` | integer array; `[10,25,50]` | Turns that receive full observer reports under `logs/checkpoints/`; the latest is copied to `LATEST_OBSERVER_REPORT.txt`. |

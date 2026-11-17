@@ -8,6 +8,9 @@
     3,
     4
   ],
+  "human_player_ids": [],
+  "human_turn_timeout_seconds": 3600,
+  "open_human_turn": true,
   "turns": 50,
   "play_on": false,
   "checkpoints": [
