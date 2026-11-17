@@ -272,18 +272,9 @@ def _planet_change_block(
     planet_id:int,
     *,
     leftover_only:bool,
-    route_planet_id:int|None=None,
 )->NativeBlock:
-    """Type 35 planet mutation: leftover-research flag and optional route target.
-
-    The captured leftover-only ON form is planet id, 1, 0. OFF uses the same
-    width with the flag cleared. A route target occupies the third u16; zero
-    leaves routing unchanged when the flag-only form is requested.
-    """
-    route=0 if route_planet_id is None else int(route_planet_id)
-    if route_planet_id is not None and not 0 <= route <= 0x7FF:
-        raise ValueError(f"Planet route target must be a planet id; got {route_planet_id}")
-    data=_u16(int(planet_id) & 0x7FF)+_u16(1 if leftover_only else 0)+_u16(route & 0x7FF)
+    """Type 35 leftover-research flag. ON is planet id, 1, 0. OFF clears the flag."""
+    data=_u16(int(planet_id) & 0x7FF)+_u16(1 if leftover_only else 0)+_u16(0)
     return NativeBlock(35,len(data),data)
 
 
@@ -312,14 +303,23 @@ def _repeat_orders_block(state:Any, fleet_id:int, *, enabled:bool)->NativeBlock:
 
 
 def _rename_fleet_block(state:Any, fleet_id:int, name:str)->NativeBlock:
-    """Type 44 fleet rename using the validated Stars! nibble string."""
-    from .starsapi_design_codec import encode_stars_string
+    """Type 44 rename. Uncompressed form is fleet id, fleet class, 0, then a C string.
+
+    The client log stores a compressed user string when it can. The reader
+    falls back to the plaintext at byte 5 when the compression length is 0.
+    """
     text=str(name).strip()
-    if not text or len(text) > 16:
-        raise ValueError(f"Fleet rename must be 1..16 characters; got {name!r}")
+    if not text or len(text) > 16 or any(ord(ch) > 127 for ch in text):
+        raise ValueError(f"Fleet rename must be 1..16 ASCII characters; got {name!r}")
     if not 0 <= int(fleet_id) <= 0x1FF:
         raise ValueError(f"Rename fleet must be a 9-bit local id; got {fleet_id}")
-    data=_u16(_raw_fleet_number(state, fleet_id))+encode_stars_string(text)
+    data=(
+        _u16(_raw_fleet_number(state, fleet_id))
+        + _u16(2)
+        + bytes([0])
+        + text.encode("ascii")
+        + b"\0"
+    )
     return NativeBlock(44, len(data), data)
 
 def _waypoint_add_block(

@@ -5,7 +5,7 @@ import unittest
 from types import SimpleNamespace
 
 from stars_ai.models import Fleet, GameState, OrderSet, Planet, Position, RaceProfile, Tech
-from stars_ai.native.x_writer import _battle_plan_block, _repeat_orders_block
+from stars_ai.native.x_writer import _battle_plan_block, _rename_fleet_block, _repeat_orders_block
 from stars_ai.native_gap_orders import add_native_gap_orders
 from stars_ai.strategy.diplomacy import add_diplomacy_orders
 
@@ -43,6 +43,9 @@ class NativeGapOrderTests(unittest.TestCase):
         self.assertEqual(plan.data, bytes.fromhex("03 00 01 00"))
         self.assertEqual(repeat.type_id, 10)
         self.assertEqual(repeat.data, bytes.fromhex("03 00 01 00"))
+        rename = _rename_fleet_block(_State(), 3, "Gap")
+        self.assertEqual(rename.type_id, 44)
+        self.assertEqual(rename.data, bytes.fromhex("03 00 02 00 00 47 61 70 00"))
 
     def test_hostile_ai_is_marked_enemy_and_a_human_is_not(self):
         state = _state()
@@ -80,6 +83,7 @@ class NativeGapOrderTests(unittest.TestCase):
         self.assertIn("move_fleet", kinds)
         self.assertIn("repeat_fleet_orders", kinds)
         self.assertIn("bomb_orbit", kinds)
+        self.assertIn("rename_fleet", kinds)
         patrol = next(order for order in orders.orders if order.kind == "move_fleet")
         self.assertEqual(patrol.payload["mission"], "patrol")
         self.assertEqual(patrol.payload["destination_planet_id"], 2)

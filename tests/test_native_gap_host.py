@@ -155,6 +155,25 @@ def test_research_only_can_be_turned_off(tmp_path: Path):
     assert (updated.native or {}).get("contribute_only_leftover_resources_to_research") is False
 
 
+def test_fleet_rename_is_stored(tmp_path: Path):
+    from stars_ai.adapters.stars_native import read_blocks
+    from stars_ai.native.starsapi_design_codec import decode_stars_string
+
+    game = _stage(tmp_path)
+    state = _load(game)
+    fleet = next(item for item in state.fleets if item.owner == 1)
+    _write(game, state, "rename_fleet", {"fleet_id": int(fleet.id), "name": "Gap"})
+    assert _host(game) == 0
+    _, blocks, _ = read_blocks(game / "GAME.m1")
+    names = []
+    for block in blocks:
+        if block.type_id != 21:
+            continue
+        text, _ = decode_stars_string(block.data)
+        names.append(text)
+    assert "Gap" in names
+
+
 def test_repeat_orders_record_is_consumed(tmp_path: Path):
     game = _stage(tmp_path)
     state = _load(game)

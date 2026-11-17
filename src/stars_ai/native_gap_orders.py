@@ -151,6 +151,29 @@ def add_native_gap_orders(state: GameState, orders: OrderSet, plan=None) -> None
         for player_id, view in (getattr(plan, "diplomacy", {}) or {}).items():
             if str(view.get("attitude")) == "hostile" and not view.get("is_human"):
                 hostile_ids.add(int(player_id))
+    role_names = {
+        "scout": "Scout",
+        "colony": "Colony",
+        "freighter": "Freighter",
+        "miner": "Miner",
+        "combat": "Guard",
+        "bomber": "Bomber",
+        "minelayer": "Minelayer",
+        "tender": "Tender",
+    }
+    named = [
+        fleet for fleet in state.fleets
+        if fleet.owner == state.player_id and fleet.role in role_names
+    ]
+    if named and not any(order.kind == "rename_fleet" for order in orders.orders):
+        fleet = min(named, key=lambda item: int(item.id))
+        orders.add(
+            "rename_fleet",
+            {"fleet_id": int(fleet.id), "name": role_names[fleet.role]},
+            f"Name fleet {fleet.id} {role_names[fleet.role]} so the stack is identifiable in the client.",
+            priority=30,
+        )
+
     bombers = [
         fleet for fleet in state.fleets
         if fleet.owner == state.player_id and fleet.role == "bomber" and _idle(fleet) and not _already(orders, fleet.id)

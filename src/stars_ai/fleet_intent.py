@@ -210,6 +210,7 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                 "set_battle_plan":"SET BATTLE PLAN",
                 "repeat_fleet_orders":"REPEAT ORDERS",
                 "bomb_orbit":"BOMB AFTER ARRIVAL",
+                "rename_fleet":"RENAME FLEET",
                 "cancel_scout_route":"CANCEL OUTER ROUTE / LOCAL RECON NEXT TURN",
                 "split_scout_fleet":"SPLIT STACK",
                 "split_fleet":"SPLIT STACK",
