@@ -24,6 +24,7 @@ from .territorial_defense import assess_territorial_defense, hostile_colonies_in
 from .planet_economy import decode_race_economy, working_mineral_reserve
 from .starsapi_items import remote_miner_package_ready
 from .capability_execution import capability_status, design_capability_id, profile_is_blocked
+from .combat_engagement import publish_turn_combat
 from .turn_state import mapping as turn_mapping
 
 
@@ -1160,6 +1161,18 @@ def plan_objective_ship_builds(state,plan=None):
         if weapons_level < 10 and not (invade or patrols > 0 or losses or exposure.emergency_active):
             desired_combat=0
             fighter_reasons=[]
+    turn_combat = (getattr(state, "native", {}) or {}).get("turn_combat") or publish_turn_combat(state, plan)
+    if turn_combat.get("authoritative"):
+        decision = str(turn_combat.get("decision") or "")
+        if decision == "retreat_and_preserve":
+            desired_combat = 0
+            fighter_reasons = ["RETREAT_AND_PRESERVE: do not build warships into a losing trade"]
+        elif decision == "tech_then_rebuild":
+            desired_combat = 0
+            fighter_reasons = ["TECH_THEN_REBUILD: pause obsolete warship production"]
+        elif decision == "hold_and_tech":
+            desired_combat = min(int(desired_combat), 2)
+            fighter_reasons.append("HOLD_AND_TECH: keep only a small defensive packet")
     phase_force_floor=0
     contact_only_deferral=False
     low_tech_escort_doctrine=early_fighters

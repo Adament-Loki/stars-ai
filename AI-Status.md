@@ -16,7 +16,7 @@ Every native player turn now decodes its current type-45 score record (seat, ran
 | Supported native movement, colonization, production, research, relations, and submit forms | Implemented with feature-specific safety gates |
 | Stock hull/slot model, legality, mass/fuel, and race-aware role fitting | Implemented |
 | Fresh native Type27 ship-design creation | Player 1 host-accepted; owner-aware Player 2 encoding enabled, pending its own replay |
-| Exact Stars! combat simulation and all native order semantics | Not yet complete |
+| Combat chooser and approximate battle simulation on the turn; exact battle-board and several order types | Partial |
 
 The historical v8.8 implementation record reported 385 passing tests, 4 skips, and 10 pre-existing strategy-assertion failures; no cleanup-only change should be interpreted as a new test result. The known failures concern Layer-1 colony scoring, support-base thresholds, and legacy expansion-research expectations.
 
@@ -86,7 +86,7 @@ The strategic outcomes are:
 - `HOLD_AND_TECH` — retain a defensible position while closing a research gap.
 - `RETREAT_AND_PRESERVE` — do not trade irreplaceable fleets for low-value territory.
 
-Core and high-sunk-cost worlds can override deliberate sacrifice and force emergency defense. The evaluator is doctrine-aware, not yet an exact Stars! battle-board simulator; battle mechanics and component statistics remain the major fidelity gap.
+Core and high-sunk-cost worlds can override deliberate sacrifice and force emergency defense. `choose_modernization_plan` now runs on the turn. `FIGHT_NOW` and `BUILD_CURRENT` may intercept or attack; `TECH_THEN_REBUILD`, `HOLD_AND_TECH`, and `RETREAT_AND_PRESERVE` do not open new attacks and they cut warship production. When a fitted weapon design exists, `simulate_battle` vetoes an intercept or attack that leaves our ships at zero. The simulator is still an approximation of the battle board, and `set_battle_plan` stays blocked. A landing uses FAQ 4.10: effective troops are `attackers * (1 - 0.75 * defense coverage)`, attack 1.1 or War Monger 1.65, defense 1.0 or Inner Strength 2.0. An orbital starbase blocks the landing.
 
 ### Diplomacy, personas, and territorial value
 
@@ -134,7 +134,7 @@ The subsequent replay with the requested staging name (`SuperRabits Privateer`) 
 
 The failed AI design also was not an exact replay of the captured client Privateer: the client reference includes two ordinary shields in the shield/armor slot, while the AI wrote that slot empty. Fuel capacity, shield DP, mass, and resource cost are derived by the client from hull and slot components; only the aggregate armor field is carried directly in a full DesignBlock. Empty optional slots are normally legal, so this difference is a missing control variable rather than a demonstrated rejection cause.
 
-**Encoding gap found during review:** the current ship synthesizer writes hull base armor but does not add the armor supplied by fitted armor components (or the special armor-bearing shields/cargo pod). StarsAPI adds those values to the full DesignBlock armor field. The latest Fuel-Mizer Privateer is unaffected because it has no such component; any generated armor-bearing design remains unsafe until this is corrected and host-validated.
+**Armor field:** a full DesignBlock armor value is hull armor plus fitted armor-component DP from `UNEDITED.MOD`, plus bonus armor on Croby Sharmor (65), Langston Shell (65), and the Multi-Cargo Pod (50). Regenerating Shields halves the armor-component total only; hull armor and that bonus armor stay whole. Captured non-starbase designs in the test sandboxes match this sum, or the same sum with the armor-component total divided by two. The Fuel-Mizer Privateer is unchanged because it fits no armor. An armor-bearing Type 27 create still needs its own host replay; the capability status is unchanged.
 
 ### Player 1 Type27 client control (turn 2402, host-accepted)
 
