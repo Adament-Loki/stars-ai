@@ -268,10 +268,59 @@ def _research_change_block(
     return NativeBlock(34,len(data),data)
 
 
-def _planet_leftover_research_block(planet_id:int)->NativeBlock:
-    """Empirical PlanetChange: leftover-only ON. OFF is not synthesized."""
-    data=_u16(int(planet_id) & 0x7FF)+_u16(1)+_u16(0)
+def _planet_change_block(
+    planet_id:int,
+    *,
+    leftover_only:bool,
+    route_planet_id:int|None=None,
+)->NativeBlock:
+    """Type 35 planet mutation: leftover-research flag and optional route target.
+
+    The captured leftover-only ON form is planet id, 1, 0. OFF uses the same
+    width with the flag cleared. A route target occupies the third u16; zero
+    leaves routing unchanged when the flag-only form is requested.
+    """
+    route=0 if route_planet_id is None else int(route_planet_id)
+    if route_planet_id is not None and not 0 <= route <= 0x7FF:
+        raise ValueError(f"Planet route target must be a planet id; got {route_planet_id}")
+    data=_u16(int(planet_id) & 0x7FF)+_u16(1 if leftover_only else 0)+_u16(route & 0x7FF)
     return NativeBlock(35,len(data),data)
+
+
+def _planet_leftover_research_block(planet_id:int)->NativeBlock:
+    """Empirical PlanetChange: leftover-only ON."""
+    return _planet_change_block(planet_id, leftover_only=True)
+
+
+def _battle_plan_block(state:Any, fleet_id:int, plan_index:int)->NativeBlock:
+    """Type 42. The decompile stores the plan index at data offset 2."""
+    plan=int(plan_index)
+    if not 0 <= plan <= 15:
+        raise ValueError(f"Battle plan index must be 0..15; got {plan}")
+    if not 0 <= int(fleet_id) <= 0x1FF:
+        raise ValueError(f"Battle plan fleet must be a 9-bit local id; got {fleet_id}")
+    data=_u16(_raw_fleet_number(state, fleet_id))+_u16(plan)
+    return NativeBlock(42, len(data), data)
+
+
+def _repeat_orders_block(state:Any, fleet_id:int, *, enabled:bool)->NativeBlock:
+    """Type 10. Bit 0 of the u16 at offset 2 sets the fleet repeat-orders flag."""
+    if not 0 <= int(fleet_id) <= 0x1FF:
+        raise ValueError(f"Repeat-orders fleet must be a 9-bit local id; got {fleet_id}")
+    data=_u16(_raw_fleet_number(state, fleet_id))+_u16(1 if enabled else 0)
+    return NativeBlock(10, len(data), data)
+
+
+def _rename_fleet_block(state:Any, fleet_id:int, name:str)->NativeBlock:
+    """Type 44 fleet rename using the validated Stars! nibble string."""
+    from .starsapi_design_codec import encode_stars_string
+    text=str(name).strip()
+    if not text or len(text) > 16:
+        raise ValueError(f"Fleet rename must be 1..16 characters; got {name!r}")
+    if not 0 <= int(fleet_id) <= 0x1FF:
+        raise ValueError(f"Rename fleet must be a 9-bit local id; got {fleet_id}")
+    data=_u16(_raw_fleet_number(state, fleet_id))+encode_stars_string(text)
+    return NativeBlock(44, len(data), data)
 
 def _waypoint_add_block(
     state:Any,
@@ -314,7 +363,7 @@ def _waypoint_add_block(
         target_y=float(target.position.y)
     warp=max(0,min(15,int(payload.get("warp",7))))
     mission=str(payload.get("mission","")).lower()
-    task=0
+    task=7 if mission=="patrol" else 0
     object_type=int(object_type) & 0xff  # low nibble 1 = planet; preserve observed upper bits when known
     waypoint_index=int(waypoint_index)
     if waypoint_index<1 or waypoint_index>0xffff:
@@ -587,6 +636,42 @@ def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
     )
 
 
+SCRAP_TASK = 5
+
+
+def _scrap_fleet_block(state:Any, payload:dict)->NativeBlock|None:
+    """Set waypoint 0 to the scrap task. Scrap runs before movement."""
+    fleet_id=int(payload["fleet_id"])
+    fleet=_fleet_state(state, fleet_id)
+    if fleet is None:
+        raise UnsafeWaypointMutationError({
+            "operation":"scrap_fleet","result":"BLOCK",
+            "reason":"Scrap requires an owned fleet.",
+        })
+    native=fleet.native or {}
+    waypoints=list(native.get("waypoints") or [])
+    count=int(native.get("waypoint_count", len(waypoints)) or 0)
+    if count != 1 or not waypoints:
+        raise UnsafeWaypointMutationError({
+            "operation":"scrap_fleet","fleet_id":fleet_id,"result":"BLOCK",
+            "reason":"Scrap is issued only for a fleet whose current waypoint is its only waypoint.",
+        })
+    current=waypoints[0]
+    if int(current.get("task", 0) or 0) == SCRAP_TASK:
+        return None
+    return _waypoint_change_task_at_position_block(
+        state,
+        fleet_id=fleet_id,
+        x=int(current.get("x", 0) or 0),
+        y=int(current.get("y", 0) or 0),
+        target_id=int(current.get("position_object", 0) or 0),
+        warp=0,
+        task=SCRAP_TASK,
+        object_type=int(current.get("position_object_type", 0) or 0) & 0xFF,
+        waypoint_index=0,
+    )
+
+
 LAY_MINEFIELD_TASK = 6
 LAY_MINEFIELD_SUBTASK = 5
 
@@ -761,8 +846,10 @@ def _requested_waypoint_task(payload:dict, *, operation_kind:str|None=None)->int
         return 1
     if mission in {"remote_mine","remote mining","mine"}:
         return 3
-    # Scan/recon, refuel, defend, attack, and other validated movement use the
-    # task-0 movement form. Native task 0 does not distinguish those semantics.
+    if mission=="patrol":
+        return 7
+    # Scan/recon, refuel, defend, attack, bomb, and other validated movement
+    # use the task-0 movement form. Native task 0 does not distinguish those.
     return 0
 
 
@@ -2793,6 +2880,75 @@ def write_native_orders(
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="replace_ship_design":
                 skipped.append({"kind":o.kind,"reason":"Legacy atomic replace is blocked. v8.6 uses delete -> next-M readback -> create.","payload":o.payload})
+            elif o.kind=="scrap_fleet":
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                try:
+                    scrap_block=_scrap_fleet_block(state,o.payload)
+                except UnsafeWaypointMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"scrap_safety":exc.diagnostic}})
+                    continue
+                touched_fleets.add(fid)
+                ep=dict(o.payload)
+                ep["native_waypoint_task"]=SCRAP_TASK
+                ep["native_capability_status"]=cap.status
+                if scrap_block is not None:
+                    generated.append(scrap_block)
+                    ep["native_block_hex"]=scrap_block.data.hex(" ")
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="set_battle_plan":
+                fid=int(o.payload["fleet_id"])
+                plan_block=_battle_plan_block(state,fid,int(o.payload.get("plan_index",0)))
+                generated.append(plan_block)
+                ep=dict(o.payload)
+                ep["native_block_hex"]=plan_block.data.hex(" ")
+                ep["native_block_type"]=42
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="repeat_fleet_orders":
+                fid=int(o.payload["fleet_id"])
+                repeat_block=_repeat_orders_block(
+                    state,fid,enabled=bool(o.payload.get("enabled",True)),
+                )
+                generated.append(repeat_block)
+                ep=dict(o.payload)
+                ep["native_block_hex"]=repeat_block.data.hex(" ")
+                ep["native_block_type"]=10
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="rename_fleet":
+                fid=int(o.payload["fleet_id"])
+                rename_block=_rename_fleet_block(state,fid,str(o.payload.get("name","")))
+                generated.append(rename_block)
+                ep=dict(o.payload)
+                ep["native_block_hex"]=rename_block.data.hex(" ")
+                ep["native_block_type"]=44
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
+            elif o.kind=="bomb_orbit":
+                # Bombing is a post-arrival host phase, not its own waypoint task.
+                # Reuse the validated task-0 move onto the target world.
+                o.payload["mission"]="bomb"
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                diagnostic=_native_waypoint_decision(state,o.payload,operation_kind="move_fleet")
+                waypoint_diagnostics.append(diagnostic)
+                native_action=diagnostic["result"]
+                touched_fleets.add(fid)
+                if native_action not in ("ADD","UPDATE WARP"):
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":diagnostic["reason"],
+                        "payload":{**o.payload,"native_waypoint_action":native_action},
+                    })
+                    continue
+                movement_blocks=_movement_route_blocks(state,o.payload,initial_object_type=0x11)
+                generated.extend(movement_blocks)
+                ep=dict(o.payload)
+                ep["native_waypoint_action"]=native_action
+                ep["native_waypoint_task"]=0
+                emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="set_planet_queue":
                 pid=int(o.payload["planet_id"])
                 authorized,authority=_native_planet_mutation_authority(state,pid)
@@ -2860,10 +3016,10 @@ def write_native_orders(
                         "payload":{**o.payload,"native_planet_mutation_authority":authority},
                     })
                     continue
-                if not bool(o.payload.get("leftover_only",False)):
-                    skipped.append({"kind":o.kind,"reason":"Only empirically validated leftover-only ON is supported.","payload":o.payload})
-                    continue
-                generated.append(_planet_leftover_research_block(pid))
+                leftover_only=bool(o.payload.get("leftover_only",False))
+                # A non-zero third field was host-accepted and did not set the
+                # planet route flag. Keep the validated flag-only form.
+                generated.append(_planet_change_block(pid, leftover_only=leftover_only))
                 emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
             elif o.kind=="set_player_relation":
                 target=int(o.payload["player_id"])

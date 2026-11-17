@@ -116,6 +116,12 @@ _SAFE_WAYPOINT_TASK_MISSIONS = {
     1: 'transport',
     2: 'colonize',
     3: 'remote_mine',
+    4: 'merge',
+    5: 'scrap',
+    6: 'lay_minefield',
+    7: 'patrol',
+    8: 'route',
+    9: 'give',
 }
 
 _RESEARCH_FIELD_BY_CODE = {
