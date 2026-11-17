@@ -442,7 +442,10 @@ def _add_paper_tiger_push(state, orders, plan, available_patrols) -> None:
 
     Alternate Reality territory looks large because every world has a fort.
     Those forts have no ground defense. A couple of scouts with a weapon
-    remove the ones on good worlds. A colonizer then claims the world.
+    remove the ones on good worlds. Colonize is illegal while another player
+    owns the world or the fort is still there, so the claim is an attack,
+    not a colony order. A colonizer can settle the world on a later turn,
+    after it is unowned and baseless.
     """
 
     owned = [planet for planet in state.planets if planet.owner == state.player_id]

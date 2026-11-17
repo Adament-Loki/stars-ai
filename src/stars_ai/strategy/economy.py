@@ -9,6 +9,8 @@ from ..colony_planner import (
     score_colony_candidates,
     reserved_colony_target_ids,
     colonization_policy,
+    colonization_block_reason,
+    planet_has_starbase,
     RISKY_HABITABILITY,
     EARLY_SETTLEMENT_TURN,
     colony_support_distance,
@@ -1625,6 +1627,10 @@ def add_economic_orders(
     capture_by_planet={
         int(target.planet_id):target for target in population_capture_targets(state)
     }
+    paper_tiger_claim_ids={
+        int(planet_id)
+        for planet_id in ((state.native or {}).get("paper_tiger_claims") or [])
+    }
 
     def staging_world(fleet):
         choices=loading_worlds or refuel_worlds
@@ -1791,11 +1797,40 @@ def add_economic_orders(
             fleet_distance=distance(fleet.position,target.position)
             owner=target.owner
             capture=capture_by_planet.get(target_id)
-            paper_tiger_claim=int(target_id) in {
-                int(planet_id)
-                for planet_id in ((state.native or {}).get("paper_tiger_claims") or [])
-            }
-            if owner is not None and int(owner)!=int(state.player_id) and not paper_tiger_claim:
+            paper_tiger_claim=target_id in paper_tiger_claim_ids
+            block=colonization_block_reason(state, target)
+            if paper_tiger_claim and block is not None:
+                # The military path attacks this fort. A colonize order against
+                # an occupied world, or a world that still has a starbase, is
+                # illegal in Stars! and is dropped here.
+                colony_target_diagnostics.append({
+                    "fleet_id":int(fleet.id),"planet_id":target_id,"name":target.name,
+                    "owner":owner,"distance_from_owned":min((distance(target.position,p.position) for p in owned),default=None),
+                    "distance_from_colony_fleet":round(fleet_distance,2),
+                    "current_racial_hab":potential.current_habitability,
+                    "current_terraform_hab":potential.tech_habitability,
+                    "eventual_hab":potential.eventual_habitability,
+                    "reachable":False,"fuel_safe":False,"population_available":source_population_available,
+                    "hard_rejection_reason":"paper_tiger_left_to_military",
+                    "score":None,
+                    "blocked_by":"military_invasion",
+                    "colonization_block":block,
+                })
+                colony_capture_conversions.append({
+                    "fleet_id":int(fleet.id),
+                    "planet_id":target_id,
+                    "planet_name":target.name,
+                    "owner_id":None if owner is None else int(owner),
+                    "action":"PAPER_TIGER_LEFT_TO_MILITARY",
+                    "status":"DROPPED_COLONIZATION",
+                    "reason":block,
+                    "policy":(
+                        "An occupied world or a world with a starbase is not a colony order. "
+                        "The military path attacks the empty fort; colonize only after the world is unowned and baseless."
+                    ),
+                })
+                continue
+            if block in {"foreign_owned","foreign_owned_with_starbase"}:
                 capacity=max(
                     (
                         int(getattr(other,"cargo_capacity",0) or (other.native or {}).get("cargo_capacity",0) or 0)
@@ -1854,7 +1889,32 @@ def add_economic_orders(
                     "policy":"foreign worlds are excluded from ordinary colony orders",
                 })
                 continue
-            if owner is not None and not paper_tiger_claim:
+            if block=="starbase_present":
+                colony_target_diagnostics.append({
+                    "fleet_id":int(fleet.id),"planet_id":target_id,"name":target.name,
+                    "owner":owner,"distance_from_owned":min((distance(target.position,p.position) for p in owned),default=None),
+                    "distance_from_colony_fleet":round(fleet_distance,2),
+                    "current_racial_hab":potential.current_habitability,
+                    "current_terraform_hab":potential.tech_habitability,
+                    "eventual_hab":potential.eventual_habitability,
+                    "reachable":False,"fuel_safe":False,"population_available":source_population_available,
+                    "hard_rejection_reason":"starbase_blocks_colonization",
+                    "score":None,
+                    "blocked_by":"starbase",
+                    "colonization_block":block,
+                })
+                colony_capture_conversions.append({
+                    "fleet_id":int(fleet.id),
+                    "planet_id":target_id,
+                    "planet_name":target.name,
+                    "owner_id":None if owner is None else int(owner),
+                    "action":"STARBASE_NOT_A_COLONY",
+                    "status":"DROPPED_COLONIZATION",
+                    "reason":block,
+                    "policy":"A world with a starbase is not a colony order.",
+                })
+                continue
+            if owner is not None:
                 hard_reason="already_owned"
             elif candidate is not None:
                 hard_reason=None
@@ -2018,6 +2078,39 @@ def add_economic_orders(
                 continue
 
         best=ranked[0]
+        destination=next(p for p in state.planets if int(p.id)==int(best.planet_id))
+        destination_block=colonization_block_reason(state, destination)
+        if destination_block is None and planet_has_starbase(destination):
+            destination_block="starbase_present"
+        if destination_block is not None:
+            drop_reason=(
+                "paper_tiger_left_to_military"
+                if int(destination.id) in paper_tiger_claim_ids
+                else "starbase_blocks_colonization"
+                if "starbase" in destination_block
+                else "foreign_owned_not_a_colony_target"
+            )
+            colony_target_diagnostics.append({
+                "fleet_id":int(fleet.id),
+                "planet_id":int(destination.id),
+                "name":destination.name,
+                "owner":destination.owner,
+                "hard_rejection_reason":drop_reason,
+                "blocked_by":(
+                    "military_invasion"
+                    if drop_reason=="paper_tiger_left_to_military"
+                    else "colonization_guard"
+                ),
+                "colonization_block":destination_block,
+                "reachable":False,
+                "fuel_safe":False,
+                "score":round(float(best.score),3),
+            })
+            orders.notes.append(
+                f"Dropped colonize of {destination.name}: {drop_reason} ({destination_block}). "
+                "Colonize never targets another player's world or a world with a starbase."
+            )
+            continue
         loaded=aboard>=departure_colonists
         can_load=(
             source is not None
