@@ -308,6 +308,82 @@ def delete_existing_ship_design_block(slot: int, *, player_id: int = 2) -> Nativ
     return NativeBlock(27, len(payload), payload)
 
 
+def assert_editable_unused_ship_design(state: Any, slot: int) -> ShipDesignSlotSafety:
+    """An existing ship design can be edited only while nothing has been built from it."""
+    safety = ship_design_slot_safety(state, slot)
+    design = next((item for item in _design_dicts(state) if int(item.get("design_number", -1)) == int(slot)), None)
+    built = int((design or {}).get("total_built", 0) or 0)
+    if not safety.design_exists:
+        raise UnsafeShipDesignMutationError({
+            "operation": "edit_ship_design", "result": "BLOCK",
+            "reason": f"Ship design slot {slot} has no design to edit.",
+        })
+    if built or safety.live_ship_count or safety.queued_ship_count or safety.total_remaining:
+        raise UnsafeShipDesignMutationError({
+            "operation": "edit_ship_design", "result": "BLOCK",
+            "reason": (
+                f"Ship design slot {slot} has built hulls and cannot be edited. "
+                "Copy it into a free slot instead."
+            ),
+            "total_built": built,
+            "live_ship_count": safety.live_ship_count,
+        })
+    return safety
+
+
+def edit_unused_ship_design_block(design: EncodedShipDesign, *, player_id: int = 1) -> NativeBlock:
+    """One Type 27 record: owner byte, 0x60 plus the slot, then the full design.
+
+    examples2 edited Destroyer slot 3 with control 01 63 while its built count was 0.
+    """
+    if design.is_starbase:
+        raise ValueError("Ship design edit received a starbase design")
+    slot = int(design.slot)
+    if not 0 <= slot <= 15:
+        raise ValueError("Ship design slot must be 0..15")
+    owner = _design_change_owner_byte(player_id)
+    body = encode_type27_design_body(design, empty_slots=False, clear_type27_bit0=False)
+    payload = bytes([owner, 0x60 | slot]) + body
+    return NativeBlock(27, len(payload), payload)
+
+
+def copy_starbase_design_blocks(
+    baseline: EncodedShipDesign,
+    final: EncodedShipDesign,
+    *,
+    player_id: int = 1,
+) -> list[NativeBlock]:
+    """Copy a starbase into a free slot, then apply the edited fitting.
+
+    examples wrote 01 B2 with the old Starbase fitting under the new name,
+    then 01 72 with the Alpha Torpedo and Battle Computer changes. Both
+    records keep DesignBlock bit 0 set.
+    """
+    if not baseline.is_starbase or not final.is_starbase:
+        raise ValueError("Starbase copy requires two starbase designs")
+    slot = int(final.slot)
+    if int(baseline.slot) != slot or not 0 <= slot <= 9:
+        raise ValueError("Starbase copy baseline and final design must share a slot 0..9")
+    named_baseline = EncodedShipDesign(
+        slot=slot,
+        hull_id=int(baseline.hull_id),
+        pic=int(baseline.pic),
+        armor=int(baseline.armor),
+        turn_designed=int(baseline.turn_designed),
+        slots=tuple(baseline.slots),
+        name=final.name,
+        is_starbase=True,
+    )
+    owner = _design_change_owner_byte(player_id)
+    seed = bytes([owner, 0xB0 | slot]) + encode_type27_design_body(
+        named_baseline, empty_slots=False, clear_type27_bit0=False,
+    )
+    commit = bytes([owner, 0x70 | slot]) + encode_type27_design_body(
+        final, empty_slots=False, clear_type27_bit0=False,
+    )
+    return [NativeBlock(27, len(seed), seed), NativeBlock(27, len(commit), commit)]
+
+
 def delete_existing_starbase_design_block(slot: int, *, player_id: int = 2) -> NativeBlock:
     """Delete one starbase design slot.
 

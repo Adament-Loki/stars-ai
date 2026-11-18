@@ -20,9 +20,12 @@ from stars_ai.adapters.stars_native import (
 from stars_ai.native_capabilities import capability
 from stars_ai.native.design_change import (
     EncodedShipDesign, UnsafeShipDesignMutationError, assert_deletable_ship_design_slot,
+    assert_editable_unused_ship_design,
     assert_free_ship_design_slot, assert_free_starbase_design_slot,
+    copy_starbase_design_blocks,
     create_ship_design_blocks, create_starbase_design_blocks,
     delete_existing_ship_design_block, delete_existing_starbase_design_block,
+    edit_unused_ship_design_block,
     assert_deletable_starbase_design_slot, encoded_ship_design_from_payload,
     same_turn_queued_ship_count, same_turn_queued_starbase_count,
 )  # V8_6_NATIVE_DESIGN_LIFECYCLE_PATCH
@@ -168,6 +171,12 @@ def _encode_queue_item(
         # Scanner.  The planner enables it only after the official MOD shows a
         # race-legal researched Snooper X model, and every use is trace-tagged.
         'planetary_scanner':27,
+        # Mineral packets. The client queue on Data and Down And Out uses
+        # these ids with the same type nibble as factories.
+        'ironium_packet':14,
+        'boranium_packet':15,
+        'germanium_packet':16,
+        'mixed_packet':17,
     }
     if item_name not in ids: raise ValueError(f'Unsupported validated production item: {item_name}')
     return _u16((ids[item_name]<<10)|qty)+_u16((complete<<4)|2)
@@ -283,6 +292,66 @@ def _planet_leftover_research_block(planet_id:int)->NativeBlock:
     return _planet_change_block(planet_id, leftover_only=True)
 
 
+def _display_planet_id(planet_id:int)->int:
+    destination=int(planet_id)
+    if destination < 0 or destination > 0x3FE:
+        raise ValueError(f"Planet id must be 0..1022; got {destination}")
+    return destination + 1
+
+
+def _planet_type35_block(
+    planet_id:int,
+    *,
+    fling_planet_id:int|None=None,
+    warp:int|None=None,
+    route_planet_id:int|None=None,
+    leftover_only:bool=False,
+)->NativeBlock:
+    """One Type 35 dword. Bit 0 is leftover research. Bits 1-10 and 11-14 are a mineral fling. Bits 15-24 are the ship-route display id."""
+    packed=1 if leftover_only else 0
+    if fling_planet_id is not None:
+        warp_factor=int(warp if warp is not None else 5)
+        if warp_factor < 5 or warp_factor > 13:
+            raise ValueError(f"Mineral packet warp must be 5..13; got {warp_factor}")
+        packed |= (_display_planet_id(fling_planet_id) << 1) | ((warp_factor - 4) << 11)
+    if route_planet_id is not None:
+        packed |= _display_planet_id(route_planet_id) << 15
+    data=_u16(int(planet_id) & 0x7FF)+int(packed).to_bytes(4, "little")
+    return NativeBlock(35, len(data), data)
+
+
+def _planet_fling_block(
+    planet_id:int,
+    destination_planet_id:int,
+    warp:int,
+    *,
+    leftover_only:bool=False,
+    route_planet_id:int|None=None,
+)->NativeBlock:
+    """Type 35 mass-driver route. Bit 0 is leftover research. Bits 1-10 are the destination display id (planet id + 1). Bits 11-14 are warp minus 4, so warp 5 is 1 and warp 13 is 9."""
+    return _planet_type35_block(
+        planet_id,
+        fling_planet_id=destination_planet_id,
+        warp=warp,
+        route_planet_id=route_planet_id,
+        leftover_only=leftover_only,
+    )
+
+
+def _planet_ship_route_block(
+    planet_id:int,
+    destination_planet_id:int,
+    *,
+    leftover_only:bool=False,
+)->NativeBlock:
+    """Type 35 ship route. Bits 15-24 are the destination display id. Fling fields stay 0."""
+    return _planet_type35_block(
+        planet_id,
+        route_planet_id=destination_planet_id,
+        leftover_only=leftover_only,
+    )
+
+
 def _battle_plan_block(state:Any, fleet_id:int, plan_index:int)->NativeBlock:
     """Type 42. The decompile stores the plan index at data offset 2."""
     plan=int(plan_index)
@@ -321,6 +390,63 @@ def _rename_fleet_block(state:Any, fleet_id:int, name:str)->NativeBlock:
         + b"\0"
     )
     return NativeBlock(44, len(data), data)
+
+
+def _player_message_block(recipient_player_id:int, text:str)->NativeBlock:
+    """Type 40. The examples hello is two zero words, the recipient, 1, 0, then the nibble text length and bytes."""
+    from stars_ai.native.starsapi_design_codec import encode_stars_string
+    recipient=int(recipient_player_id)
+    if not 1 <= recipient <= 16:
+        raise ValueError(f"Message recipient must be a player id 1..16; got {recipient}")
+    message=str(text)
+    if not message or len(message) > 80:
+        raise ValueError("A player message must be 1..80 characters")
+    encoded=encode_stars_string(message)
+    payload=encoded[1:]
+    data=(
+        b"\x00\x00\x00\x00"
+        + _u16(recipient)
+        + _u16(1)
+        + _u16(0)
+        + _u16(len(payload))
+        + payload
+    )
+    return NativeBlock(40, len(data), data)
+
+
+def _repeat_transport_blocks(state:Any, payload:dict)->list[NativeBlock]:
+    """Loop two transport waypoints and turn repeat on.
+
+    examples2 fleet 6 loads all ironium at Charity (00 10) and unloads it at
+    Hot Tip (00 20). Each leg is a task-0 add followed by a task-1 change.
+    """
+    fleet_id=int(payload["fleet_id"])
+    load_planet=int(payload["load_planet_id"])
+    unload_planet=int(payload["unload_planet_id"])
+    warp=max(0, min(15, int(payload.get("warp", 9) or 9)))
+    blocks:list[NativeBlock]=[]
+    for index, planet_id, extra in (
+        (1, load_planet, bytes.fromhex("00 10")),
+        (2, unload_planet, bytes.fromhex("00 20")),
+    ):
+        blocks.append(_waypoint_add_block(
+            state,
+            {"fleet_id":fleet_id, "destination_planet_id":planet_id, "warp":warp},
+            object_type=0x11,
+            waypoint_index=index,
+        ))
+        blocks.append(_waypoint_change_task_block(
+            state,
+            fleet_id=fleet_id,
+            destination_planet_id=planet_id,
+            warp=warp,
+            task=1,
+            additional=extra,
+            object_type=0x11,
+            waypoint_index=index,
+        ))
+    blocks.append(_repeat_orders_block(state, fleet_id, enabled=True))
+    return blocks
 
 def _waypoint_add_block(
     state:Any,
@@ -370,14 +496,20 @@ def _waypoint_add_block(
         raise ValueError(f"Invalid native waypoint index {waypoint_index}")
     # Real Stars! four-player samples preserve owner/player bits in the raw
     # fleet number: P1=0x0000, P2=0x0200, P3=0x0400, P4=0x0600 for fleet 0.
+    # An intercept target uses that same owner tag. Ubert fleet 17 is 11 04.
     player_id=int(getattr(state,"player_id",1))
     raw_fleet=((player_id-1) << 9) | (fleet_id & 0x1ff)
+    if target_fleet_id is not None:
+        target_owner_id=int(getattr(target, "owner", target_owner or player_id))
+        target_wire=((target_owner_id - 1) << 9) | (target_id & 0x1ff)
+    else:
+        target_wire=target_id & 0x7ff
     data=(
         _u16(raw_fleet)
         + _u16(waypoint_index)
         + _u16(int(target_x))
         + _u16(int(target_y))
-        + _u16(target_id & 0x1ff if target_fleet_id is not None else target_id & 0x7ff)
+        + _u16(target_wire)
         + bytes([(warp<<4)|task, object_type])
     )
     return NativeBlock(4,len(data),data)
@@ -506,7 +638,7 @@ def _waypoint_change_task_block(state:Any, *, fleet_id:int, destination_planet_i
 def _waypoint_change_task_at_position_block(
     state:Any, *, fleet_id:int, x:int, y:int, target_id:int,
     warp:int, task:int, additional:bytes=b"", object_type:int=0x51,
-    waypoint_index:int=1,
+    waypoint_index:int=1, target_mask:int=0x7FF,
 )->NativeBlock:
     """Encode Stars!' Type-5 waypoint task form at an explicit location.
 
@@ -517,11 +649,64 @@ def _waypoint_change_task_at_position_block(
     data=(
         _u16(_raw_fleet_number(state,fleet_id))+_u16(int(waypoint_index))
         +_u16(int(x))+_u16(int(y))
-        +_u16(int(target_id)&0x7ff)
+        +_u16(int(target_id)&int(target_mask))
         +bytes([((max(0,min(15,int(warp)))<<4)|(int(task)&0x0f)),object_type])
         +additional
     )
     return NativeBlock(5,len(data),data)
+
+
+def _merge_with_fleet_blocks(state:Any, payload:dict)->list[NativeBlock]:
+    """Travel to a fleet and merge on arrival.
+
+    examples2 fleet 6 wrote a Type 4 task-0 waypoint at the planet the target
+    occupies, then a Type 5 at the same index: warp unchanged, task 4, object
+    type 0x12, and the target fleet's owner-tagged id.
+    """
+    fleet_id=int(payload["fleet_id"])
+    target_id=int(payload["destination_fleet_id"])
+    if fleet_id==target_id and payload.get("destination_fleet_owner") in (None, getattr(state, "player_id", None)):
+        raise ValueError("A fleet cannot merge with itself")
+    requested_owner=payload.get("destination_fleet_owner")
+    target=next((
+        fleet for fleet in state.fleets
+        if int(fleet.id)==target_id
+        and (requested_owner is None or int(fleet.owner)==int(requested_owner))
+    ), None)
+    if target is None:
+        raise ValueError(f"Unknown merge target fleet {requested_owner or '?'}:{target_id}")
+    planet_id=int((target.native or {}).get("position_object_id", -1) or -1)
+    planet=next((p for p in state.planets if int(p.id)==planet_id), None)
+    if planet is None:
+        planet=next((
+            p for p in state.planets
+            if abs(float(p.position.x)-float(target.position.x))<=0.5
+            and abs(float(p.position.y)-float(target.position.y))<=0.5
+        ), None)
+    if planet is None:
+        raise ValueError("Merge waypoint requires the target fleet to be at a known planet")
+    warp=max(0, min(15, int(payload.get("warp", 7) or 7)))
+    owner=int(getattr(target, "owner", requested_owner or getattr(state, "player_id", 1)))
+    wire=((owner-1)<<9)|(target_id & 0x1FF)
+    return [
+        _waypoint_add_block(state, {
+            "fleet_id":fleet_id,
+            "destination_planet_id":int(planet.id),
+            "warp":warp,
+        }, object_type=0x11, waypoint_index=1),
+        _waypoint_change_task_at_position_block(
+            state,
+            fleet_id=fleet_id,
+            x=int(planet.position.x),
+            y=int(planet.position.y),
+            target_id=wire,
+            warp=warp,
+            task=4,
+            object_type=0x12,
+            waypoint_index=1,
+            target_mask=0xFFFF,
+        ),
+    ]
 
 
 def _waypoint_delete_block(state: Any, *, fleet_id: int, waypoint_index: int) -> NativeBlock:
@@ -634,6 +819,40 @@ def _remote_mining_task_block(state:Any,payload:dict)->NativeBlock|None:
         state,fleet_id=fleet_id,destination_planet_id=destination_id,
         warp=0,task=3,object_type=object_type,waypoint_index=0,
     )
+
+
+def _move_and_remote_mine_blocks(state:Any, payload:dict)->list[NativeBlock]:
+    """Add a planet waypoint, then set that same waypoint to remote mining.
+
+    The examples client wrote Type 4 task 0, then Type 5 task 3, at one warp
+    and one object type copied from the miner's current waypoint.
+    """
+    fleet_id=int(payload["fleet_id"])
+    destination_id=int(payload["destination_planet_id"])
+    fleet=_fleet_state(state, fleet_id)
+    target=next((p for p in state.planets if int(p.id)==destination_id), None)
+    if fleet is None or target is None:
+        raise UnsafeWaypointMutationError({
+            "operation":"remote_mine","result":"BLOCK",
+            "reason":"Move-and-mine requires an owned fleet and a known planet.",
+        })
+    current=((fleet.native or {}).get("waypoints") or [{}])[0]
+    object_type=int(current.get("position_object_type", 0x11) or 0x11) & 0xFF
+    if (object_type & 0x0F) != 1:
+        object_type=0x11
+    warp=max(0, min(15, int(payload.get("warp", 5) or 5)))
+    add_payload={
+        "fleet_id":fleet_id,
+        "destination_planet_id":destination_id,
+        "warp":warp,
+    }
+    return [
+        _waypoint_add_block(state, add_payload, object_type=object_type, waypoint_index=1),
+        _waypoint_change_task_block(
+            state, fleet_id=fleet_id, destination_planet_id=destination_id,
+            warp=warp, task=3, object_type=object_type, waypoint_index=1,
+        ),
+    ]
 
 
 SCRAP_TASK = 5
@@ -757,6 +976,41 @@ def _minefield_task_block(state: Any, payload: dict) -> NativeBlock | None:
         additional=bytes([LAY_MINEFIELD_SUBTASK]),
         object_type=0x11,
         waypoint_index=0,
+    )
+
+
+def _lay_minefield_travel_blocks(state:Any, payload:dict)->list[NativeBlock]:
+    """Send a minelayer to a planet, then set that waypoint to lay mines on arrival."""
+    fleet_id=int(payload["fleet_id"])
+    destination_id=int(payload["destination_planet_id"])
+    warp=max(0, min(15, int(payload.get("warp", 6) or 6)))
+    add_payload={
+        "fleet_id":fleet_id,
+        "destination_planet_id":destination_id,
+        "warp":warp,
+    }
+    return [
+        _waypoint_add_block(state, add_payload, object_type=0x11, waypoint_index=1),
+        _waypoint_change_task_block(
+            state, fleet_id=fleet_id, destination_planet_id=destination_id,
+            warp=warp, task=LAY_MINEFIELD_TASK,
+            additional=bytes([LAY_MINEFIELD_SUBTASK]),
+            object_type=0x11, waypoint_index=1,
+        ),
+    ]
+
+
+def _fleet_is_at_planet(state:Any, fleet_id:int, planet_id:int)->bool:
+    fleet=_fleet_state(state, fleet_id)
+    planet=next((p for p in state.planets if int(p.id)==int(planet_id)), None)
+    if fleet is None or planet is None:
+        return False
+    native=fleet.native or {}
+    if int(native.get("position_object_id", -1) or -1)==int(planet_id):
+        return True
+    return (
+        abs(float(fleet.position.x)-float(planet.position.x)) <= 0.5
+        and abs(float(fleet.position.y)-float(planet.position.y)) <= 0.5
     )
 
 
@@ -2317,6 +2571,7 @@ def write_native_orders(
     # waypoint is one legal transaction for that retained fleet.
     merged_transport_fleets=set()
     touched_planets=set()
+    flung_planets=set()
     relation_updates: dict[int, str] = {}
     touched_design=False
     waypoint_diagnostics=[]
@@ -2626,19 +2881,33 @@ def write_native_orders(
                     continue
                 try:
                     mining_block=_remote_mining_task_block(state,o.payload)
+                    mining_blocks=[] if mining_block is None else [mining_block]
                 except UnsafeWaypointMutationError as exc:
-                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"remote_mining_safety":exc.diagnostic}})
-                    continue
+                    if exc.diagnostic.get("at_target") is False:
+                        try:
+                            mining_blocks=_move_and_remote_mine_blocks(state, o.payload)
+                        except UnsafeWaypointMutationError as travel_exc:
+                            skipped.append({"kind":o.kind,"reason":str(travel_exc),"payload":{**o.payload,"remote_mining_safety":travel_exc.diagnostic}})
+                            continue
+                    else:
+                        skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"remote_mining_safety":exc.diagnostic}})
+                        continue
                 touched_fleets.add(fid)
                 ep=dict(o.payload)
                 ep["native_waypoint_action"]=(
-                    "CONTINUE_REMOTE_MINING" if mining_block is None else "CHANGE_CURRENT_TASK_TO_REMOTE_MINING"
+                    "CONTINUE_REMOTE_MINING" if not mining_blocks else (
+                        "MOVE_AND_REMOTE_MINE" if len(mining_blocks)>1 else "CHANGE_CURRENT_TASK_TO_REMOTE_MINING"
+                    )
                 )
                 ep["native_waypoint_task"]=3
-                ep["native_reference"]="native client capture: Type5 index=0 warp=0 task=3 object_type=current"
-                if mining_block is not None:
-                    generated.append(mining_block)
-                    ep["native_block_hex"]=mining_block.data.hex(" ")
+                ep["native_reference"]=(
+                    "examples client: Type4 task 0 then Type5 task 3"
+                    if len(mining_blocks)>1 else
+                    "native client capture: Type5 index=0 warp=0 task=3 object_type=current"
+                )
+                if mining_blocks:
+                    generated.extend(mining_blocks)
+                    ep["native_block_hex"]=mining_blocks[-1].data.hex(" ")
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="lay_minefield":
                 fid=int(o.payload["fleet_id"])
@@ -2646,14 +2915,20 @@ def write_native_orders(
                     skipped.append({"kind":o.kind,"reason":"Only highest-priority fleet operation emitted.","payload":o.payload})
                     continue
                 try:
-                    minefield_block=_minefield_task_block(state,o.payload)
+                    if str(o.payload.get("minefield_mode", "")).casefold() != "deep_space_current" and o.payload.get("destination_planet_id") is not None and not _fleet_is_at_planet(
+                        state, fid, int(o.payload["destination_planet_id"])
+                    ):
+                        minefield_blocks=_lay_minefield_travel_blocks(state, o.payload)
+                    else:
+                        one=_minefield_task_block(state, o.payload)
+                        minefield_blocks=[] if one is None else [one]
                 except UnsafeWaypointMutationError as exc:
                     skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"minefield_safety":exc.diagnostic}})
                     continue
                 touched_fleets.add(fid)
                 ep=dict(o.payload)
                 ep["native_waypoint_action"]=(
-                    "CONTINUE_LAYING_MINES" if minefield_block is None else "CHANGE_CURRENT_TASK_TO_LAY_MINES"
+                    "CONTINUE_LAYING_MINES" if not minefield_blocks else "LAY_MINES"
                 )
                 ep["native_waypoint_task"]=LAY_MINEFIELD_TASK
                 ep["native_reference"]=(
@@ -2668,7 +2943,7 @@ def write_native_orders(
                     "form":str(o.payload.get("minefield_mode","planet_destination")),
                     "preconditions":"minelayer; exact Type5 task-6/subtask-5 client form; host replay remains traced",
                 }
-                if minefield_block is not None:
+                if minefield_blocks:
                     if str(o.payload.get("minefield_mode", "")).casefold() == "deep_space_current":
                         native_fleet = _fleet_state(state, fid)
                         waypoint_count = int(((native_fleet.native or {}).get("waypoint_count", 0) if native_fleet else 0) or 0)
@@ -2676,13 +2951,13 @@ def write_native_orders(
                             deletion = _waypoint_delete_block(state, fleet_id=fid, waypoint_index=1)
                             generated.append(deletion)
                             ep["native_waypoint_delete_hex"] = deletion.data.hex(" ")
-                    generated.append(minefield_block)
-                    ep["native_block_hex"]=minefield_block.data.hex(" ")
+                    generated.extend(minefield_blocks)
+                    ep["native_block_hex"]=minefield_blocks[-1].data.hex(" ")
                     ep["native_experiment"]["block_sequence"]=[{
-                        "type_id":int(minefield_block.type_id),
-                        "length":int(minefield_block.size),
-                        "data_hex":minefield_block.data.hex(" "),
-                    }]
+                        "type_id":int(block.type_id),
+                        "length":int(block.size),
+                        "data_hex":block.data.hex(" "),
+                    } for block in minefield_blocks]
                 emitted.append({"kind":o.kind,"payload":ep,"reason":o.reason})
             elif o.kind=="create_design":
                 if not TYPE27_AUTOPLAY_ENABLED:
@@ -2966,7 +3241,11 @@ def write_native_orders(
                     continue
                 supported=[
                     q for q in o.payload.get('queue',[])
-                    if q.get('item') in ('max_terraform','factory','mine','defense','planetary_scanner','ship_design','starbase_design')
+                    if q.get('item') in (
+                        'max_terraform','factory','mine','defense','planetary_scanner',
+                        'ironium_packet','boranium_packet','germanium_packet','mixed_packet',
+                        'ship_design','starbase_design',
+                    )
                 ]
                 clear_queue=bool(o.payload.get("clear_queue",False))
                 if not supported and not clear_queue:
@@ -3017,9 +3296,130 @@ def write_native_orders(
                     })
                     continue
                 leftover_only=bool(o.payload.get("leftover_only",False))
-                # A non-zero third field was host-accepted and did not set the
-                # planet route flag. Keep the validated flag-only form.
+                fling_authorized,_authority=_native_planet_mutation_authority(state,pid)
+                if fling_authorized and any(
+                    other.kind in {"fling_minerals", "route_ships"} and int(other.payload.get("planet_id", -1))==pid
+                    for other in orders.orders
+                ):
+                    # The fling record is the whole Type 35 dword. A flag-only
+                    # block would replace it and clear the destination.
+                    continue
                 generated.append(_planet_change_block(pid, leftover_only=leftover_only))
+                emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
+            elif o.kind=="fling_minerals":
+                pid=int(o.payload["planet_id"])
+                destination=int(o.payload["destination_planet_id"])
+                authorized,authority=_native_planet_mutation_authority(state,pid)
+                if not authorized:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":(
+                            "Current M-file ownership does not authorize a native planet mutation; "
+                            "persistent intelligence may not fling minerals."
+                        ),
+                        "payload":{**o.payload,"native_planet_mutation_authority":authority},
+                    })
+                    continue
+                if pid in flung_planets:
+                    skipped.append({"kind":o.kind,"reason":"Planet already has a native fling this turn.","payload":o.payload})
+                    continue
+                leftover_only=any(
+                    other.kind=="set_planet_research_mode"
+                    and int(other.payload.get("planet_id", -1))==pid
+                    and bool(other.payload.get("leftover_only", False))
+                    for other in orders.orders
+                )
+                route_planet=next((
+                    int(other.payload["destination_planet_id"])
+                    for other in orders.orders
+                    if other.kind=="route_ships" and int(other.payload.get("planet_id", -1))==pid
+                ), None)
+                generated.append(_planet_fling_block(
+                    pid,
+                    destination,
+                    int(o.payload.get("warp", 5)),
+                    leftover_only=leftover_only,
+                    route_planet_id=route_planet,
+                ))
+                flung_planets.add(pid)
+                emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
+            elif o.kind=="route_ships":
+                pid=int(o.payload["planet_id"])
+                destination=int(o.payload["destination_planet_id"])
+                authorized,authority=_native_planet_mutation_authority(state,pid)
+                if not authorized:
+                    skipped.append({
+                        "kind":o.kind,
+                        "reason":"Current M-file ownership does not authorize a ship route.",
+                        "payload":{**o.payload,"native_planet_mutation_authority":authority},
+                    })
+                    continue
+                if any(other.kind=="fling_minerals" and int(other.payload.get("planet_id", -1))==pid for other in orders.orders):
+                    continue
+                if pid in flung_planets:
+                    skipped.append({"kind":o.kind,"reason":"Planet already has a Type 35 route this turn.","payload":o.payload})
+                    continue
+                leftover_only=any(
+                    other.kind=="set_planet_research_mode"
+                    and int(other.payload.get("planet_id", -1))==pid
+                    and bool(other.payload.get("leftover_only", False))
+                    for other in orders.orders
+                )
+                generated.append(_planet_ship_route_block(pid, destination, leftover_only=leftover_only))
+                flung_planets.add(pid)
+                emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
+            elif o.kind=="edit_ship_design":
+                if touched_design:
+                    skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
+                    continue
+                design=encoded_ship_design_from_payload(o.payload)
+                try:
+                    assert_editable_unused_ship_design(state, design.slot)
+                except UnsafeShipDesignMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
+                    continue
+                edit_block=edit_unused_ship_design_block(design, player_id=player_id)
+                design_tail.append(edit_block)
+                touched_design=True
+                emitted.append({"kind":o.kind,"payload":{**o.payload,"type27_hex":[edit_block.data.hex(" ")]},"reason":o.reason})
+            elif o.kind=="copy_starbase_design":
+                if touched_design:
+                    skipped.append({"kind":o.kind,"reason":"Only one native Type27 design mutation is allowed per turn.","payload":o.payload})
+                    continue
+                final=encoded_ship_design_from_payload({**o.payload, "is_starbase": True})
+                baseline=encoded_ship_design_from_payload({**dict(o.payload.get("baseline") or {}), "is_starbase": True, "target_slot": final.slot})
+                try:
+                    assert_free_starbase_design_slot(state, final.slot)
+                except UnsafeShipDesignMutationError as exc:
+                    skipped.append({"kind":o.kind,"reason":str(exc),"payload":{**o.payload,"slot_safety":exc.diagnostic}})
+                    continue
+                copied=copy_starbase_design_blocks(baseline, final, player_id=player_id)
+                design_tail.extend(copied)
+                touched_design=True
+                emitted.append({"kind":o.kind,"payload":{**o.payload,"type27_hex":[block.data.hex(" ") for block in copied]},"reason":o.reason})
+            elif o.kind=="repeat_transport":
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                transport_blocks=_repeat_transport_blocks(state, o.payload)
+                generated.extend(transport_blocks)
+                touched_fleets.add(fid)
+                emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
+            elif o.kind=="merge_with_fleet":
+                fid=int(o.payload["fleet_id"])
+                if fid in touched_fleets:
+                    skipped.append({"kind":o.kind,"reason":"Fleet already has a higher-priority native operation.","payload":o.payload})
+                    continue
+                merge_blocks=_merge_with_fleet_blocks(state, o.payload)
+                generated.extend(merge_blocks)
+                touched_fleets.add(fid)
+                emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
+            elif o.kind=="send_message":
+                generated.append(_player_message_block(
+                    int(o.payload["player_id"]),
+                    str(o.payload.get("text") or ""),
+                ))
                 emitted.append({"kind":o.kind,"payload":dict(o.payload),"reason":o.reason})
             elif o.kind=="set_player_relation":
                 target=int(o.payload["player_id"])

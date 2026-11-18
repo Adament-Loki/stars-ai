@@ -163,7 +163,7 @@ def test_direct_fleet_intercept_uses_the_starsapi_target_type_two_waypoint_shape
 
     assert block.type_id == 4
     assert block.data[4:8] == bytes.fromhex("50 00 00 00")
-    assert block.data[8:10] == bytes.fromhex("09 00")
+    assert block.data[8:10] == bytes.fromhex("09 02")
     assert block.data[10:] == bytes.fromhex("90 12")
 
 
