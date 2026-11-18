@@ -17,6 +17,7 @@ from ...fleet_management import (
     prepare_scout_split_precedence,
 )
 from ...fuel_planner import apply_fuel_safety
+from ...native_gap_orders import add_native_gap_orders
 from ...strategy.diplomacy import add_diplomacy_orders
 from ...strategy.economy import add_economic_orders
 from ...strategy.exploration import add_exploration_orders, deconflict_recon_orders
@@ -94,6 +95,15 @@ class EconomyPlanner:
             _plan(context),
             research_decision=_research_decision(context),
         )
+
+
+class NativeGapPlanner:
+    """Emit the newly encoded patrol, scrap, packet, route, and bomb orders."""
+
+    name = "native_gap_orders"
+
+    def plan(self, context: TurnContext) -> None:
+        add_native_gap_orders(context.state, _orders(context), _plan(context))
 
 
 class ExplorationPlanner:
@@ -198,6 +208,7 @@ DEFAULT_PLANNERS: tuple[TurnPlanner, ...] = (
     MilitaryPlanner(),
     TacticalFleetPlanner(),
     EconomyPlanner(),
+    NativeGapPlanner(),
     ExplorationPlanner(),
     ResearchPlanner(),
     DesignDevelopmentPlanner(),

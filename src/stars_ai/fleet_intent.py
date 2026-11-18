@@ -206,6 +206,11 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                     else "MERGE FOR BULK TRANSPORT"
                 ),
                 "lay_minefield":"LAY MINEFIELD / HOLD ANCHOR",
+                "scrap_fleet":"SCRAP AT CURRENT WAYPOINT",
+                "set_battle_plan":"SET BATTLE PLAN",
+                "repeat_fleet_orders":"REPEAT ORDERS",
+                "bomb_orbit":"BOMB AFTER ARRIVAL",
+                "rename_fleet":"RENAME FLEET",
                 "cancel_scout_route":"CANCEL OUTER ROUTE / LOCAL RECON NEXT TURN",
                 "split_scout_fleet":"SPLIT STACK",
                 "split_fleet":"SPLIT STACK",
@@ -216,6 +221,8 @@ def ensure_fleet_activity(state: GameState, orders: OrderSet, plan=None) -> list
                 elif mission=="return_for_population_export": action="RETURN TO EXPORT HUB"
                 elif mission=="reposition_for_remote_mining": action="REPOSITION FOR REMOTE MINING"
                 elif mission=="remote_mine": action="REMOTE MINE"
+                elif mission=="patrol": action="PATROL"
+                elif mission=="bomb": action="BOMB"
                 else: action="MOVE"
             intents.append({
                 "fleet_id":fleet.id,"fleet_name":fleet.name,"role":fleet.role,"action":action,

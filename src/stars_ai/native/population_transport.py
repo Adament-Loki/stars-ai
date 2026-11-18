@@ -100,6 +100,36 @@ def medium_load_block(
     return NativeBlock(2, len(data), data)
 
 
+def large_load_block(
+    state: Any,
+    fleet_id: int,
+    load: dict[str, int],
+    *,
+    source_planet_id: int,
+) -> NativeBlock:
+    """Encode a Type-25 manual load. The turn writer does not call this.
+
+    Both headers stalled starsjrc4.exe -g on a 10 kT population load:
+    fleet-first with class byte 0x12, and planet-first with class byte 0x21.
+    Keep the second form here so the next captured sample can be compared.
+    """
+    ordered=("ironium", "boranium", "germanium", "population")
+    amounts={key:int((load or {}).get(key,0) or 0) for key in ordered}
+    if any(value < 0 or value > 0x7FFFFFFF for value in amounts.values()):
+        raise ValueError(f"Native Type-25 load quantities are out of range; got {amounts}")
+    if not any(amounts.values()):
+        raise ValueError("Native Type-25 load requires at least one positive cargo quantity")
+    mask=sum(1 << index for index, key in enumerate(ordered) if amounts[key])
+    data=(
+        source_planet_bytes(source_planet_id)
+        + int(raw_fleet_number(state, fleet_id)).to_bytes(2, "little")
+        + b"\x21"
+        + bytes([mask])
+        + b"".join(int(amounts[key]).to_bytes(4, "little", signed=True) for key in ordered if amounts[key])
+    )
+    return NativeBlock(25, len(data), data)
+
+
 def population_load_block(
     state: Any,
     fleet_id: int,
