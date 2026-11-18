@@ -9,8 +9,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from stars_ai.llm_director import DirectorProvider, LLMDirector, OpenAICompatibleProvider
+from stars_ai.llm_director import DirectorProvider, DirectorResult, LLMDirector, OpenAICompatibleProvider
 from stars_ai.strategy_digest import build_strategy_digest
+from stars_ai.strategy_guardrails import budget_block, rejection
 from stars_ai.strategy_menu import build_option_menu
 
 MODES = {"off", "advise", "decide"}
@@ -28,18 +29,39 @@ def consult_strategy_director(state: Any, orders: Any) -> dict[str, Any] | None:
     if prior:
         digest["notes_from_prior_turn"] = prior
     menu = build_option_menu(state)
+    blocked = budget_block(state, digest, menu)
+    if blocked:
+        result = DirectorResult(
+            strategic_posture="rule_engine",
+            choices=[{"option_id": option_id, "reason": "rule engine"} for option_id in menu.get("engine_choices") or []],
+            notes_for_next_turn=prior,
+            fallbacks=[{"option_id": option_id, "reason": blocked} for option_id in menu.get("engine_choices") or []],
+            log=[blocked],
+        )
+        record = _record(mode, result, menu, [])
+        _write_log(native.get("llm_director_log_dir"), state, record)
+        return record
     provider = native.get("llm_director_provider")
     if provider is None:
         provider = OpenAICompatibleProvider(
             model=str(native.get("llm_director_model") or "gpt-4.1-mini"),
             base_url=str(native.get("llm_director_base_url") or "https://api.openai.com/v1"),
+            timeout_seconds=float(native.get("llm_director_max_seconds", 20)),
         )
     result = LLMDirector(provider).choose(digest, menu)
     if mode == "decide":
-        applied = _apply(orders, menu, result)
+        applied = _apply(state, orders, menu, result)
     else:
         applied = []
-    record = {
+    record = _record(mode, result, menu, applied)
+    _write_log(native.get("llm_director_log_dir"), state, record)
+    if notes_path and result.notes_for_next_turn:
+        _save_notes(notes_path, result.notes_for_next_turn)
+    return record
+
+
+def _record(mode: str, result: Any, menu: dict[str, Any], applied: list[str]) -> dict[str, Any]:
+    return {
         "mode": mode,
         "prompt": result.prompt,
         "raw_response": result.raw_response,
@@ -47,18 +69,19 @@ def consult_strategy_director(state: Any, orders: Any) -> dict[str, Any] | None:
         "engine_choices": list(menu.get("engine_choices") or []),
         "applied": applied,
     }
-    _write_log(native.get("llm_director_log_dir"), state, record)
-    if notes_path and result.notes_for_next_turn:
-        _save_notes(notes_path, result.notes_for_next_turn)
-    return record
 
 
-def _apply(orders: Any, menu: dict[str, Any], result: Any) -> list[str]:
+def _apply(state: Any, orders: Any, menu: dict[str, Any], result: Any) -> list[str]:
     by_id = {row["option_id"]: row for row in menu.get("options") or []}
     applied = []
     for choice in result.choices:
         option = by_id.get(choice["option_id"])
         if option is None:
+            continue
+        reason = rejection(state, option)
+        if reason:
+            result.log.append(f"{choice['option_id']}: {reason}")
+            result.fallbacks.append({"option_id": choice["option_id"], "reason": reason})
             continue
         payload = option.get("payload") or {}
         category = option["category"]
