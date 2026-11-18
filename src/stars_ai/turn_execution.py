@@ -82,6 +82,11 @@ def plan_native_ai_turn(
     friend_player_ids: list[int] | None = None,
     human_player_ids: list[int] | None = None,
     state_store: AIStateStore | None = None,
+    llm_director: str = "off",
+    llm_director_log_dir: str | Path | None = None,
+    llm_director_notes_path: str | Path | None = None,
+    llm_director_model: str | None = None,
+    llm_director_base_url: str | None = None,
 ) -> PlannedNativeAITurn:
     """Decode a native turn and produce semantic orders without writing an X file."""
 
@@ -90,6 +95,15 @@ def plan_native_ai_turn(
     actual_relations = list(state.race.native.get("player_relations", []))
     state.native["actual_player_relations"] = list(actual_relations)
     state.native["configured_allies"] = list(requested_friends)
+    state.native["llm_director_mode"] = str(llm_director or "off")
+    if llm_director_log_dir is not None:
+        state.native["llm_director_log_dir"] = str(llm_director_log_dir)
+    if llm_director_notes_path is not None:
+        state.native["llm_director_notes_path"] = str(llm_director_notes_path)
+    if llm_director_model:
+        state.native["llm_director_model"] = str(llm_director_model)
+    if llm_director_base_url:
+        state.native["llm_director_base_url"] = str(llm_director_base_url)
     if requested_friends:
         from .ally_intel import load_ally_states, share_ally_observations
         ally_states, ally_notes = load_ally_states(Path(m_path), Path(xy_path), requested_friends)
@@ -230,6 +244,11 @@ def execute_native_ai_turn(
     human_player_ids: list[int] | None = None,
     state_store: AIStateStore | None = None,
     trace_path: str | Path | None = None,
+    llm_director: str = "off",
+    llm_director_log_dir: str | Path | None = None,
+    llm_director_notes_path: str | Path | None = None,
+    llm_director_model: str | None = None,
+    llm_director_base_url: str | None = None,
 ) -> NativeAITurnExecution:
     """Run the application lifecycle around the pure native serializer."""
 
@@ -241,6 +260,11 @@ def execute_native_ai_turn(
         friend_player_ids=friend_player_ids,
         human_player_ids=human_player_ids,
         state_store=state_store,
+        llm_director=llm_director,
+        llm_director_log_dir=llm_director_log_dir,
+        llm_director_notes_path=llm_director_notes_path,
+        llm_director_model=llm_director_model,
+        llm_director_base_url=llm_director_base_url,
     )
     native_result = write_native_orders(
         game_state=planned.state,
