@@ -2,6 +2,12 @@
 
 This document is the current strategic and native-integration reference for Stars! AI v8.8. It replaces the dated release notes as the single place to record implemented behavior, confidence boundaries, strategic decisions, and the next work to validate.
 
+## Strategy director
+
+An optional director can read a compact turn digest and choose among a menu of orders the rule engine already knows how to emit. It never writes orders or game files. The config flag `llm_director` defaults to `off`. `advise` logs the model's choice beside the engine and leaves orders unchanged. `decide` may retarget an order the engine already queued, after guardrails reject colonization of an owned world or a starbase, an attack while combat engagement says `RETREAT_AND_PRESERVE`, leaving an undefended homeworld, and a turn that would exceed the token, cost, or wall-clock budget. Invalid JSON, an unknown option id, a timeout, or a provider error falls back to the rule engine and the reason is logged.
+
+The advise-mode replay harness scores agreement, invalid responses, latency, and estimated token cost against saved turns. A decide-mode game of 30 or more turns against the existing AI, hosted with `stars.exe -g`, has not been run.
+
 ## Current state
 
 The AI can plan a complete turn from normalized or native player state and the Windows controller can stage a multi-player game, generate supported native orders, host it, merge player knowledge into history, and archive every phase. The engine is deliberately conservative at the native boundary: it emits only order forms with an evidence-backed serializer and reports the rest rather than guessing.
