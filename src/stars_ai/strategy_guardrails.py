@@ -5,8 +5,8 @@ from typing import Any
 
 from stars_ai.strategy_digest import estimate_tokens
 
-DEFAULT_MAX_TOKENS = 8_000
-DEFAULT_MAX_COST_USD = 0.05
+DEFAULT_MAX_TOKENS = 12_000
+DEFAULT_MAX_COST_USD = 0.25
 DEFAULT_MAX_SECONDS = 20.0
 _COST_PER_1K_TOKENS = 0.01
 
