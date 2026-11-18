@@ -50,6 +50,8 @@ def main():
     else:
         bridge=IntegratedNativeOrderBridge(
             cfg.personas, cfg.console_player_logs, cfg.allied_pairs, cfg.human_player_ids,
+            llm_director=cfg.llm_director, llm_director_model=cfg.llm_director_model,
+            llm_director_base_url=cfg.llm_director_base_url,
         )
 
     results=run_50_turn_game(cfg,bridge)

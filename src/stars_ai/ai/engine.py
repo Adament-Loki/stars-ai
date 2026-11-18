@@ -83,6 +83,7 @@ class StarsAI:
         self._choose_research(work)
         self._run_strategic_planners(work)
         self._apply_post_planning_policies(work)
+        self._consult_director(work)
         self._append_turn_diagnostics(work)
         self._finalize_turn(work)
         return TurnDecision(
@@ -228,6 +229,11 @@ class StarsAI:
 
         run_pipeline(work.context, DEFAULT_POST_PLANNING_POLICIES)
         work.legacy_fleet_intents = work.context.legacy_fleet_intents
+
+    def _consult_director(self, work: _TurnWork) -> None:
+        """Ask the optional director. Off, the default, leaves orders alone."""
+        from ..strategy_director_session import consult_strategy_director
+        consult_strategy_director(work.state, work.orders)
 
     def _append_turn_diagnostics(self, work: _TurnWork) -> None:
         """Append the existing diagnostics before final order sorting and persistence."""

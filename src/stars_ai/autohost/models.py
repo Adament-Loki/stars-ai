@@ -111,6 +111,12 @@ class WindowsAutoHostConfig:
     human_turn_timeout_seconds: int | None = DEFAULT_HUMAN_TURN_TIMEOUT_SECONDS
     # After the AI finishes a turn, open Stars! on the human's new .m file.
     open_human_turn: bool = True
+    # off leaves the rule engine in charge. advise logs the director beside
+    # the engine. decide applies validated menu choices onto orders the
+    # engine already emitted.
+    llm_director: str = "off"
+    llm_director_model: str = "gpt-4.1-mini"
+    llm_director_base_url: str = "https://api.openai.com/v1"
 
     def __post_init__(self) -> None:
         self.human_player_ids = [int(seat) for seat in self.human_player_ids]

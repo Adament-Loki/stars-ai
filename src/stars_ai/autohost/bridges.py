@@ -43,6 +43,9 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         human_player_ids: list[int] | None = None,
         memory_root: str | Path | None = None,
         report_root: str | Path | None = None,
+        llm_director: str = "off",
+        llm_director_model: str | None = None,
+        llm_director_base_url: str | None = None,
     ):
         self.personas = personas or {}
         self.console_player_logs = (
@@ -52,6 +55,9 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
         self.human_player_ids = [int(seat) for seat in (human_player_ids or [])]
         self.memory_root = Path(memory_root).resolve() if memory_root else None
         self.report_root = Path(report_root).resolve() if report_root else None
+        self.llm_director = str(llm_director or "off")
+        self.llm_director_model = llm_director_model
+        self.llm_director_base_url = llm_director_base_url
         # Retained for direct legacy callers/tests that used this diagnostic
         # surface before AIStateStore owned the transaction mechanics.
         self._pending_memories: dict[int, tuple[Path, Path]] = {}
@@ -93,6 +99,14 @@ class IntegratedNativeOrderBridge(NativeOrderBridge):
             friend_player_ids=self._friend_ids_for(int(player_id)),
             human_player_ids=self.human_player_ids,
             state_store=state_store,
+            llm_director=self.llm_director,
+            llm_director_log_dir=turn_dir / "llm-director",
+            llm_director_notes_path=(
+                self.memory_root / f"player-{int(player_id)}-director-notes.json"
+                if self.memory_root is not None else turn_dir / f"player-{int(player_id)}-director-notes.json"
+            ),
+            llm_director_model=self.llm_director_model,
+            llm_director_base_url=self.llm_director_base_url,
         )
         result = execution.native_result
         if state_store is not None and state_store.has_staged_state:
